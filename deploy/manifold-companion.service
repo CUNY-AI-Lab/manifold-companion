@@ -1,0 +1,26 @@
+[Unit]
+Description=CAIL OCR Manifold Companion
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/manifold-companion
+ExecStart=/usr/bin/node server/index.js
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/manifold-companion/.env
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/manifold-companion/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
