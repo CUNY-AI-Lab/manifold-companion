@@ -7,6 +7,7 @@ import { join } from 'path';
 import { readFile } from 'fs/promises';
 import sharp from 'sharp';
 import { requireAuth } from '../middleware/auth.js';
+import { aiLimiter } from '../middleware/rateLimits.js';
 import {
   getTextById,
   getProjectById,
@@ -82,7 +83,7 @@ function compileFullText(textId) {
 // ---------------------------------------------------------------------------
 
 // ---- GET /texts/:id/ocr — SSE stream for OCR processing -----------------
-router.get('/texts/:id/ocr', async (req, res) => {
+router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -149,7 +150,7 @@ router.get('/texts/:id/ocr', async (req, res) => {
 
         sendEvent('page-error', {
           filename: page.filename,
-          error: pageErr.message,
+          error: 'OCR processing failed for this page.',
         });
       }
     }
@@ -192,7 +193,7 @@ router.get('/texts/:id/ocr', async (req, res) => {
 });
 
 // ---- POST /texts/:id/ocr-single — re-OCR a single page ------------------
-router.post('/texts/:id/ocr-single', async (req, res) => {
+router.post('/texts/:id/ocr-single', aiLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });

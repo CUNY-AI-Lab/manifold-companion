@@ -4,7 +4,8 @@
 
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
-import { createUser, getUserByEmail, getUserById, updateUserLogin } from '../db.js';
+import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, BCRYPT_ROUNDS } from '../db.js';
+import { requireAuth } from '../middleware/auth.js';
 import { validateEmail, validatePassword } from '../middleware/security.js';
 
 const router = Router();
@@ -34,12 +35,11 @@ router.post('/register', async (req, res) => {
     }
 
     // Hash password and create user
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const userId = createUser(email.toLowerCase().trim(), passwordHash);
 
     res.status(201).json({
       message: 'Account created. Awaiting admin approval.',
-      userId,
     });
   } catch (err) {
     console.error('POST /register error:', err);
@@ -75,15 +75,21 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: 'Your account has been disabled.' });
     }
 
-    // Status is 'approved' — set up the session
-    req.session.userId = user.id;
-    updateUserLogin(user.id);
+    // Status is 'approved' — regenerate session to prevent fixation
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error('Session regenerate error:', err);
+        return res.status(500).json({ error: 'Internal server error.' });
+      }
+      req.session.userId = user.id;
+      updateUserLogin(user.id);
 
-    res.json({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      status: user.status,
+      res.json({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+      });
     });
   } catch (err) {
     console.error('POST /login error:', err);
@@ -120,6 +126,12 @@ router.get('/me', (req, res) => {
       return res.status(401).json({ error: 'Not authenticated.' });
     }
 
+    // [LOW-4] If account was disabled since login, destroy session
+    if (user.status !== 'approved') {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: 'Account is not approved.' });
+    }
+
     res.json({
       id: user.id,
       email: user.email,
@@ -128,6 +140,39 @@ router.get('/me', (req, res) => {
     });
   } catch (err) {
     console.error('GET /me error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /change-password — change password for authenticated user ------
+router.post('/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new passwords are required.' });
+    }
+
+    if (!validatePassword(newPassword)) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+    }
+
+    const user = getUserById(req.user.id);
+    if (!user) {
+      return res.status(401).json({ error: 'Not authenticated.' });
+    }
+
+    const match = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    updateUserPassword(user.id, newHash);
+
+    res.json({ message: 'Password changed successfully.' });
+  } catch (err) {
+    console.error('POST /change-password error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

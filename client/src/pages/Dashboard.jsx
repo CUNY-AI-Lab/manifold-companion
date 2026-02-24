@@ -25,6 +25,7 @@ function daysRemaining(expiresAt) {
 export default function Dashboard() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
+  const [storageUsed, setStorageUsed] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -41,7 +42,8 @@ export default function Dashboard() {
   async function loadProjects() {
     try {
       const data = await api.get('/api/projects');
-      setProjects(data);
+      setProjects(data.projects || []);
+      setStorageUsed(data.storage_used_bytes || 0);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -68,8 +70,9 @@ export default function Dashboard() {
   }
 
   // Calculate storage usage
-  const totalStorage = 50 * 1024 * 1024; // 50 MB
-  const usedStorage = projects.reduce((acc, p) => acc + (p.storage_used_bytes || 0), 0);
+  const isAdmin = user?.role === 'admin';
+  const totalStorage = isAdmin ? 500 * 1024 * 1024 : 50 * 1024 * 1024;
+  const usedStorage = storageUsed;
   const storagePercent = Math.min((usedStorage / totalStorage) * 100, 100);
 
   return (
@@ -105,6 +108,18 @@ export default function Dashboard() {
           />
         </div>
       </div>
+
+      {/* 90-day expiry notice for regular users */}
+      {!isAdmin && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+          <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-sm text-amber-800">
+            Projects are automatically deleted 90 days after creation. Please export your work before the expiry date shown on each project.
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -165,11 +180,14 @@ export default function Dashboard() {
       {/* Empty state */}
       {!loading && projects.length === 0 && (
         <div className="text-center py-16">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-cail-blue/10 flex items-center justify-center mb-4">
+          <button
+            onClick={() => setShowForm(true)}
+            className="mx-auto w-16 h-16 rounded-2xl bg-cail-blue/10 flex items-center justify-center mb-4 hover:bg-cail-blue/20 transition-colors cursor-pointer"
+          >
             <svg className="w-8 h-8 text-cail-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
-          </div>
+          </button>
           <h3 className="font-display font-semibold text-lg text-cail-dark mb-1">No projects yet</h3>
           <p className="text-sm text-gray-500">Create your first project to get started with OCR.</p>
         </div>
@@ -196,8 +214,8 @@ export default function Dashboard() {
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cail-blue/10 text-cail-blue">
                     {project.text_count || 0} text{(project.text_count || 0) !== 1 ? 's' : ''}
                   </span>
-                  <span className="text-xs text-gray-400">
-                    {formatBytes(project.storage_used_bytes || 0)}
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                    {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
                   </span>
                   {days !== null && (
                     <span className={`text-xs ${days <= 7 ? 'text-red-500' : 'text-gray-400'}`}>

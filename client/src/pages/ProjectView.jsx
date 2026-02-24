@@ -1,25 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { api } from '../api/client';
-
-const LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'es', label: 'Spanish' },
-  { code: 'fr', label: 'French' },
-  { code: 'de', label: 'German' },
-  { code: 'it', label: 'Italian' },
-  { code: 'pt', label: 'Portuguese' },
-  { code: 'ru', label: 'Russian' },
-  { code: 'zh', label: 'Chinese' },
-  { code: 'ja', label: 'Japanese' },
-  { code: 'ko', label: 'Korean' },
-  { code: 'ar', label: 'Arabic' },
-  { code: 'hi', label: 'Hindi' },
-  { code: 'la', label: 'Latin' },
-  { code: 'grc', label: 'Ancient Greek' },
-  { code: 'he', label: 'Hebrew' },
-  { code: 'yi', label: 'Yiddish' },
-];
+import { api, BASE } from '../api/client';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -60,6 +41,16 @@ async function resizeImageBlob(file, maxBytes = 3.5 * 1024 * 1024) {
     };
     img.src = url;
   });
+}
+
+/**
+ * Convert a HEIC/HEIF file to JPEG using heic2any.
+ */
+async function convertHeic(file) {
+  const heic2any = (await import('heic2any')).default;
+  const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+  const name = file.name.replace(/\.hei[cf]$/i, '.jpg');
+  return new File([blob], name, { type: 'image/jpeg' });
 }
 
 /**
@@ -110,9 +101,9 @@ export default function ProjectView() {
   // Inline editing
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState('');
-  const [langValue, setLangValue] = useState('en');
 
   // New text form
+  const [showAddSection, setShowAddSection] = useState(false);
   const [newTextName, setNewTextName] = useState('');
   const [creatingText, setCreatingText] = useState(false);
 
@@ -121,14 +112,22 @@ export default function ProjectView() {
   const [uploadProgress, setUploadProgress] = useState('');
   const [selectedTextForUpload, setSelectedTextForUpload] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState('');
 
-  // Export modal
+  // Edit mode + drag-and-drop reorder
+  const [editMode, setEditMode] = useState(false);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+
+  // Export modal + TOC builder
   const [showExport, setShowExport] = useState(false);
-  const [exportTextIds, setExportTextIds] = useState([]);
+  const [tocItems, setTocItems] = useState([]);
+  // Each item: { id, type: 'text'|'section', label, depth: 0-5, textId?: number }
   const [exportMeta, setExportMeta] = useState({
     title: '', creators: '', date: '', language: 'en', rights: '', description: ''
   });
   const [exporting, setExporting] = useState(false);
+  const [newSectionLabel, setNewSectionLabel] = useState('');
 
   useEffect(() => {
     loadProject();
@@ -140,7 +139,6 @@ export default function ProjectView() {
       setProject(data);
       setTexts(data.texts || []);
       setNameValue(data.name);
-      setLangValue(data.default_language || 'en');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -159,15 +157,6 @@ export default function ProjectView() {
     }
   }
 
-  async function saveLanguage(lang) {
-    setLangValue(lang);
-    try {
-      await api.put(`/api/projects/${id}`, { default_language: lang });
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
   async function createText(e) {
     e.preventDefault();
     if (!newTextName.trim()) return;
@@ -175,6 +164,7 @@ export default function ProjectView() {
     try {
       await api.post(`/api/projects/${id}/texts`, { name: newTextName.trim() });
       setNewTextName('');
+      setShowAddSection(false);
       await loadProject();
     } catch (err) {
       setError(err.message);
@@ -203,6 +193,39 @@ export default function ProjectView() {
     }
   }
 
+  function handleDragStart(e, index) {
+    setDragIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragOver(e, index) {
+    e.preventDefault();
+    setDragOverIdx(index);
+  }
+
+  function handleDragEnd() {
+    setDragIdx(null);
+    setDragOverIdx(null);
+  }
+
+  async function handleReorderDrop(e, toIndex) {
+    e.preventDefault();
+    const fromIndex = dragIdx;
+    setDragIdx(null);
+    setDragOverIdx(null);
+    if (fromIndex == null || fromIndex === toIndex) return;
+    const reordered = [...texts];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    setTexts(reordered);
+    try {
+      await api.put(`/api/projects/${id}/texts/reorder`, { textIds: reordered.map((t) => t.id) });
+    } catch (err) {
+      setError(err.message);
+      await loadProject();
+    }
+  }
+
   // File processing and upload
   const processAndUpload = useCallback(async (files, textId) => {
     if (!textId) {
@@ -216,11 +239,16 @@ export default function ProjectView() {
     try {
       const allImages = [];
 
-      for (const file of files) {
+      for (let file of files) {
         if (file.type === 'application/pdf') {
           setUploadProgress(`Splitting PDF: ${file.name}...`);
           const pageImages = await pdfToImages(file);
           allImages.push(...pageImages);
+        } else if (/\.hei[cf]$/i.test(file.name) || file.type === 'image/heic' || file.type === 'image/heif') {
+          setUploadProgress(`Converting HEIC: ${file.name}...`);
+          const converted = await convertHeic(file);
+          const resized = await resizeImageBlob(converted);
+          allImages.push(resized);
         } else if (file.type.startsWith('image/')) {
           const resized = await resizeImageBlob(file);
           allImages.push(resized);
@@ -235,21 +263,30 @@ export default function ProjectView() {
       }
 
       setUploadProgress(`Uploading ${allImages.length} image(s)...`);
+      setUploadSuccess('');
 
       // Upload in batches of 20
       const batchSize = 20;
       let totalUploaded = 0;
+      const totalBatches = Math.ceil(allImages.length / batchSize);
 
       for (let i = 0; i < allImages.length; i += batchSize) {
+        const batchNum = Math.floor(i / batchSize) + 1;
         const batch = allImages.slice(i, i + batchSize);
         const formData = new FormData();
         batch.forEach((img) => formData.append('images', img));
 
+        setUploadProgress(
+          totalBatches > 1
+            ? `Uploading batch ${batchNum}/${totalBatches} (${totalUploaded}/${allImages.length} images)...`
+            : `Uploading ${totalUploaded}/${allImages.length} images...`
+        );
+
         await api.upload(`/api/texts/${textId}/upload`, formData);
         totalUploaded += batch.length;
-        setUploadProgress(`Uploaded ${totalUploaded}/${allImages.length} images...`);
       }
 
+      setUploadSuccess(`${totalUploaded} image${totalUploaded !== 1 ? 's' : ''} uploaded successfully`);
       setToast(`Uploaded ${totalUploaded} image(s) successfully.`);
       setTimeout(() => setToast(''), 3000);
       await loadProject();
@@ -279,31 +316,133 @@ export default function ProjectView() {
   }
 
   // Export handlers
-  function openExport() {
-    setExportTextIds(texts.map((t) => t.id));
-    setExportMeta({
-      title: project?.name || '',
-      creators: '',
-      date: new Date().toISOString().split('T')[0],
-      language: project?.default_language || 'en',
-      rights: '',
-      description: project?.description || '',
-    });
+  async function openExport() {
+    setNewSectionLabel('');
     setShowExport(true);
+
+    // Try to load saved export settings
+    let saved = null;
+    try {
+      const data = await api.get(`/api/projects/${id}/export-settings`);
+      saved = data.settings;
+    } catch (_) { /* no saved settings */ }
+
+    if (saved?.tocFlat && Array.isArray(saved.tocFlat) && saved.tocFlat.length > 0) {
+      // Reconcile saved TOC with current texts
+      const currentTextIds = new Set(texts.map((t) => t.id));
+      // Keep saved items whose textId still exists (or sections which have no textId)
+      const kept = saved.tocFlat.filter(
+        (item) => item.type === 'section' || (item.textId != null && currentTextIds.has(item.textId))
+      );
+      // Find texts not in saved TOC and append them
+      const savedTextIds = new Set(kept.filter((i) => i.textId != null).map((i) => i.textId));
+      const newTexts = texts.filter((t) => !savedTextIds.has(t.id));
+
+      let nextId = kept.length > 0 ? Math.max(...kept.map((i) => i.id || 0)) + 1 : 1;
+      const restoredItems = kept.map((item) => ({ ...item, id: item.id || nextId++ }));
+      const appendedItems = newTexts.map((t) => ({
+        id: nextId++,
+        type: 'text',
+        label: t.name,
+        depth: 0,
+        textId: t.id,
+      }));
+
+      setTocItems([...restoredItems, ...appendedItems]);
+      setExportMeta({
+        title: saved.meta?.title || project?.name || '',
+        creators: saved.meta?.creators || '',
+        date: saved.meta?.date || new Date().toISOString().split('T')[0],
+        language: saved.meta?.language || project?.default_language || 'en',
+        rights: saved.meta?.rights || '',
+        description: saved.meta?.description || project?.description || '',
+      });
+    } else {
+      // Fresh defaults
+      let nextId = 1;
+      setTocItems(texts.map((t) => ({
+        id: nextId++,
+        type: 'text',
+        label: t.name,
+        depth: 0,
+        textId: t.id,
+      })));
+      setExportMeta({
+        title: project?.name || '',
+        creators: '',
+        date: new Date().toISOString().split('T')[0],
+        language: project?.default_language || 'en',
+        rights: '',
+        description: project?.description || '',
+      });
+    }
+  }
+
+  // TOC builder helpers
+  function tocNextId() {
+    return tocItems.length > 0 ? Math.max(...tocItems.map((i) => i.id)) + 1 : 1;
+  }
+
+  function tocMove(index, direction) {
+    const newIdx = index + direction;
+    if (newIdx < 0 || newIdx >= tocItems.length) return;
+    setTocItems((prev) => {
+      const items = [...prev];
+      [items[index], items[newIdx]] = [items[newIdx], items[index]];
+      return items;
+    });
+  }
+
+  function tocIndent(index, delta) {
+    setTocItems((prev) => prev.map((item, i) => {
+      if (i !== index) return item;
+      const newDepth = Math.max(0, Math.min(5, item.depth + delta));
+      return { ...item, depth: newDepth };
+    }));
+  }
+
+  function tocRemove(index) {
+    setTocItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function tocAddSection() {
+    const label = newSectionLabel.trim();
+    if (!label) return;
+    setTocItems((prev) => [...prev, { id: tocNextId(), type: 'section', label, depth: 0 }]);
+    setNewSectionLabel('');
+  }
+
+  function flatToNested(items) {
+    const root = [];
+    const stack = [{ depth: -1, children: root }];
+    for (const item of items) {
+      const node = {
+        type: item.type,
+        label: item.label,
+        ...(item.textId != null && { textId: item.textId }),
+        children: [],
+      };
+      while (stack.length > 1 && stack[stack.length - 1].depth >= item.depth) {
+        stack.pop();
+      }
+      stack[stack.length - 1].children.push(node);
+      stack.push({ depth: item.depth, children: node.children });
+    }
+    return root;
   }
 
   async function handleExport() {
-    if (exportTextIds.length === 0) {
-      setError('Select at least one text to export.');
+    if (tocItems.length === 0) {
+      setError('Add at least one item to the table of contents.');
       return;
     }
     setExporting(true);
     try {
-      const res = await fetch(`/api/projects/${id}/export`, {
+      const res = await fetch(`${BASE}/api/projects/${id}/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ meta: exportMeta, textIds: exportTextIds }),
+        body: JSON.stringify({ meta: exportMeta, toc: flatToNested(tocItems), tocFlat: tocItems }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -322,12 +461,6 @@ export default function ProjectView() {
     } finally {
       setExporting(false);
     }
-  }
-
-  function toggleExportText(textId) {
-    setExportTextIds((prev) =>
-      prev.includes(textId) ? prev.filter((t) => t !== textId) : [...prev, textId]
-    );
   }
 
   if (loading) {
@@ -407,15 +540,28 @@ export default function ProjectView() {
           </div>
 
           <div className="flex items-center gap-3">
-            <select
-              value={langValue}
-              onChange={(e) => saveLanguage(e.target.value)}
-              className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:border-cail-blue outline-none"
+            <button
+              onClick={() => setShowAddSection((v) => !v)}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                showAddSection
+                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-cail-blue text-white hover:bg-cail-navy'
+              }`}
             >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
+              {showAddSection ? 'Cancel' : '+ New Text'}
+            </button>
+            {texts.length > 1 && (
+              <button
+                onClick={() => setEditMode((v) => !v)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  editMode
+                    ? 'bg-cail-navy text-white hover:bg-cail-dark'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {editMode ? 'Done' : 'Edit'}
+              </button>
+            )}
             <button
               onClick={openExport}
               className="px-4 py-2 rounded-full bg-cail-teal text-white text-sm font-medium hover:bg-cail-azure transition-colors"
@@ -433,6 +579,7 @@ export default function ProjectView() {
       </div>
 
       {/* Add text + Upload area */}
+      {showAddSection && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Add text */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6">
@@ -476,16 +623,24 @@ export default function ProjectView() {
                 ref={dropRef}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => selectedTextForUpload && fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
-                  dragOver ? 'border-cail-blue bg-cail-blue/5' : 'border-gray-200 hover:border-cail-blue/50'
+                onDrop={(e) => { setUploadSuccess(''); handleDrop(e); }}
+                onClick={() => { if (selectedTextForUpload) { setUploadSuccess(''); fileInputRef.current?.click(); } }}
+                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+                  dragOver ? 'border-cail-blue bg-cail-blue/5' : uploadSuccess ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-cail-blue/50'
                 } ${!selectedTextForUpload ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {uploading ? (
                   <div>
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cail-blue mx-auto mb-2"></div>
                     <p className="text-sm text-gray-500">{uploadProgress}</p>
+                  </div>
+                ) : uploadSuccess ? (
+                  <div>
+                    <svg className="w-8 h-8 text-green-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <p className="text-sm text-green-700 font-medium">{uploadSuccess}</p>
+                    <p className="text-xs text-green-500 mt-1">Click or drop to upload more</p>
                   </div>
                 ) : (
                   <>
@@ -506,7 +661,7 @@ export default function ProjectView() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept="image/*,.pdf"
+                accept="image/*,.pdf,.heic,.heif"
                 onChange={handleFileSelect}
                 className="hidden"
               />
@@ -516,6 +671,7 @@ export default function ProjectView() {
           )}
         </div>
       </div>
+      )}
 
       {/* Texts list */}
       <div className="space-y-4">
@@ -529,11 +685,36 @@ export default function ProjectView() {
           </div>
         )}
 
-        {texts.map((text) => (
+        {texts.map((text, idx) => (
           <div
             key={text.id}
-            className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-shadow flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+            draggable={editMode}
+            onDragStart={editMode ? (e) => handleDragStart(e, idx) : undefined}
+            onDragOver={editMode ? (e) => handleDragOver(e, idx) : undefined}
+            onDragEnd={editMode ? handleDragEnd : undefined}
+            onDrop={editMode ? (e) => handleReorderDrop(e, idx) : undefined}
+            className={`bg-white rounded-2xl border p-5 transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+              editMode ? 'cursor-grab active:cursor-grabbing' : 'hover:shadow-md'
+            } ${dragIdx === idx ? 'opacity-40' : ''} ${
+              dragOverIdx === idx && dragIdx !== idx
+                ? 'border-t-2 border-cail-blue border-x-gray-100 border-b-gray-100'
+                : 'border-gray-100'
+            }`}
           >
+            {/* Drag handle (edit mode only) */}
+            {editMode && (
+              <div className="flex items-center flex-shrink-0 text-gray-400">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="9" cy="6" r="1.5" />
+                  <circle cx="15" cy="6" r="1.5" />
+                  <circle cx="9" cy="12" r="1.5" />
+                  <circle cx="15" cy="12" r="1.5" />
+                  <circle cx="9" cy="18" r="1.5" />
+                  <circle cx="15" cy="18" r="1.5" />
+                </svg>
+              </div>
+            )}
+
             <div className="flex-1">
               <Link
                 to={`/texts/${text.id}`}
@@ -588,21 +769,110 @@ export default function ProjectView() {
               </button>
             </div>
 
-            {/* Text selection */}
+            {/* TOC Builder */}
             <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Select Texts</h3>
-              <div className="space-y-2">
-                {texts.map((t) => (
-                  <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={exportTextIds.includes(t.id)}
-                      onChange={() => toggleExportText(t.id)}
-                      className="rounded border-gray-300 text-cail-blue focus:ring-cail-blue"
-                    />
-                    <span className="text-sm">{t.name}</span>
-                  </label>
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Table of Contents</h3>
+              <div className="space-y-1 mb-3">
+                {tocItems.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                    style={{ marginLeft: item.depth * 24 + 'px' }}
+                  >
+                    {/* Icon: folder for section, doc for text */}
+                    <span className="w-5 h-5 flex items-center justify-center text-gray-400 flex-shrink-0">
+                      {item.type === 'section' ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      )}
+                    </span>
+
+                    {/* Label */}
+                    <span className={`flex-1 text-sm truncate ${item.type === 'section' ? 'font-semibold text-cail-dark' : 'text-gray-700'}`}>
+                      {item.label}
+                    </span>
+
+                    {/* Controls */}
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => tocIndent(idx, -1)}
+                        disabled={item.depth === 0}
+                        className="p-1 rounded text-gray-400 hover:text-cail-blue hover:bg-white disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        title="Outdent"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => tocIndent(idx, 1)}
+                        disabled={item.depth >= 5}
+                        className="p-1 rounded text-gray-400 hover:text-cail-blue hover:bg-white disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        title="Indent"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => tocMove(idx, -1)}
+                        disabled={idx === 0}
+                        className="p-1 rounded text-gray-400 hover:text-cail-blue hover:bg-white disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        title="Move up"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => tocMove(idx, 1)}
+                        disabled={idx === tocItems.length - 1}
+                        className="p-1 rounded text-gray-400 hover:text-cail-blue hover:bg-white disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        title="Move down"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => tocRemove(idx)}
+                        className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-white"
+                        title="Remove"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 ))}
+                {tocItems.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-4">No items. Add texts or sections below.</p>
+                )}
+              </div>
+
+              {/* Add Section */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newSectionLabel}
+                  onChange={(e) => setNewSectionLabel(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && tocAddSection()}
+                  placeholder="Section heading..."
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                />
+                <button
+                  onClick={tocAddSection}
+                  disabled={!newSectionLabel.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  + Section
+                </button>
               </div>
             </div>
 
@@ -645,7 +915,7 @@ export default function ProjectView() {
               </button>
               <button
                 onClick={handleExport}
-                disabled={exporting || exportTextIds.length === 0}
+                disabled={exporting || tocItems.length === 0}
                 className="px-6 py-2 rounded-full bg-cail-teal text-white text-sm font-medium hover:bg-cail-azure transition-colors disabled:opacity-50"
               >
                 {exporting ? 'Exporting...' : 'Download ZIP'}

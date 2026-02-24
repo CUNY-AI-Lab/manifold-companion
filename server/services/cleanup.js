@@ -23,7 +23,7 @@ async function runCleanup() {
         await deleteProjectFiles(project.user_id, project.id);
         deleteProject(project.id);
         console.log(
-          `[cleanup] Cleaned up expired project: ${project.name} (user ${project.user_id})`
+          `[cleanup] Cleaned up expired project ID ${project.id} (user ${project.user_id})`
         );
       } catch (err) {
         console.error(

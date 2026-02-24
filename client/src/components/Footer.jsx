@@ -1,13 +1,14 @@
 import { ManifoldLogo } from './Header';
+import { BASE } from '../api/client';
 
 const NOISE_SVG = "data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E";
 
 const partners = [
-  { name: 'The Graduate Center, CUNY', url: 'https://gc.cuny.edu/', img: '/images/partners/gc-logo-white.png', h: 'h-8' },
-  { name: 'Graduate Center Digital Initiatives', url: 'https://gcdi.commons.gc.cuny.edu/', img: '/images/partners/logo-gcdi.png', h: 'h-7', invert: true },
-  { name: 'Teaching and Learning Center', url: 'https://tlc.commons.gc.cuny.edu/', img: '/images/partners/TLC-Logo-v4-No-GC-white.png', h: 'h-7', invert: true },
-  { name: 'Mina Rees Library', url: 'https://library.gc.cuny.edu/', img: '/images/partners/MRS_logo_One_Search.png', h: 'h-7', invert: true },
-  { name: 'American Social History Project', url: 'https://ashp.cuny.edu/', img: '/images/partners/ashp-logo-blue.png', h: 'h-7', invert: true },
+  { name: 'The Graduate Center, CUNY', url: 'https://gc.cuny.edu/', img: `${BASE}/images/partners/gc-logo-white.png`, h: 'h-8' },
+  { name: 'Graduate Center Digital Initiatives', url: 'https://gcdi.commons.gc.cuny.edu/', img: `${BASE}/images/partners/logo-gcdi.png`, h: 'h-7', invert: true },
+  { name: 'Teaching and Learning Center', url: 'https://tlc.commons.gc.cuny.edu/', img: `${BASE}/images/partners/TLC-Logo-v4-No-GC-white.png`, h: 'h-7', invert: true },
+  { name: 'Mina Rees Library', url: 'https://library.gc.cuny.edu/', img: `${BASE}/images/partners/MRS_logo_One_Search.png`, h: 'h-7', invert: true },
+  { name: 'American Social History Project', url: 'https://ashp.cuny.edu/', img: `${BASE}/images/partners/ashp-logo-blue.png`, h: 'h-7', invert: true },
 ];
 
 export default function Footer() {

@@ -4,22 +4,17 @@ After=network.target
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
-WorkingDirectory=/opt/manifold-companion
+User=smorello.adm@gc.cuny.edu
+WorkingDirectory=/data/manifold-companion
 ExecStart=/usr/bin/node server/index.js
 Environment=NODE_ENV=production
-EnvironmentFile=/opt/manifold-companion/.env
+EnvironmentFile=/data/manifold-companion/.env
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# Security hardening
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/manifold-companion/data
 PrivateTmp=true
 
 [Install]

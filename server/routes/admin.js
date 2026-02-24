@@ -4,15 +4,24 @@
 
 import { Router } from 'express';
 import { rmSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import bcrypt from 'bcrypt';
 import { requireAdmin } from '../middleware/auth.js';
+import { validatePassword } from '../middleware/security.js';
 import {
   getAllUsers,
   getUserById,
+  getUserByEmail,
   updateUserStatus,
+  updateUserRole,
   deleteUser,
+  createUser,
   getProjectsByUser,
+  BCRYPT_ROUNDS,
 } from '../db.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const router = Router();
 
@@ -36,6 +45,52 @@ router.get('/users', (req, res) => {
     res.json(enriched);
   } catch (err) {
     console.error('GET /users error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /users — create a new user (admin) -----------------------------
+router.post('/users', async (req, res) => {
+  try {
+    const { email, password, role, status } = req.body || {};
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+    if (!validatePassword(password)) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+
+    // Check for existing user
+    const existing = getUserByEmail(email.trim().toLowerCase());
+    if (existing) {
+      return res.status(409).json({ error: 'A user with that email already exists.' });
+    }
+
+    const validRoles = ['user', 'admin'];
+    const validStatuses = ['pending', 'approved', 'disabled'];
+    const userRole = validRoles.includes(role) ? role : 'user';
+    const userStatus = validStatuses.includes(status) ? status : 'approved';
+
+    const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const userId = createUser(email.trim().toLowerCase(), hash);
+
+    // Set role and status (createUser defaults to 'user' and 'pending')
+    if (userRole !== 'user') {
+      updateUserRole(userId, userRole);
+    }
+    updateUserStatus(userId, userStatus);
+
+    const created = getUserById(userId);
+    res.status(201).json({
+      id: created.id,
+      email: created.email,
+      role: created.role,
+      status: created.status,
+      created_at: created.created_at,
+    });
+  } catch (err) {
+    console.error('POST /admin/users error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
@@ -99,11 +154,19 @@ router.delete('/users/:id', (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
+    // Prevent deleting the last admin
+    if (target.role === 'admin') {
+      const admins = getAllUsers().filter((u) => u.role === 'admin');
+      if (admins.length <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the only admin account.' });
+      }
+    }
+
     // Delete user from database
     deleteUser(targetId);
 
     // Remove user's project files from disk
-    const dataDir = join(process.cwd(), 'data', String(targetId));
+    const dataDir = join(__dirname, '..', '..', 'data', String(targetId));
     try {
       rmSync(dataDir, { recursive: true, force: true });
     } catch (fsErr) {

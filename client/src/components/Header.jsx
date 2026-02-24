@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { BASE } from '../api/client';
 
 function ManifoldLogo({ className = '' }) {
   return (
@@ -18,10 +20,115 @@ function ManifoldLogo({ className = '' }) {
 
 export { ManifoldLogo };
 
+function AboutModal({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          aria-label="Close"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {/* Logo + Title */}
+        <div className="flex items-center gap-3 mb-6">
+          <ManifoldLogo className="text-cail-navy w-10 h-10" />
+          <div>
+            <h2 className="font-display font-semibold text-lg text-cail-dark">CAIL OCR Manifold Companion</h2>
+            <p className="text-xs text-gray-400">CUNY AI Lab</p>
+          </div>
+        </div>
+
+        <div className="space-y-4 text-sm text-gray-600 leading-relaxed">
+          <p>
+            The <strong className="text-cail-dark">Manifold Companion</strong> is an AI-powered OCR tool built by the{' '}
+            <strong className="text-cail-dark">CUNY AI Lab</strong> to help researchers, students, and instructors
+            digitize manuscript pages, historical documents, and other printed or handwritten texts.
+          </p>
+
+          <p>
+            Upload images or PDFs of your source material and the platform will use vision AI models to extract
+            text via optical character recognition. You can then review, edit, summarize, and translate the
+            results — all within the browser.
+          </p>
+
+          <p>
+            The tool is designed as a companion to{' '}
+            <a
+              href="https://cuny.manifoldapp.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cail-blue hover:text-cail-navy font-medium underline underline-offset-2"
+            >
+              CUNY&apos;s Manifold instance
+            </a>
+            , an open-source publishing platform where digital texts can be published, annotated,
+            and shared as open-access scholarly works.
+          </p>
+
+          <div className="bg-cail-cream rounded-xl p-4 space-y-2">
+            <h3 className="font-display font-semibold text-cail-dark text-sm">What you can do</h3>
+            <ul className="space-y-1.5 text-sm text-gray-600">
+              <li className="flex items-start gap-2">
+                <span className="text-cail-teal mt-0.5">&#10003;</span>
+                Upload scanned pages (JPEG, PNG, TIFF, BMP, WebP, HEIC) or multi-page PDFs
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-cail-teal mt-0.5">&#10003;</span>
+                Run AI-powered OCR to extract text from handwritten or printed documents
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-cail-teal mt-0.5">&#10003;</span>
+                Review and edit extracted text page by page
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-cail-teal mt-0.5">&#10003;</span>
+                Generate summaries and translations using large language models
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-cail-teal mt-0.5">&#10003;</span>
+                Add Dublin Core metadata for scholarly cataloging
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-cail-teal mt-0.5">&#10003;</span>
+                Export projects as ZIP archives ready for Manifold import
+              </li>
+            </ul>
+          </div>
+
+          <p className="text-xs text-gray-400 pt-2">
+            Powered by open-weight models (Qwen, GPT-OSS) served via AWS Bedrock.
+          </p>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function Header() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   const navLinks = [
     { to: '/', label: 'Dashboard' },
@@ -36,9 +143,13 @@ export default function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Left: Logo + Title */}
           <Link to="/" className="flex items-center gap-3 group">
-            <ManifoldLogo className="text-cail-navy group-hover:text-cail-blue transition-colors" />
-            <span className="font-display font-semibold text-cail-dark text-sm sm:text-base hidden sm:block">
-              CAIL OCR Manifold Companion
+            <img
+              src={`${BASE}/images/cail-logo-horizontal.png`}
+              alt="CUNY AI Lab"
+              className="h-8 w-auto"
+            />
+            <span className="font-display font-semibold text-cail-dark text-sm hidden lg:block">
+              Manifold Companion
             </span>
           </Link>
 
@@ -57,6 +168,12 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
+            <button
+              onClick={() => setAboutOpen(true)}
+              className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:text-cail-dark hover:bg-gray-100 transition-colors"
+            >
+              About
+            </button>
           </nav>
 
           {/* Right: User + Logout (desktop) */}
@@ -103,6 +220,12 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
+            <button
+              onClick={() => { setAboutOpen(true); setMenuOpen(false); }}
+              className="block w-full text-left px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              About
+            </button>
             <div className="border-t border-gray-100 pt-3 mt-3 px-4">
               <p className="text-sm text-gray-500 mb-2">{user?.email}</p>
               <button
@@ -115,6 +238,7 @@ export default function Header() {
           </div>
         )}
       </div>
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </header>
   );
 }

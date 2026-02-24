@@ -12,6 +12,9 @@ export function sanitizeFilename(name) {
 
   let safe = name;
 
+  // Decode URL-encoded characters to catch encoded traversal sequences
+  try { safe = decodeURIComponent(safe); } catch { /* ignore malformed encoding */ }
+
   // Remove null bytes
   safe = safe.replace(/\0/g, '');
 
