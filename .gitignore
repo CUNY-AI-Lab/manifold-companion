@@ -4,6 +4,12 @@ data/
 *.db-wal
 *.db-shm
 .env
+.env *
 dist/
 .DS_Store
 .vite/
+.playwright-mcp/
+
+# Dev screenshots
+*.png
+!client/public/images/*.png

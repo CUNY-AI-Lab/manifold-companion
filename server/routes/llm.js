@@ -4,6 +4,8 @@
 
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { aiLimiter } from '../middleware/rateLimits.js';
+import { ALLOWED_LANGUAGES } from './texts.js';
 import {
   getTextById,
   getProjectById,
@@ -67,7 +69,7 @@ router.get('/texts/:id/summary', (req, res) => {
 });
 
 // ---- POST /texts/:id/summary — generate summary via Bedrock -------------
-router.post('/texts/:id/summary', async (req, res) => {
+router.post('/texts/:id/summary', aiLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -132,7 +134,7 @@ router.get('/texts/:id/translation', (req, res) => {
 });
 
 // ---- POST /texts/:id/translation — generate translation via Bedrock -----
-router.post('/texts/:id/translation', async (req, res) => {
+router.post('/texts/:id/translation', aiLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -140,6 +142,11 @@ router.post('/texts/:id/translation', async (req, res) => {
     const { targetLanguage } = req.body || {};
     if (!targetLanguage) {
       return res.status(400).json({ error: 'Target language is required.' });
+    }
+
+    // [MED-6] Validate target language code
+    if (!ALLOWED_LANGUAGES.has(targetLanguage)) {
+      return res.status(400).json({ error: 'Invalid target language code.' });
     }
 
     const fullText = compileFullText(result.text.id);

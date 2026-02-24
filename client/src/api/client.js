@@ -1,5 +1,7 @@
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 async function request(url, options = {}) {
-  const res = await fetch(url, {
+  const res = await fetch(`${BASE}${url}`, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     credentials: 'same-origin',
     ...options,
@@ -17,7 +19,7 @@ export const api = {
   put: (url, body) => request(url, { method: 'PUT', body: JSON.stringify(body) }),
   del: (url) => request(url, { method: 'DELETE' }),
   upload: async (url, formData) => {
-    const res = await fetch(url, { method: 'POST', body: formData, credentials: 'same-origin' });
+    const res = await fetch(`${BASE}${url}`, { method: 'POST', body: formData, credentials: 'same-origin' });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `Upload failed: ${res.status}`);
@@ -25,3 +27,5 @@ export const api = {
     return res.json();
   }
 };
+
+export { BASE };

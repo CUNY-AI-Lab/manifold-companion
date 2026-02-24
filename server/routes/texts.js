@@ -4,10 +4,11 @@
 
 import { Router } from 'express';
 import { join } from 'path';
-import { readFile, readdir } from 'fs/promises';
+import { readFile, readdir, unlink } from 'fs/promises';
 import sharp from 'sharp';
 import { requireAuth } from '../middleware/auth.js';
-import { createUpload } from '../middleware/upload.js';
+import { uploadLimiter } from '../middleware/rateLimits.js';
+import { createUpload, validateImageMagicBytes } from '../middleware/upload.js';
 import { sanitizeFilename } from '../middleware/security.js';
 import {
   createText,
@@ -17,6 +18,7 @@ import {
   deleteText,
   getProjectById,
   getPagesByText,
+  getPageById,
   savePageText,
   getTextMetadata,
   saveTextMetadata,
@@ -24,12 +26,17 @@ import {
   saveTextSettings,
   deleteTextSettings,
   savePageOCR,
+  deletePage,
+  reorderPages,
+  getMaxPageNumber,
 } from '../db.js';
 import {
   getTextDir,
-  checkQuota,
+  calculateUserStorage,
   refreshUserStorage,
   deleteTextFiles,
+  MAX_STORAGE_BYTES,
+  MAX_ADMIN_STORAGE_BYTES,
 } from '../services/storage.js';
 
 const router = Router();
@@ -37,14 +44,27 @@ const router = Router();
 // All routes require authentication
 router.use(requireAuth);
 
+// [HIGH-6] Allowed model IDs for OCR settings validation
+const ALLOWED_MODELS = new Set([
+  'qwen.qwen3-vl-235b-a22b',
+  'openai.gpt-oss-120b-1:0',
+  'us.amazon.nova-pro-v1:0',
+  'anthropic.claude-3-5-sonnet-20241022-v2:0',
+  'anthropic.claude-sonnet-4-20250514-v1:0',
+]);
+
+// [MED-6] Allowed language codes for translation
+const ALLOWED_LANGUAGES = new Set([
+  'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi',
+  'nl', 'sv', 'da', 'no', 'fi', 'pl', 'cs', 'el', 'tr', 'he', 'th', 'vi',
+  'uk', 'ro', 'hu', 'id', 'ms', 'ca', 'hr', 'sk', 'bg', 'sr', 'lt', 'lv',
+  'et', 'sl', 'ga', 'sq', 'mk', 'bs', 'mt', 'is', 'cy', 'la', 'auto-detect',
+]);
+
 // ---------------------------------------------------------------------------
 // Ownership helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Load a text and verify the requesting user owns it (through its project).
- * Returns { text, project } or throws an object with { status, error }.
- */
 function verifyTextOwnership(textId, userId) {
   const text = getTextById(textId);
   if (!text) {
@@ -117,12 +137,25 @@ router.put('/texts/:id', (req, res) => {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
 
-    const { name, summary, translation } = req.body || {};
+    const { name, summary, translation, source_language, target_language } = req.body || {};
 
     const fields = {};
     if (name !== undefined) fields.name = name.trim();
     if (summary !== undefined) fields.summary = summary;
     if (translation !== undefined) fields.translation = translation;
+    // [MED-6] Validate language codes
+    if (source_language !== undefined) {
+      if (source_language && !ALLOWED_LANGUAGES.has(source_language)) {
+        return res.status(400).json({ error: 'Invalid source language code.' });
+      }
+      fields.source_language = source_language;
+    }
+    if (target_language !== undefined) {
+      if (target_language && !ALLOWED_LANGUAGES.has(target_language)) {
+        return res.status(400).json({ error: 'Invalid target language code.' });
+      }
+      fields.target_language = target_language;
+    }
 
     updateText(result.text.id, fields);
     const updated = getTextById(result.text.id);
@@ -154,16 +187,17 @@ router.delete('/texts/:id', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // ---- POST /texts/:id/upload — upload images to text ----------------------
-router.post('/texts/:id/upload', async (req, res) => {
+router.post('/texts/:id/upload', uploadLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
 
-    // Check storage quota (rough estimate using content-length header)
-    const incomingBytes = Number(req.headers['content-length']) || 0;
-    const withinQuota = await checkQuota(req.user.id, incomingBytes);
-    if (!withinQuota) {
-      return res.status(413).json({ error: 'Storage quota exceeded (50 MB limit).' });
+    // [HIGH-4] Check storage quota using real disk measurement, not Content-Length header
+    const quota = req.user.role === 'admin' ? MAX_ADMIN_STORAGE_BYTES : MAX_STORAGE_BYTES;
+    const currentUsage = await calculateUserStorage(req.user.id);
+    if (currentUsage >= quota) {
+      const limitLabel = req.user.role === 'admin' ? '500 MB' : '50 MB';
+      return res.status(413).json({ error: `Storage quota exceeded (${limitLabel} limit).` });
     }
 
     // Build multer middleware for this text
@@ -173,18 +207,38 @@ router.post('/texts/:id/upload', async (req, res) => {
     mw(req, res, async (uploadErr) => {
       if (uploadErr) {
         console.error('Upload error:', uploadErr);
-        return res.status(400).json({ error: uploadErr.message });
+        const safeMsg = uploadErr.code === 'LIMIT_FILE_SIZE' ? 'File too large (10 MB limit per file).'
+          : uploadErr.code === 'LIMIT_FILE_COUNT' ? 'Too many files (200 per upload).'
+          : uploadErr.code === 'LIMIT_UNEXPECTED_FILE' ? 'Unexpected file field.'
+          : 'Upload failed. Please try again.';
+        return res.status(400).json({ error: safeMsg });
       }
 
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ error: 'No files uploaded.' });
       }
 
-      // Create page records for each uploaded file
+      // [HIGH-1] Validate magic bytes and remove invalid files
+      const validFiles = [];
+      for (const file of req.files) {
+        if (validateImageMagicBytes(file.path)) {
+          validFiles.push(file);
+        } else {
+          // Delete the invalid file from disk
+          try { await unlink(file.path); } catch { /* ignore */ }
+        }
+      }
+
+      if (validFiles.length === 0) {
+        return res.status(400).json({ error: 'No valid image files found.' });
+      }
+
+      // Create page records for each uploaded file, assigning page_number
+      const startNum = getMaxPageNumber(result.text.id);
       const pages = [];
-      for (let i = 0; i < req.files.length; i++) {
-        const file = req.files[i];
-        savePageOCR(result.text.id, file.filename, null);
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        savePageOCR(result.text.id, file.filename, null, startNum + i + 1);
         pages.push({ filename: file.filename, size: file.size });
       }
 
@@ -231,7 +285,6 @@ router.post('/texts/:id/pages/:pageId', (req, res) => {
       return res.status(400).json({ error: 'Text content is required.' });
     }
 
-    // Find the page by ID in this text's pages
     const pages = getPagesByText(result.text.id);
     const page = pages.find((p) => p.id === Number(req.params.pageId));
     if (!page) {
@@ -246,19 +299,70 @@ router.post('/texts/:id/pages/:pageId', (req, res) => {
   }
 });
 
+// ---- DELETE /texts/:id/pages/:pageId — delete a single page ---------------
+router.delete('/texts/:id/pages/:pageId', async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    const pageId = Number(req.params.pageId);
+    const pages = getPagesByText(result.text.id);
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found.' });
+    }
+
+    const dir = getTextDir(req.user.id, result.project.id, result.text.id);
+    try {
+      await unlink(join(dir, page.filename));
+    } catch {
+      // File may not exist — ignore
+    }
+
+    deletePage(pageId);
+    await refreshUserStorage(req.user.id);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /texts/:id/pages/:pageId error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- PUT /texts/:id/pages/reorder — reorder pages -------------------------
+router.put('/texts/:id/pages/reorder', (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    const { pageIds } = req.body || {};
+    if (!Array.isArray(pageIds) || pageIds.length === 0) {
+      return res.status(400).json({ error: 'pageIds array is required.' });
+    }
+
+    // [HIGH-7] Bound pageIds array to prevent DoS via bulk DB writes
+    if (pageIds.length > 1000) {
+      return res.status(400).json({ error: 'Too many page IDs (max 1000).' });
+    }
+
+    reorderPages(result.text.id, pageIds.map(Number));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PUT /texts/:id/pages/reorder error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Compiled result
 // ---------------------------------------------------------------------------
 
-// ---- GET /texts/:id/result — compile full text from all pages ------------
 router.get('/texts/:id/result', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const pages = getPagesByText(result.text.id);
-
-    // Compile markdown: join page texts with separator
     const compiled = pages
       .filter((p) => p.ocr_text)
       .map((p) => p.ocr_text)
@@ -271,7 +375,6 @@ router.get('/texts/:id/result', (req, res) => {
   }
 });
 
-// ---- POST /texts/:id/save — save edited full markdown --------------------
 router.post('/texts/:id/save', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
@@ -282,7 +385,6 @@ router.post('/texts/:id/save', (req, res) => {
       return res.status(400).json({ error: 'Text content is required.' });
     }
 
-    // Store the compiled text as a single page entry with a special filename
     savePageText(result.text.id, '__compiled__', compiledText);
     res.json({ ok: true });
   } catch (err) {
@@ -295,7 +397,6 @@ router.post('/texts/:id/save', (req, res) => {
 // Metadata (Dublin Core)
 // ---------------------------------------------------------------------------
 
-// ---- GET /texts/:id/metadata ---------------------------------------------
 router.get('/texts/:id/metadata', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
@@ -309,7 +410,6 @@ router.get('/texts/:id/metadata', (req, res) => {
   }
 });
 
-// ---- POST /texts/:id/metadata --------------------------------------------
 router.post('/texts/:id/metadata', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
@@ -329,7 +429,6 @@ router.post('/texts/:id/metadata', (req, res) => {
 // OCR Settings
 // ---------------------------------------------------------------------------
 
-// ---- GET /texts/:id/settings ---------------------------------------------
 router.get('/texts/:id/settings', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
@@ -343,13 +442,43 @@ router.get('/texts/:id/settings', (req, res) => {
   }
 });
 
-// ---- POST /texts/:id/settings --------------------------------------------
+// [HIGH-6] Validate model, temperature, and max_tokens before saving
 router.post('/texts/:id/settings', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
 
-    saveTextSettings(result.text.id, req.body || {});
+    const { prompt, model, temperature, max_tokens } = req.body || {};
+    const validated = {};
+
+    if (prompt !== undefined) {
+      if (typeof prompt === 'string' && prompt.length > 2000) {
+        return res.status(400).json({ error: 'Prompt must be 2000 characters or fewer.' });
+      }
+      validated.prompt = prompt;
+    }
+    if (model !== undefined) {
+      if (model && !ALLOWED_MODELS.has(model)) {
+        return res.status(400).json({ error: 'Invalid model ID.' });
+      }
+      validated.model = model || null;
+    }
+    if (temperature !== undefined) {
+      const temp = Number(temperature);
+      if (isNaN(temp) || temp < 0 || temp > 1) {
+        return res.status(400).json({ error: 'Temperature must be between 0 and 1.' });
+      }
+      validated.temperature = temp;
+    }
+    if (max_tokens !== undefined) {
+      const mt = Number(max_tokens);
+      if (isNaN(mt) || mt < 1 || mt > 8192) {
+        return res.status(400).json({ error: 'max_tokens must be between 1 and 8192.' });
+      }
+      validated.max_tokens = mt;
+    }
+
+    saveTextSettings(result.text.id, validated);
 
     const settings = getTextSettings(result.text.id);
     res.json(settings || {});
@@ -359,7 +488,6 @@ router.post('/texts/:id/settings', (req, res) => {
   }
 });
 
-// ---- DELETE /texts/:id/settings — reset to defaults ----------------------
 router.delete('/texts/:id/settings', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
@@ -377,7 +505,6 @@ router.delete('/texts/:id/settings', (req, res) => {
 // Image serving
 // ---------------------------------------------------------------------------
 
-// ---- GET /texts/:id/image/:filename — serve image file -------------------
 router.get('/texts/:id/image/:filename', async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
@@ -391,7 +518,6 @@ router.get('/texts/:id/image/:filename', async (req, res) => {
     const dir = getTextDir(req.user.id, result.project.id, result.text.id);
     const filePath = join(dir, safe);
 
-    // Read the original file
     let buffer;
     try {
       buffer = await readFile(filePath);
@@ -399,10 +525,8 @@ router.get('/texts/:id/image/:filename', async (req, res) => {
       return res.status(404).json({ error: 'Image not found.' });
     }
 
-    // Use Sharp for smart rotation and optional resizing
-    let pipeline = sharp(buffer).rotate(); // .rotate() auto-rotates based on EXIF
+    let pipeline = sharp(buffer).rotate();
 
-    // Check orientation — if landscape and no EXIF rotation, rotate to portrait
     const metadata = await sharp(buffer).metadata();
     if (metadata.width > metadata.height && !metadata.orientation) {
       pipeline = sharp(buffer).rotate(90);
@@ -410,7 +534,6 @@ router.get('/texts/:id/image/:filename', async (req, res) => {
       pipeline = sharp(buffer).rotate();
     }
 
-    // Support ?w= query param for thumbnail width
     const width = parseInt(req.query.w, 10);
     if (width && width > 0 && width <= 4096) {
       pipeline = pipeline.resize({ width, withoutEnlargement: true });
@@ -427,4 +550,5 @@ router.get('/texts/:id/image/:filename', async (req, res) => {
   }
 });
 
+export { ALLOWED_LANGUAGES };
 export default router;

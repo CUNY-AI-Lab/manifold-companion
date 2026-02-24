@@ -21,6 +21,7 @@ export function initDatabase(dataDir) {
   db.pragma('busy_timeout = 5000');
 
   createSchema();
+  runMigrations();
   seedAdmin();
 
   return db;
@@ -116,16 +117,37 @@ function createSchema() {
 }
 
 // ---------------------------------------------------------------------------
-// Admin Seeding
+// Migrations
 // ---------------------------------------------------------------------------
 
+function runMigrations() {
+  const migrations = [
+    'ALTER TABLE texts ADD COLUMN sort_order INTEGER DEFAULT 0',
+    'ALTER TABLE projects ADD COLUMN export_settings TEXT',
+  ];
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch (_) { /* column already exists */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Admin Seeding (from environment variables)
+// ---------------------------------------------------------------------------
+
+const BCRYPT_ROUNDS = 12;
+export { BCRYPT_ROUNDS };
+
 function seedAdmin() {
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get('veritas44@gmail.com');
+  const email = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+  if (!email || !password) return; // No admin seed without explicit env config
+
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase().trim());
   if (!existing) {
-    const hash = bcrypt.hashSync('gremlins2025', 10);
+    const hash = bcrypt.hashSync(password, BCRYPT_ROUNDS);
     db.prepare(
       'INSERT INTO users (email, password_hash, role, status) VALUES (?, ?, ?, ?)'
-    ).run('veritas44@gmail.com', hash, 'admin', 'approved');
+    ).run(email.toLowerCase().trim(), hash, 'admin', 'approved');
   }
 }
 
@@ -153,6 +175,10 @@ export function updateUserStatus(id, status) {
   return db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, id);
 }
 
+export function updateUserRole(id, role) {
+  return db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
+}
+
 export function updateUserLogin(id) {
   return db.prepare(
     "UPDATE users SET last_login_at = datetime('now') WHERE id = ?"
@@ -163,6 +189,12 @@ export function updateUserStorage(id, bytes) {
   return db.prepare(
     'UPDATE users SET storage_used_bytes = ? WHERE id = ?'
   ).run(bytes, id);
+}
+
+export function updateUserPassword(id, passwordHash) {
+  return db.prepare(
+    'UPDATE users SET password_hash = ? WHERE id = ?'
+  ).run(passwordHash, id);
 }
 
 export function getAllUsers() {
@@ -225,6 +257,18 @@ export function getExpiredProjects() {
   ).all();
 }
 
+export function getProjectExportSettings(projectId) {
+  const row = db.prepare('SELECT export_settings FROM projects WHERE id = ?').get(projectId);
+  if (!row?.export_settings) return null;
+  try { return JSON.parse(row.export_settings); } catch { return null; }
+}
+
+export function saveProjectExportSettings(projectId, settings) {
+  return db.prepare(
+    "UPDATE projects SET export_settings = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(JSON.stringify(settings), projectId);
+}
+
 // ---------------------------------------------------------------------------
 // Text Functions
 // ---------------------------------------------------------------------------
@@ -238,7 +282,7 @@ export function createText(projectId, name) {
 }
 
 export function getTextsByProject(projectId) {
-  return db.prepare('SELECT * FROM texts WHERE project_id = ? ORDER BY created_at DESC').all(projectId);
+  return db.prepare('SELECT * FROM texts WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC').all(projectId);
 }
 
 export function getTextById(id) {
@@ -271,6 +315,16 @@ export function deleteText(id) {
   return db.prepare('DELETE FROM texts WHERE id = ?').run(id);
 }
 
+export function reorderTexts(projectId, textIds) {
+  const stmt = db.prepare('UPDATE texts SET sort_order = ? WHERE id = ? AND project_id = ?');
+  const txn = db.transaction((ids) => {
+    for (let i = 0; i < ids.length; i++) {
+      stmt.run(i, ids[i], projectId);
+    }
+  });
+  txn(textIds);
+}
+
 export function setTextStatus(id, status) {
   return db.prepare(
     "UPDATE texts SET status = ?, updated_at = datetime('now') WHERE id = ?"
@@ -298,15 +352,16 @@ export function getTextTranslation(id) {
 // Page Functions
 // ---------------------------------------------------------------------------
 
-export function savePageOCR(textId, filename, ocrText) {
+export function savePageOCR(textId, filename, ocrText, pageNumber = null) {
   const stmt = db.prepare(`
-    INSERT INTO pages (text_id, filename, ocr_text, processed_at)
-    VALUES (?, ?, ?, datetime('now'))
+    INSERT INTO pages (text_id, filename, ocr_text, page_number, processed_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
     ON CONFLICT(text_id, filename) DO UPDATE SET
       ocr_text = excluded.ocr_text,
+      page_number = COALESCE(excluded.page_number, pages.page_number),
       processed_at = excluded.processed_at
   `);
-  return stmt.run(textId, filename, ocrText);
+  return stmt.run(textId, filename, ocrText, pageNumber);
 }
 
 export function getPagesByText(textId) {
@@ -326,8 +381,43 @@ export function savePageText(textId, filename, text) {
   return stmt.run(textId, filename, text);
 }
 
+export function reorderPages(textId, pageIds) {
+  const stmt = db.prepare('UPDATE pages SET page_number = ? WHERE id = ? AND text_id = ?');
+  const txn = db.transaction((ids) => {
+    for (let i = 0; i < ids.length; i++) {
+      stmt.run(i + 1, ids[i], textId);
+    }
+  });
+  txn(pageIds);
+}
+
+export function getMaxPageNumber(textId) {
+  const row = db.prepare('SELECT MAX(page_number) as max_num FROM pages WHERE text_id = ?').get(textId);
+  return row?.max_num || 0;
+}
+
 export function deletePage(id) {
   return db.prepare('DELETE FROM pages WHERE id = ?').run(id);
+}
+
+export function getPageById(id) {
+  return db.prepare('SELECT * FROM pages WHERE id = ?').get(id);
+}
+
+export function getPageCountByProject(projectId) {
+  const row = db.prepare(`
+    SELECT COUNT(*) as count FROM pages p
+    JOIN texts t ON p.text_id = t.id
+    WHERE t.project_id = ? AND p.filename != '__compiled__'
+  `).get(projectId);
+  return row ? row.count : 0;
+}
+
+export function getPageCountByText(textId) {
+  const row = db.prepare(
+    "SELECT COUNT(*) as count FROM pages WHERE text_id = ? AND filename != '__compiled__'"
+  ).get(textId);
+  return row ? row.count : 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,9 @@ import { existsSync } from 'fs';
 
 import { initDatabase } from './db.js';
 import { DEFAULT_OCR_PROMPT } from './services/bedrock.js';
+import { requireAuth } from './middleware/auth.js';
+import { aiLimiter, uploadLimiter } from './middleware/rateLimits.js';
+import { csrfCheck } from './middleware/csrf.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import projectRoutes from './routes/projects.js';
@@ -22,7 +25,14 @@ import { startCleanupCron } from './services/cleanup.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = join(__dirname, '..', 'data');
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', 'data');
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// [MED-4] Startup check: refuse to run with weak session secret in production
+if (IS_PRODUCTION && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) {
+  console.error('FATAL: SESSION_SECRET must be set to a random string of at least 32 characters in production.');
+  process.exit(1);
+}
 
 // Trust reverse proxy (Nginx) for secure cookies and rate limiting
 if (process.env.TRUST_PROXY === 'true') {
@@ -32,12 +42,12 @@ if (process.env.TRUST_PROXY === 'true') {
 // Initialize database
 initDatabase(DATA_DIR);
 
-// Security middleware
+// [LOW-1] Security middleware — removed 'unsafe-inline' from scriptSrc in production
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],  // React needs inline scripts in dev
+      scriptSrc: IS_PRODUCTION ? ["'self'"] : ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:"],
@@ -47,8 +57,8 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,  // Allow loading images
 }));
 
-// Body parsing
-app.use(express.json({ limit: '50mb' }));
+// [MED-2] Body parsing — reduced from 50mb to 200kb (uploads use multer, not JSON)
+app.use(express.json({ limit: '200kb' }));
 
 // Session configuration with SQLite store
 const SQLiteStore = connectSqlite3(session);
@@ -58,13 +68,15 @@ app.use(session({
     dir: DATA_DIR,
     db: 'sessions.db',
   }),
+  name: 'mc.sid',
   secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.COOKIE_SECURE === 'true',
+    // [MED-3] Secure by default in production
+    secure: IS_PRODUCTION || process.env.COOKIE_SECURE === 'true',
     maxAge: 24 * 60 * 60 * 1000,  // 24 hours
   }
 }));
@@ -79,12 +91,16 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/change-password', authLimiter);
 
-// Serve default OCR settings (before auth-protected routers)
-app.get('/api/defaults', (req, res) => {
+// [MED-5] CSRF protection for all API state-changing requests
+app.use('/api', csrfCheck);
+
+// [CRIT-3] Moved /api/defaults behind auth — no longer leaks model info to unauthenticated users
+app.get('/api/defaults', requireAuth, (req, res) => {
   res.json({
     prompt: DEFAULT_OCR_PROMPT,
-    model: process.env.BEDROCK_OCR_MODEL || 'us.amazon.nova-pro-v1:0',
+    model: process.env.BEDROCK_OCR_MODEL || 'qwen.qwen3-vl-235b-a22b',
     temperature: 0.1,
     max_tokens: 4096
   });

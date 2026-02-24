@@ -31,6 +31,14 @@ export default function AdminPanel() {
   const [toast, setToast] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // Create user form
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('user');
+  const [newStatus, setNewStatus] = useState('approved');
+  const [creating, setCreating] = useState(false);
+
   useEffect(() => {
     loadUsers();
   }, []);
@@ -54,6 +62,33 @@ export default function AdminPanel() {
       await loadUsers();
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function handleCreateUser(e) {
+    e.preventDefault();
+    if (!newEmail.trim() || !newPassword) return;
+    setCreating(true);
+    setError('');
+    try {
+      await api.post('/api/admin/users', {
+        email: newEmail.trim(),
+        password: newPassword,
+        role: newRole,
+        status: newStatus,
+      });
+      setNewEmail('');
+      setNewPassword('');
+      setNewRole('user');
+      setNewStatus('approved');
+      setShowCreateForm(false);
+      setToast('User created successfully.');
+      setTimeout(() => setToast(''), 3000);
+      await loadUsers();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -83,12 +118,83 @@ export default function AdminPanel() {
         </div>
       )}
 
-      <h1 className="font-display font-semibold text-2xl text-cail-dark mb-6">User Management</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="font-display font-semibold text-2xl text-cail-dark">User Management</h1>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="px-6 py-2.5 rounded-full bg-cail-blue text-white font-medium text-sm hover:bg-cail-navy transition-colors"
+        >
+          {showCreateForm ? 'Cancel' : 'Create User'}
+        </button>
+      </div>
 
       {error && (
         <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
           <button onClick={() => setError('')} className="ml-2 font-medium hover:underline">Dismiss</button>
+        </div>
+      )}
+
+      {/* Create user form */}
+      {showCreateForm && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6 shadow-sm">
+          <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Create New User</h2>
+          <form onSubmit={handleCreateUser} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  placeholder="user@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  placeholder="Minimum 6 characters"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                >
+                  <option value="approved">Approved</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={creating}
+              className="px-6 py-2.5 rounded-full bg-cail-blue text-white font-medium text-sm hover:bg-cail-navy transition-colors disabled:opacity-50"
+            >
+              {creating ? 'Creating...' : 'Create User'}
+            </button>
+          </form>
         </div>
       )}
 

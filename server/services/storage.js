@@ -2,19 +2,22 @@
 // Storage quota management
 // ---------------------------------------------------------------------------
 
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { readdir, stat, rm, mkdir } from 'fs/promises';
 import { updateUserStorage } from '../db.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const MAX_STORAGE_BYTES = 50 * 1024 * 1024; // 50 MB per user
+const MAX_ADMIN_STORAGE_BYTES = 500 * 1024 * 1024; // 500 MB for admins
 
-export { MAX_STORAGE_BYTES };
+export { MAX_STORAGE_BYTES, MAX_ADMIN_STORAGE_BYTES };
 
 /**
  * Root data directory (project-level `data/`).
  */
 export function getDataDir() {
-  return join(process.cwd(), 'data');
+  return join(__dirname, '..', '..', 'data');
 }
 
 /**
