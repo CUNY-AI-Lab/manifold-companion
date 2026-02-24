@@ -24,6 +24,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = join(__dirname, '..', 'data');
 
+// Trust reverse proxy (Nginx) for secure cookies and rate limiting
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
+
 // Initialize database
 initDatabase(DATA_DIR);
 
@@ -58,8 +63,8 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    secure: process.env.COOKIE_SECURE === 'true',
     maxAge: 24 * 60 * 60 * 1000,  // 24 hours
   }
 }));
