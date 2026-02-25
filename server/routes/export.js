@@ -205,7 +205,7 @@ router.post('/projects/:projectId/export', async (req, res) => {
       'meta:',
       `  title: "${escapeYaml(metadata.title)}"`,
       `  creators:`,
-      ...metadata.creators.split(/\s*[,;]\s*/).filter(Boolean).map((c) => `    - "${escapeYaml(c.trim())}"`),
+      ...metadata.creators.split(/\s*[,;]\s*/).filter(Boolean).map((c) => `    - name: "${escapeYaml(c.trim())}"`),
       `  date: "${escapeYaml(metadata.date)}"`,
       `  language: "${escapeYaml(metadata.language)}"`,
       `  rights: "${escapeYaml(metadata.rights)}"`,
