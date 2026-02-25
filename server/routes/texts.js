@@ -452,8 +452,8 @@ router.post('/texts/:id/settings', (req, res) => {
     const validated = {};
 
     if (prompt !== undefined) {
-      if (typeof prompt === 'string' && prompt.length > 2000) {
-        return res.status(400).json({ error: 'Prompt must be 2000 characters or fewer.' });
+      if (typeof prompt === 'string' && prompt.length > 3000) {
+        return res.status(400).json({ error: 'Prompt must be 3000 characters or fewer.' });
       }
       validated.prompt = prompt;
     }
