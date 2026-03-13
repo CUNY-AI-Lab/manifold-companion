@@ -358,6 +358,16 @@ body {
   border-radius: 0.375rem;
 }
 
+.pdf-preview-pane figure img.img-error {
+  display: none;
+}
+
+.pdf-preview-pane figure img.img-error + figcaption::before {
+  content: "[Image unavailable — re-upload PDF to generate page images] ";
+  color: #9ca3af;
+  font-style: normal;
+}
+
 .pdf-preview-pane figcaption {
   font-style: italic;
   color: #6b7280;

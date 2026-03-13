@@ -2,22 +2,6 @@ import { PDFDocument } from 'pdf-lib';
 import { api } from '../api/client';
 
 /**
- * Render a PDF page to a JPEG blob using pdfjs canvas (client-side, no server cost).
- */
-async function renderPageToJpeg(pdfDoc, pageNumber, scale = 1.5) {
-  const page = await pdfDoc.getPage(pageNumber);
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.80);
-  });
-}
-
-/**
  * Extract a single page from a PDF as a standalone PDF, returned as base64.
  */
 async function extractPagePdf(pdfBytes, pageIndex) {
@@ -78,7 +62,6 @@ export async function convertPdfToHtmlWithBedrock(textId, file, onProgress) {
   const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
 
   const sections = [];
-  const pageImages = []; // { pageNumber, blob, filename }
   let unresolvedFormulaCount = 0;
 
   for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber++) {
@@ -92,15 +75,11 @@ export async function convertPdfToHtmlWithBedrock(textId, file, onProgress) {
     // Extract text hint using pdfjs-dist
     const textHint = await extractPageText(pdfDoc, pageNumber);
 
-    // Render page to JPEG for figure images (client-side, no server cost)
-    const pageBlob = await renderPageToJpeg(pdfDoc, pageNumber);
-    const filename = `page-${pageNumber}.jpg`;
-    pageImages.push({ pageNumber, blob: pageBlob, filename });
-
     if (onProgress) {
       onProgress({ stage: 'parse', pageNumber, totalPages: pdfDoc.numPages });
     }
 
+    // Server extracts embedded figure images via pdftohtml -xml and saves them
     const parsed = await api.post(`/api/texts/${textId}/pdf-parse-page`, {
       pdfBase64,
       textHint,
@@ -121,18 +100,6 @@ export async function convertPdfToHtmlWithBedrock(textId, file, onProgress) {
   const cleanup = await api.post(`/api/texts/${textId}/pdf-cleanup`, {
     html: assembledHtml,
   });
-
-  // Upload page images to server for figure references and ZIP download
-  if (pageImages.length > 0) {
-    if (onProgress) {
-      onProgress({ stage: 'upload-images', pageNumber: pdfDoc.numPages, totalPages: pdfDoc.numPages });
-    }
-    const formData = new FormData();
-    for (const img of pageImages) {
-      formData.append('pages', img.blob, img.filename);
-    }
-    await api.upload(`/api/texts/${textId}/page-images`, formData);
-  }
 
   return {
     html: cleanup.html || assembledHtml,

@@ -18,7 +18,10 @@ import {
   getTextHtml,
 } from '../db.js';
 import { generateSummary, translateText } from '../services/bedrock.js';
-import { cleanupPdfHtml, parsePdfPageToHtml, repairFormulasToMathMl } from '../services/openrouter.js';
+import { cleanupPdfHtml, parsePdfPageToHtml, repairFormulasToMathMl, extractFiguresFromPdf } from '../services/openrouter.js';
+import { getTextDir } from '../services/storage.js';
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
 
 const router = Router();
 
@@ -251,8 +254,35 @@ router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, async (req, res) => {
       return res.status(400).json({ error: 'A valid pageNumber is required.' });
     }
 
-    const parsed = await parsePdfPageToHtml(inputData, pageNumber, Number.isInteger(totalPages) ? totalPages : null, textHint || '');
-    res.json(parsed);
+    // Extract embedded figure images from the PDF page using pdftohtml -xml
+    let figureAssets = [];
+    if (pdfBase64) {
+      try {
+        const figures = await extractFiguresFromPdf(pdfBase64, pageNumber);
+        if (figures.length > 0) {
+          // Save extracted figures to the text's directory on disk
+          const textDir = getTextDir(req.user.id, result.project.id, result.text.id);
+          await mkdir(textDir, { recursive: true });
+          for (const fig of figures) {
+            await writeFile(join(textDir, fig.filename), fig.data);
+            figureAssets.push({ filename: fig.filename, width: fig.width, height: fig.height });
+          }
+        }
+      } catch (err) {
+        console.warn('Figure extraction failed for page', pageNumber, ':', err.message);
+        // Non-fatal — continue without figures
+      }
+    }
+
+    const parsed = await parsePdfPageToHtml(
+      inputData, pageNumber,
+      Number.isInteger(totalPages) ? totalPages : null,
+      textHint || '',
+      figureAssets
+    );
+
+    // Include figure info in response so the client knows what was extracted
+    res.json({ ...parsed, figureAssets });
   } catch (err) {
     console.error('POST /texts/:id/pdf-parse-page error:', err);
     res.status(500).json({ error: 'Internal server error.' });
