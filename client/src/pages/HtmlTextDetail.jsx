@@ -342,7 +342,13 @@ function buildDownloadHtml(title, content) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${safeTitle}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/stix-two-math@5/index.css" crossorigin="anonymous">
 <style>
+  @font-face {
+    font-family: 'STIX Two Math';
+    src: local('STIX Two Math'), local('STIXTwoMath-Regular');
+    unicode-range: U+0000-00FF, U+0100-024F, U+0370-03FF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2200-22FF, U+2300-23FF, U+2500-257F, U+25A0-25FF, U+2600-26FF, U+2700-27BF, U+1D400-1D7FF;
+  }
   body { font-family: Georgia, 'Times New Roman', serif; max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.75; color: #1a1a1a; }
 
   /* Headings */
@@ -420,9 +426,10 @@ function buildDownloadHtml(title, content) {
   sup, sub { font-size: 0.75em; line-height: 0; }
 
   /* MathML */
-  math { font-size: 1.1em; }
-  math[display="block"] { display: block; margin: 0.75rem 0; overflow-x: auto; }
-  .math-fallback { font-family: 'Cambria Math', 'STIX Two Math', serif; color: #b91c1c; }
+  math { font-family: 'STIX Two Math', 'Cambria Math', 'Latin Modern Math', serif; font-size: 1.1em; }
+  math[display="block"] { display: block; margin: 0.75rem 0; overflow-x: auto; text-align: center; }
+  math[display="inline"] { display: inline; }
+  .math-fallback { font-family: 'STIX Two Math', 'Cambria Math', serif; color: #b91c1c; }
 </style>
 </head>
 <body>
