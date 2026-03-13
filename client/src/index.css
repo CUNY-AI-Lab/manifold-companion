@@ -436,6 +436,7 @@ body {
 /* --- MathML (native browser rendering via temml) -------------------- */
 
 .pdf-preview-pane math {
+  font-family: 'STIX Two Math', 'Cambria Math', 'Latin Modern Math', serif;
   font-size: 1.1em;
 }
 
@@ -443,10 +444,15 @@ body {
   display: block;
   margin: 0.75rem 0;
   overflow-x: auto;
+  text-align: center;
+}
+
+.pdf-preview-pane math[display="inline"] {
+  display: inline;
 }
 
 .pdf-preview-pane .math-fallback {
-  font-family: 'Cambria Math', 'STIX Two Math', serif;
+  font-family: 'STIX Two Math', 'Cambria Math', serif;
   color: #b91c1c;
   font-size: 0.9em;
 }

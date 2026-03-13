@@ -213,9 +213,12 @@ Rules:
 - Use semantic HTML tags: h1, h2, h3, h4, p, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, aside, section, header, footer, figure, figcaption, nav, strong, em, sup, sub, span
 - Preserve ALL visible text in correct reading order
 - Skip running headers, running footers, and page numbers (unless they are meaningful content)
-- Printed mathematics must use TeX delimiters: \\(...\\) for inline math, \\[...\\] for display math
+- Mathematics MUST use TeX delimiters. The distinction between INLINE and DISPLAY math is critical:
+  - INLINE math \\(...\\): for variables, short expressions, and math that appears within a sentence of text. Example: <p>The function \\(f(x) = x^2\\) is defined for all \\(x\\).</p>
+  - DISPLAY math \\[...\\]: for ANY equation or formula that stands alone on its own line, is centered, or is visually separated from the surrounding text. This includes: equations, definitions, theorems, derivation steps, numbered equations, and any math that is NOT embedded in a sentence. Example: <p>The quadratic formula is:</p>\\[x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]
+  - When in doubt, use DISPLAY math. A standalone equation should NEVER use inline delimiters.
 - Do NOT use MathML. Do NOT use <math> tags. Use TeX only.
-- For multi-column equation layouts (e.g. numbered equations with equation numbers on the right, or aligned equation/answer pairs), use a borderless table: <table class="equation-table"><tr><td>\\(...\\)</td><td>(1)</td></tr></table>. This preserves the visual alignment from the PDF.
+- For multi-column equation layouts (e.g. numbered equations with equation numbers on the right, or aligned equation/answer pairs), use a borderless table: <table class="equation-table"><tr><td>\\[...\\]</td><td>(1)</td></tr></table>. This preserves the visual alignment from the PDF.
 - For diagrams, charts, graphs, or photos: use ONLY the extracted figure filenames provided in the prompt. Do NOT invent image filenames.
 - If no figure assets are listed, do NOT use any <img> tags. Use <figure><figcaption>[Description of the visual]</figcaption></figure> instead.
 - Do NOT invent formulas from graphs — describe the graph instead
@@ -415,7 +418,28 @@ function wrapOrphanedHeaders(innerHtml) {
 // Runs after all pages are assembled, before wrapping in article.
 // ---------------------------------------------------------------------------
 
+function promoteInlineToDisplay(html) {
+  // Pre-conversion: promote \(...\) to \[...\] when it's clearly standalone.
+  // Pattern: a <p> (or <td>) whose only meaningful content is a single \(...\) expression.
+  html = html.replace(
+    /(<(?:p|td)[^>]*>)\s*\\\(([\s\S]*?)\\\)\s*(<\/(?:p|td)>)/gi,
+    (match, open, tex, close) => `${open}\\[${tex}\\]${close}`
+  );
+  // Also promote when the line is just \(...\) possibly with an equation number like (1)
+  html = html.replace(
+    /(<(?:p|td)[^>]*>)\s*\\\(([\s\S]*?)\\\)\s*(\(\d+\))?\s*(<\/(?:p|td)>)/gi,
+    (match, open, tex, eqNum, close) => {
+      const suffix = eqNum ? ` ${eqNum}` : '';
+      return `${open}\\[${tex}\\]${suffix}${close}`;
+    }
+  );
+  return html;
+}
+
 function convertTexToMathML(html) {
+  // First promote obviously-display inline math to display
+  html = promoteInlineToDisplay(html);
+
   // Display math: \[...\]
   html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, tex) => {
     try {
@@ -437,6 +461,14 @@ function convertTexToMathML(html) {
       return `<span class="math-fallback" title="TeX parse error">${escapeHtml(match)}</span>`;
     }
   });
+
+  // Post-conversion: promote any <math display="inline"> that is the sole child of a <p>
+  // to display="block" — catches cases the pre-conversion step missed
+  html = html.replace(
+    /(<p[^>]*>)\s*(<math display="inline")([\s\S]*?<\/math>)\s*(<\/p>)/gi,
+    (match, pOpen, mathOpen, rest, pClose) =>
+      `${pOpen}<math display="block"${rest}${pClose}`
+  );
 
   return html;
 }
