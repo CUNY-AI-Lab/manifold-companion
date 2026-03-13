@@ -397,6 +397,11 @@ function buildDownloadHtml(title, content) {
   th { background: #f1f5f9; font-weight: 600; color: #334155; }
   tbody tr:nth-child(even) { background: #f8fafc; }
 
+  /* Equation layout tables — borderless */
+  table.equation-table { border: none; margin: 0.5rem 0; }
+  table.equation-table td { border: none; padding: 0.25rem 0.5rem; vertical-align: middle; background: transparent; }
+  table.equation-table td:last-child { text-align: right; color: #6b7280; white-space: nowrap; }
+
   /* Figures / images */
   figure { margin: 1.5rem 0; text-align: center; padding: 1rem; background: #fafafa; border-radius: 0.5rem; border: 1px dashed #d1d5db; }
   figure img { max-width: 100%; height: auto; border-radius: 0.375rem; }

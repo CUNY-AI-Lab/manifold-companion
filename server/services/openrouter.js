@@ -215,6 +215,7 @@ Rules:
 - Skip running headers, running footers, and page numbers (unless they are meaningful content)
 - Printed mathematics must use TeX delimiters: \\(...\\) for inline math, \\[...\\] for display math
 - Do NOT use MathML. Do NOT use <math> tags. Use TeX only.
+- For multi-column equation layouts (e.g. numbered equations with equation numbers on the right, or aligned equation/answer pairs), use a borderless table: <table class="equation-table"><tr><td>\\(...\\)</td><td>(1)</td></tr></table>. This preserves the visual alignment from the PDF.
 - For diagrams, charts, graphs, or photos: use ONLY the extracted figure filenames provided in the prompt. Do NOT invent image filenames.
 - If no figure assets are listed, do NOT use any <img> tags. Use <figure><figcaption>[Description of the visual]</figcaption></figure> instead.
 - Do NOT invent formulas from graphs — describe the graph instead
@@ -428,7 +429,10 @@ function convertTexToMathML(html) {
   // Inline math: \(...\)
   html = html.replace(/\\\(([\s\S]*?)\\\)/g, (match, tex) => {
     try {
-      return temml.renderToString(tex.trim(), { displayMode: false });
+      let mathml = temml.renderToString(tex.trim(), { displayMode: false });
+      // temml omits display attr on inline math — Manifold requires display="inline"
+      mathml = mathml.replace(/^<math(?!\s+display=)/, '<math display="inline"');
+      return mathml;
     } catch {
       return `<span class="math-fallback" title="TeX parse error">${escapeHtml(match)}</span>`;
     }
