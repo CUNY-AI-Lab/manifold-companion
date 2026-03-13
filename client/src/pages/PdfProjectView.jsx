@@ -353,6 +353,28 @@ export default function PdfProjectView() {
         </div>
       )}
 
+      {/* Global upload progress overlay — visible regardless of panel state */}
+      {uploading && (
+        <div className="fixed top-20 right-4 z-50 px-5 py-4 rounded-xl bg-white border border-cail-blue/30 shadow-lg max-w-sm">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-cail-blue flex-shrink-0"></div>
+            <div>
+              <p className="text-sm font-medium text-cail-dark">Processing PDF...</p>
+              {uploadProgress && <p className="text-xs text-gray-500 mt-0.5">{uploadProgress}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Single hidden file input — always in DOM */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={handlePdfSelect}
+      />
+
       {/* Back button */}
       <Link
         to="/"
@@ -485,13 +507,6 @@ export default function PdfProjectView() {
                 ))}
               </select>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                className="hidden"
-                onChange={handlePdfSelect}
-              />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || !selectedTextId}
@@ -602,17 +617,6 @@ export default function PdfProjectView() {
           </div>
         ))}
       </div>
-
-      {/* Hidden file input for inline PDF upload from text cards */}
-      {!showAddSection && (
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          className="hidden"
-          onChange={handlePdfSelect}
-        />
-      )}
 
       {/* Export Modal */}
       {showExport && (
