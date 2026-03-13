@@ -8,9 +8,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ckeditor/ckeditor5-react": "^11.0.1",
+    "ckeditor5": "^47.6.1",
     "dompurify": "^3.2.0",
     "heic2any": "^0.0.4",
     "marked": "^15.0.0",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

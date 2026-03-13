@@ -43,6 +43,13 @@ function verifyTextOwnership(textId, userId) {
   return { text, project };
 }
 
+function requireImageProject(project) {
+  if (project.project_type !== 'image_to_markdown') {
+    return { status: 400, error: 'This action is only available for Image to Markdown projects.' };
+  }
+  return {};
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -87,6 +94,8 @@ router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     const { text, project } = result;
 
@@ -197,6 +206,8 @@ router.post('/texts/:id/ocr-single', aiLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     const { text, project } = result;
     const { filename } = req.body || {};

@@ -5,8 +5,8 @@ import Footer from './components/Footer';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
-import ProjectView from './pages/ProjectView';
-import TextDetail from './pages/TextDetail';
+import ProjectRoute from './pages/ProjectRoute';
+import TextRoute from './pages/TextRoute';
 import AdminPanel from './pages/AdminPanel';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -31,8 +31,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/projects/:id" element={<ProtectedRoute><ProjectView /></ProtectedRoute>} />
-          <Route path="/texts/:id" element={<ProtectedRoute><TextDetail /></ProtectedRoute>} />
+          <Route path="/projects/:id" element={<ProtectedRoute><ProjectRoute /></ProtectedRoute>} />
+          <Route path="/texts/:id" element={<ProtectedRoute><TextRoute /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
         </Routes>
       </main>

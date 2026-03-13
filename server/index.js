@@ -47,18 +47,20 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: IS_PRODUCTION ? ["'self'"] : ["'self'", "'unsafe-inline'"],
+      scriptSrc: IS_PRODUCTION
+        ? ["'self'", "https://static.cloudflareinsights.com", "https://cdn.jsdelivr.net"]
+        : ["'self'", "'unsafe-inline'", "https://static.cloudflareinsights.com", "https://cdn.jsdelivr.net"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "https://cloudflareinsights.com", "https://*.cloudflareinsights.com"],
     }
   },
   crossOriginEmbedderPolicy: false,  // Allow loading images
 }));
 
-// [MED-2] Body parsing — reduced from 50mb to 200kb (uploads use multer, not JSON)
-app.use(express.json({ limit: '200kb' }));
+// Larger limit needed for native PDF page payloads (single-page PDFs as base64) and HTML editing.
+app.use(express.json({ limit: '10mb' }));
 
 // Session configuration with SQLite store
 const SQLiteStore = connectSqlite3(session);
@@ -118,10 +120,19 @@ app.use('/api', exportRoutes);
 // Serve React app in production
 const clientDist = join(__dirname, '..', 'client', 'dist');
 if (existsSync(clientDist)) {
-  app.use(express.static(clientDist));
+  app.use(express.static(clientDist, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      } else if (/\/assets\/.+\.[a-z0-9]+\.(js|css|mjs)$/i.test(filePath.replace(/\\/g, '/'))) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
   // SPA fallback -- serve index.html for any non-API route
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(join(clientDist, 'index.html'));
     }
   });

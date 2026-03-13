@@ -49,6 +49,7 @@ function createSchema() {
       user_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
+      project_type TEXT NOT NULL DEFAULT 'image_to_markdown' CHECK(project_type IN ('image_to_markdown', 'pdf_to_html')),
       default_language TEXT NOT NULL DEFAULT 'en',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -65,6 +66,10 @@ function createSchema() {
       translation TEXT,
       source_language TEXT,
       target_language TEXT,
+      html_content TEXT,
+      source_pdf_name TEXT,
+      pdf_meta TEXT,
+      formula_repair_status TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -122,8 +127,13 @@ function createSchema() {
 
 function runMigrations() {
   const migrations = [
+    "ALTER TABLE projects ADD COLUMN project_type TEXT NOT NULL DEFAULT 'image_to_markdown' CHECK(project_type IN ('image_to_markdown', 'pdf_to_html'))",
     'ALTER TABLE texts ADD COLUMN sort_order INTEGER DEFAULT 0',
     'ALTER TABLE projects ADD COLUMN export_settings TEXT',
+    'ALTER TABLE texts ADD COLUMN html_content TEXT',
+    'ALTER TABLE texts ADD COLUMN source_pdf_name TEXT',
+    'ALTER TABLE texts ADD COLUMN pdf_meta TEXT',
+    'ALTER TABLE texts ADD COLUMN formula_repair_status TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -209,11 +219,11 @@ export function deleteUser(id) {
 // Project Functions
 // ---------------------------------------------------------------------------
 
-export function createProject(userId, name, description, language) {
+export function createProject(userId, name, description, language, projectType = 'image_to_markdown') {
   const stmt = db.prepare(
-    'INSERT INTO projects (user_id, name, description, default_language) VALUES (?, ?, ?, ?)'
+    'INSERT INTO projects (user_id, name, description, default_language, project_type) VALUES (?, ?, ?, ?, ?)'
   );
-  const result = stmt.run(userId, name, description || null, language || 'en');
+  const result = stmt.run(userId, name, description || null, language || 'en', projectType);
   return result.lastInsertRowid;
 }
 
@@ -290,7 +300,18 @@ export function getTextById(id) {
 }
 
 export function updateText(id, fields) {
-  const allowed = ['name', 'status', 'summary', 'translation', 'source_language', 'target_language'];
+  const allowed = [
+    'name',
+    'status',
+    'summary',
+    'translation',
+    'source_language',
+    'target_language',
+    'html_content',
+    'source_pdf_name',
+    'pdf_meta',
+    'formula_repair_status',
+  ];
   const updates = [];
   const values = [];
 
@@ -346,6 +367,49 @@ export function setTextTranslation(id, translation) {
 export function getTextTranslation(id) {
   const row = db.prepare('SELECT translation FROM texts WHERE id = ?').get(id);
   return row ? row.translation : null;
+}
+
+export function getTextHtml(id) {
+  const row = db.prepare(
+    'SELECT html_content, source_pdf_name, pdf_meta, formula_repair_status FROM texts WHERE id = ?'
+  ).get(id);
+  if (!row) return null;
+
+  let pdfMeta = null;
+  if (row.pdf_meta) {
+    try {
+      pdfMeta = JSON.parse(row.pdf_meta);
+    } catch {
+      pdfMeta = null;
+    }
+  }
+
+  return {
+    html_content: row.html_content || '',
+    source_pdf_name: row.source_pdf_name || null,
+    pdf_meta: pdfMeta,
+    formula_repair_status: row.formula_repair_status || null,
+  };
+}
+
+export function saveTextHtml(textId, htmlContent, options = {}) {
+  const { sourcePdfName, pdfMeta, formulaRepairStatus } = options;
+
+  return db.prepare(`
+    UPDATE texts
+    SET html_content = ?,
+        source_pdf_name = COALESCE(?, source_pdf_name),
+        pdf_meta = COALESCE(?, pdf_meta),
+        formula_repair_status = COALESCE(?, formula_repair_status),
+        updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    htmlContent,
+    sourcePdfName ?? null,
+    pdfMeta !== undefined ? JSON.stringify(pdfMeta) : null,
+    formulaRepairStatus ?? null,
+    textId
+  );
 }
 
 // ---------------------------------------------------------------------------

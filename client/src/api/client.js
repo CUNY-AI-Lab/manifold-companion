@@ -8,7 +8,9 @@ async function request(url, options = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    const err = new Error(data.error || `Request failed: ${res.status}`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -22,7 +24,9 @@ export const api = {
     const res = await fetch(`${BASE}${url}`, { method: 'POST', body: formData, credentials: 'same-origin' });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Upload failed: ${res.status}`);
+      const err = new Error(data.error || `Upload failed: ${res.status}`);
+      err.status = res.status;
+      throw err;
     }
     return res.json();
   }

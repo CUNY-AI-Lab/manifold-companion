@@ -382,3 +382,314 @@ export async function translateText(text, sourceLang, targetLang) {
 
   return translated.join(separator);
 }
+
+function extractJsonObject(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1] : text;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('Model did not return valid JSON.');
+  }
+  return JSON.parse(candidate.slice(start, end + 1));
+}
+
+function extractJsonPayload(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  const objectStart = candidate.indexOf('{');
+  const objectEnd = candidate.lastIndexOf('}');
+  const arrayStart = candidate.indexOf('[');
+  const arrayEnd = candidate.lastIndexOf(']');
+
+  if (objectStart !== -1 && objectEnd > objectStart && (arrayStart === -1 || objectStart < arrayStart)) {
+    return JSON.parse(candidate.slice(objectStart, objectEnd + 1));
+  }
+  if (arrayStart !== -1 && arrayEnd > arrayStart) {
+    return JSON.parse(candidate.slice(arrayStart, arrayEnd + 1));
+  }
+
+  throw new Error('Model did not return valid JSON.');
+}
+
+function buildHtmlFromPageBlocks(pageNumber, blocks) {
+  const chunks = [`<section data-page="${pageNumber}">`];
+
+  for (const block of blocks || []) {
+    if (!block || block.skip) continue;
+    const type = String(block.type || '').toLowerCase();
+    const text = typeof block.text === 'string' ? block.text.trim() : '';
+    const html = typeof block.html === 'string' ? block.html.trim() : '';
+
+    if (html) {
+      chunks.push(html);
+      continue;
+    }
+
+    if (!text) continue;
+
+    if (type === 'heading') {
+      const level = Math.min(3, Math.max(1, Number(block.level) || 2));
+      chunks.push(`<h${level}>${escapeHtml(text)}</h${level}>`);
+    } else if (type === 'formula') {
+      const formulaId = block.id || `page-${pageNumber}-formula-${chunks.length}`;
+      const mathMl = sanitizeMathMl(block.mathMl || '');
+      if (mathMl) {
+        const innerMath = mathMl.replace(/^\s*<math[^>]*>/i, '').replace(/<\/math>\s*$/i, '');
+        chunks.push(
+          `<div class="formula-block" data-formula-id="${formulaId}" data-formula-source="${escapeHtml(text)}">` +
+          `<math xmlns="http://www.w3.org/1998/Math/MathML">${innerMath}</math></div>`
+        );
+      } else {
+        chunks.push(
+          `<div class="formula-block" data-formula-id="${formulaId}" data-formula-source="${escapeHtml(text)}">${escapeHtml(text)}</div>`
+        );
+      }
+    } else if (type === 'toc_entry') {
+      const pageLabel = block.page_label ? escapeHtml(String(block.page_label).trim()) : '';
+      chunks.push(
+        `<div class="toc-entry"><span class="toc-entry__title">${escapeHtml(text)}</span>` +
+        `<span class="toc-entry__page">${pageLabel}</span></div>`
+      );
+    } else if (type === 'list_item') {
+      chunks.push(`<li>${escapeHtml(text)}</li>`);
+    } else if (type === 'table') {
+      chunks.push(`<div class="table-block">${escapeHtml(text)}</div>`);
+    } else {
+      chunks.push(`<p>${escapeHtml(text)}</p>`);
+    }
+  }
+
+  chunks.push('</section>');
+  return chunks.join('\n');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeMathMl(value) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/^```(?:xml)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+}
+
+async function invokeFormulaRepairBatch(formulas, modelId) {
+  const systemPrompt =
+    'You convert mathematical expressions into valid presentation MathML. ' +
+    'Return strict JSON only. Do not include markdown fences or commentary.';
+
+  const payload = JSON.stringify({
+    formulas: formulas.map((formula) => ({
+      id: formula.id,
+      text: formula.text,
+      context: formula.context || '',
+    })),
+    instructions: [
+      'Return {"formulas":[{"id":"...","mathMl":"...","confidence":"high|medium|low"}]}',
+      'Use valid MathML elements only inside each mathMl field.',
+      'Do not include explanations or prose.',
+      'If a formula is ambiguous, still provide the best MathML you can and lower confidence.',
+    ],
+  });
+
+  const body = buildTextBody(systemPrompt, payload, modelId, 0.1, 4096);
+  const command = new InvokeModelCommand({
+    modelId,
+    contentType: 'application/json',
+    accept: 'application/json',
+    body,
+  });
+
+  const response = await client.send(command);
+  const responseBody = new TextDecoder().decode(response.body);
+  const parsed = extractJsonObject(extractText(responseBody, modelId));
+  const repaired = Array.isArray(parsed.formulas) ? parsed.formulas : [];
+
+  return repaired
+    .map((entry) => ({
+      id: entry?.id,
+      mathMl: sanitizeMathMl(entry?.mathMl),
+      confidence: entry?.confidence || 'low',
+    }))
+    .filter((entry) => entry.id && entry.mathMl);
+}
+
+export async function repairFormulasToMathMl(formulas) {
+  if (!Array.isArray(formulas) || formulas.length === 0) {
+    return [];
+  }
+
+  const modelId = process.env.BEDROCK_FORMULA_MODEL
+    || process.env.BEDROCK_TEXT_MODEL
+    || 'anthropic.claude-sonnet-4-20250514-v1:0';
+
+  try {
+    return await invokeFormulaRepairBatch(formulas, modelId);
+  } catch (err) {
+    console.warn('Formula repair batch failed, retrying with smaller batches:', err.message);
+  }
+
+  if (formulas.length === 1) {
+    return [];
+  }
+
+  const midpoint = Math.ceil(formulas.length / 2);
+  const left = await repairFormulasToMathMl(formulas.slice(0, midpoint));
+  const right = await repairFormulasToMathMl(formulas.slice(midpoint));
+  return [...left, ...right];
+}
+
+async function invokeVisionJson(base64Image, prompt, modelId, maxTokens = 4096) {
+  const body = buildOcrBody(base64Image, prompt, modelId, 0.1, maxTokens);
+  const command = new InvokeModelCommand({
+    modelId,
+    contentType: 'application/json',
+    accept: 'application/json',
+    body,
+  });
+
+  const response = await client.send(command);
+  const responseBody = new TextDecoder().decode(response.body);
+  return extractJsonPayload(extractText(responseBody, modelId));
+}
+
+function stripHtmlText(html) {
+  return String(html || '')
+    .replace(/<math[\s\S]*?<\/math>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export async function parsePdfPageToHtml(base64Image, pageNumber, totalPages = null) {
+  const modelId =
+    process.env.BEDROCK_PDF_VISION_MODEL
+    || process.env.BEDROCK_OCR_MODEL
+    || 'qwen.qwen3-vl-235b-a22b';
+
+  const prompt =
+    'You are a document-layout parser for textbook PDF pages. Return strict JSON only. ' +
+    'Your job is to transcribe the entire visible page into semantic HTML in correct reading order. ' +
+    'Never omit real page content. Ignore only running headers, page numbers, and footer boilerplate. ' +
+    'Preserve headings, lists, examples, tables, and formulas. ' +
+    'For formulas, wrap them as <div class="formula-block" data-formula-id="... " data-formula-source="...">...</div>. ' +
+    'If you can express a formula in presentation MathML, place <math xmlns="http://www.w3.org/1998/Math/MathML">...</math> inside the formula-block. ' +
+    'If you cannot produce MathML confidently, still emit the exact formula text inside the formula-block. ' +
+    'For table-of-contents pages, use <div class="toc-entry"><span class="toc-entry__title">...</span><span class="toc-entry__page">...</span></div> per entry. ' +
+    'Use only h1, h2, h3, p, ol, ul, li, table, thead, tbody, tr, th, td, blockquote, div.formula-block, div.toc-entry, span.toc-entry__title, span.toc-entry__page. ' +
+    JSON.stringify({
+      task: 'parse_page_to_html',
+      page_number: pageNumber,
+      total_pages: totalPages,
+      output_schema: {
+        html: '<section data-page="N">...</section>',
+        stats: {
+          contains_text: true,
+          contains_formula: false,
+          contains_toc: false,
+        },
+      },
+      rules: [
+        'Never return an empty section if the page contains readable content.',
+        'Do not collapse formulas into nearby prose paragraphs.',
+        'Do not turn ordinary wrapped sentences into headings.',
+        'Example titles and section titles should be headings.',
+      ],
+    });
+
+  const parsed = await invokeVisionJson(base64Image, prompt, modelId, 8000);
+  let html = typeof parsed?.html === 'string' ? parsed.html.trim() : '';
+  if (!/^<section\b/i.test(html)) {
+    html = `<section data-page="${pageNumber}">\n${html}\n</section>`;
+  }
+
+  if (stripHtmlText(html).length < 80) {
+    const fallbackPrompt =
+      'Transcribe this textbook PDF page into semantic HTML in correct reading order. Return strict JSON only. ' +
+      'Keep all real page content except running header/footer artifacts. ' +
+      'Use <section data-page="' + pageNumber + '"> as the root and preserve headings, paragraphs, lists, and formulas. ' +
+      'Formulas must be emitted as <div class="formula-block" data-formula-id="..." data-formula-source="...">...</div> with MathML inside when possible. ' +
+      'Return {"html":"..."} only.';
+    const fallback = await invokeVisionJson(base64Image, fallbackPrompt, modelId, 8000);
+    const fallbackHtml = typeof fallback?.html === 'string' ? fallback.html.trim() : '';
+    if (stripHtmlText(fallbackHtml).length > stripHtmlText(html).length) {
+      html = /^<section\b/i.test(fallbackHtml)
+        ? fallbackHtml
+        : `<section data-page="${pageNumber}">\n${fallbackHtml}\n</section>`;
+    }
+  }
+
+  const unresolvedFormulaCount = (html.match(/class="formula-block"/g) || []).length - (html.match(/<math\b/g) || []).length;
+
+  return {
+    html,
+    unresolvedFormulaCount,
+  };
+}
+
+export async function cleanupPdfHtml(html) {
+  const modelId =
+    process.env.BEDROCK_PDF_CLEANUP_MODEL
+    || 'qwen.qwen3-next-80b-a3b';
+
+  const sections = html.match(/<section\b[\s\S]*?<\/section>/g) || [];
+  if (!sections.length) return html;
+
+  const systemPrompt =
+    'You are a semantic HTML editor for textbook documents. ' +
+    'Clean up the provided HTML without changing meaning. ' +
+    'Preserve MathML, formula-block divs, toc-entry divs, and section boundaries. ' +
+    'Improve heading hierarchy, merge paragraph fragments, and keep TOC entries separate. ' +
+    'Return strict JSON only.';
+
+  const cleanedSections = [];
+
+  for (const chunk of sections) {
+    const originalText = stripHtmlText(chunk);
+    const userText = JSON.stringify({
+      html: chunk,
+      instructions: [
+        'Keep existing section data-page attributes.',
+        'Do not drop page content.',
+        'Promote only true headings.',
+        'Do not invent text or formulas.',
+        'Do not remove MathML.',
+        'Preserve formula-block and toc-entry markup.',
+        'Return {"html":"..."} only.',
+      ],
+    });
+
+    const body = buildTextBody(systemPrompt, userText, modelId, 0.1, 8192);
+    const command = new InvokeModelCommand({
+      modelId,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body,
+    });
+
+    const response = await client.send(command);
+    const responseBody = new TextDecoder().decode(response.body);
+    const parsed = extractJsonPayload(extractText(responseBody, modelId));
+    if (!parsed?.html || typeof parsed.html !== 'string') {
+      cleanedSections.push(chunk);
+      continue;
+    }
+    const cleaned = parsed.html
+      .trim()
+      .replace(/^<article[^>]*>\s*/i, '')
+      .replace(/\s*<\/article>\s*$/i, '');
+    const cleanedText = stripHtmlText(cleaned);
+    const retainedEnough = cleanedText.length >= Math.max(40, originalText.length * 0.65);
+    cleanedSections.push(retainedEnough ? cleaned : chunk);
+  }
+
+  return `<article class="pdf-html-document">\n${cleanedSections.join('\n')}\n</article>`;
+}

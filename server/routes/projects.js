@@ -19,6 +19,9 @@ import {
 import { deleteProjectFiles } from '../services/storage.js';
 
 const router = Router();
+const ALLOWED_PROJECT_TYPES = new Set(['image_to_markdown', 'pdf_to_html']);
+
+export { ALLOWED_PROJECT_TYPES };
 
 // All routes require authentication
 router.use(requireAuth);
@@ -44,10 +47,14 @@ router.get('/', (req, res) => {
 // ---- POST / — create a new project ---------------------------------------
 router.post('/', (req, res) => {
   try {
-    const { name, description, default_language } = req.body || {};
+    const { name, description, default_language, project_type } = req.body || {};
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Project name is required.' });
+    }
+
+    if (project_type && !ALLOWED_PROJECT_TYPES.has(project_type)) {
+      return res.status(400).json({ error: 'Invalid project type.' });
     }
 
     if (default_language && !ALLOWED_LANGUAGES.has(default_language)) {
@@ -58,7 +65,8 @@ router.post('/', (req, res) => {
       req.user.id,
       name.trim(),
       description?.trim() || null,
-      default_language || 'en'
+      default_language || 'en',
+      project_type || 'image_to_markdown'
     );
 
     // Set expiry to 90 days from now (admins are exempt)

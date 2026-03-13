@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [newProjectType, setNewProjectType] = useState('image_to_markdown');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -57,9 +58,14 @@ export default function Dashboard() {
     setCreating(true);
     setError('');
     try {
-      await api.post('/api/projects', { name: newName.trim(), description: newDesc.trim() });
+      await api.post('/api/projects', {
+        name: newName.trim(),
+        description: newDesc.trim(),
+        project_type: newProjectType,
+      });
       setNewName('');
       setNewDesc('');
+      setNewProjectType('image_to_markdown');
       setShowForm(false);
       await loadProjects();
     } catch (err) {
@@ -147,6 +153,20 @@ export default function Dashboard() {
               />
             </div>
             <div>
+              <label htmlFor="project-type" className="block text-sm font-medium text-gray-700 mb-1">
+                Project Type
+              </label>
+              <select
+                id="project-type"
+                value={newProjectType}
+                onChange={(e) => setNewProjectType(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm bg-white"
+              >
+                <option value="image_to_markdown">Image to Markdown</option>
+                <option value="pdf_to_html">PDF to HTML</option>
+              </select>
+            </div>
+            <div>
               <label htmlFor="project-desc" className="block text-sm font-medium text-gray-700 mb-1">
                 Description (optional)
               </label>
@@ -211,6 +231,13 @@ export default function Dashboard() {
                   <p className="text-sm text-gray-500 mb-4 line-clamp-2">{project.description}</p>
                 )}
                 <div className="flex items-center gap-3 flex-wrap">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    project.project_type === 'pdf_to_html'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-cail-blue/10 text-cail-blue'
+                  }`}>
+                    {project.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}
+                  </span>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cail-blue/10 text-cail-blue">
                     {project.text_count || 0} text{(project.text_count || 0) !== 1 ? 's' : ''}
                   </span>

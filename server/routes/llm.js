@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { aiLimiter } from '../middleware/rateLimits.js';
+import { aiLimiter, formulaRepairLimiter, pdfVisionLimiter } from '../middleware/rateLimits.js';
 import { ALLOWED_LANGUAGES } from './texts.js';
 import {
   getTextById,
@@ -14,8 +14,11 @@ import {
   setTextTranslation,
   getTextTranslation,
   updateText,
+  saveTextHtml,
+  getTextHtml,
 } from '../db.js';
 import { generateSummary, translateText } from '../services/bedrock.js';
+import { cleanupPdfHtml, parsePdfPageToHtml, repairFormulasToMathMl } from '../services/openrouter.js';
 
 const router = Router();
 
@@ -38,6 +41,13 @@ function verifyTextOwnership(textId, userId) {
   }
 
   return { text, project };
+}
+
+function requirePdfProject(project) {
+  if (project.project_type !== 'pdf_to_html') {
+    return { status: 400, error: 'This action is only available for PDF to HTML projects.' };
+  }
+  return {};
 }
 
 /**
@@ -188,6 +198,83 @@ router.put('/texts/:id/translation', (req, res) => {
     res.json({ translation });
   } catch (err) {
     console.error('PUT /texts/:id/translation error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /texts/:id/formula-repair — convert formulas to MathML ---------
+router.post('/texts/:id/formula-repair', formulaRepairLimiter, async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const { formulas, html_content } = req.body || {};
+    if (!Array.isArray(formulas) || formulas.length === 0) {
+      return res.status(400).json({ error: 'A non-empty formulas array is required.' });
+    }
+    if (formulas.length > 50) {
+      return res.status(400).json({ error: 'Too many formulas in one request (max 50).' });
+    }
+
+    const repaired = await repairFormulasToMathMl(formulas);
+    const currentHtml = getTextHtml(result.text.id);
+    if (html_content !== undefined) {
+      saveTextHtml(result.text.id, html_content, {
+        sourcePdfName: currentHtml?.source_pdf_name || undefined,
+        pdfMeta: currentHtml?.pdf_meta || undefined,
+        formulaRepairStatus: repaired.length > 0 ? 'completed' : 'attempted',
+      });
+    }
+
+    res.json({ formulas: repaired });
+  } catch (err) {
+    console.error('POST /texts/:id/formula-repair error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const { pdfBase64, imageBase64, textHint, pageNumber, totalPages } = req.body || {};
+    const inputData = pdfBase64 || imageBase64;
+    if (typeof inputData !== 'string' || inputData.length < 100) {
+      return res.status(400).json({ error: 'A valid pdfBase64 or imageBase64 payload is required.' });
+    }
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+      return res.status(400).json({ error: 'A valid pageNumber is required.' });
+    }
+
+    const parsed = await parsePdfPageToHtml(inputData, pageNumber, Number.isInteger(totalPages) ? totalPages : null, textHint || '');
+    res.json(parsed);
+  } catch (err) {
+    console.error('POST /texts/:id/pdf-parse-page error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+router.post('/texts/:id/pdf-cleanup', pdfVisionLimiter, async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const { html } = req.body || {};
+    if (typeof html !== 'string' || !html.trim()) {
+      return res.status(400).json({ error: 'HTML is required.' });
+    }
+
+    const cleanedHtml = await cleanupPdfHtml(html);
+    res.json({ html: cleanedHtml });
+  } catch (err) {
+    console.error('POST /texts/:id/pdf-cleanup error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
