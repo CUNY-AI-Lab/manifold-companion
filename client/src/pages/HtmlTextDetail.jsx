@@ -28,6 +28,117 @@ const MATHML_ATTRS = [
 // MathJax removed — math is now native MathML converted server-side via temml
 
 // ---------------------------------------------------------------------------
+// Image resize overlay — click image to select, drag handles to resize
+// ---------------------------------------------------------------------------
+
+function ImageResizer({ editableRef, onDirty }) {
+  const [target, setTarget] = useState(null);
+  const [rect, setRect] = useState(null);
+  const dragging = useRef(null);
+
+  // Listen for clicks on images inside the editable area
+  useEffect(() => {
+    const el = editableRef.current;
+    if (!el) return;
+
+    function onClick(e) {
+      if (e.target.tagName === 'IMG' && el.contains(e.target)) {
+        setTarget(e.target);
+        updateRect(e.target);
+      } else if (e.target.closest?.('.img-resize-handle')) {
+        // Don't deselect when clicking handles
+      } else {
+        setTarget(null);
+      }
+    }
+
+    function onScroll() {
+      if (target) updateRect(target);
+    }
+
+    el.addEventListener('click', onClick);
+    el.addEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('click', onClick);
+      el.removeEventListener('scroll', onScroll);
+    };
+  });
+
+  function updateRect(img) {
+    const container = editableRef.current;
+    if (!img || !container) return;
+    const cr = container.getBoundingClientRect();
+    const ir = img.getBoundingClientRect();
+    setRect({
+      top: ir.top - cr.top + container.scrollTop,
+      left: ir.left - cr.left + container.scrollLeft,
+      width: ir.width,
+      height: ir.height,
+    });
+  }
+
+  function onPointerDown(e, corner) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!target) return;
+    const startX = e.clientX;
+    const startW = target.offsetWidth;
+    const aspectRatio = target.naturalWidth / target.naturalHeight || startW / target.offsetHeight;
+
+    function onPointerMove(ev) {
+      const dx = corner.includes('right') ? ev.clientX - startX : startX - ev.clientX;
+      const newW = Math.max(60, startW + dx);
+      target.style.width = `${newW}px`;
+      target.style.height = 'auto';
+      target.setAttribute('width', Math.round(newW));
+      target.removeAttribute('height');
+      updateRect(target);
+      onDirty();
+    }
+
+    function onPointerUp() {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+    }
+
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+  }
+
+  if (!target || !rect) return null;
+
+  const handleClass = 'img-resize-handle absolute w-3 h-3 bg-cail-blue border-2 border-white rounded-sm shadow-sm z-50 cursor-nwse-resize';
+
+  return (
+    <>
+      {/* Selection border */}
+      <div
+        className="absolute pointer-events-none border-2 border-cail-blue rounded-sm z-40"
+        style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
+      />
+      {/* Size label */}
+      <div
+        className="absolute z-50 px-1.5 py-0.5 rounded bg-cail-blue text-white text-[10px] font-medium whitespace-nowrap pointer-events-none"
+        style={{ top: rect.top - 22, left: rect.left }}
+      >
+        {target.getAttribute('width') || Math.round(rect.width)}px
+      </div>
+      {/* Corner handles */}
+      <div
+        className={handleClass}
+        style={{ top: rect.top - 5, left: rect.left + rect.width - 5, cursor: 'nesw-resize' }}
+        onPointerDown={(e) => onPointerDown(e, 'top-right')}
+      />
+      <div
+        className={handleClass}
+        style={{ top: rect.top + rect.height - 5, left: rect.left + rect.width - 5 }}
+        onPointerDown={(e) => onPointerDown(e, 'bottom-right')}
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Formatting toolbar for contenteditable
 // ---------------------------------------------------------------------------
 
@@ -39,111 +150,186 @@ function formatBlock(tag) {
   document.execCommand('formatBlock', false, tag);
 }
 
-function ToolbarButton({ onClick, active, title, children }) {
+function TBtn({ onClick, title, children, className: extra }) {
   return (
     <button
       type="button"
       onMouseDown={(e) => { e.preventDefault(); onClick(); }}
       title={title}
-      className={`px-2 py-1.5 rounded text-sm font-medium transition ${
-        active
-          ? 'bg-cail-blue text-white'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-cail-dark'
-      }`}
+      className={`px-2 py-1.5 rounded text-sm font-medium transition text-gray-600 hover:bg-gray-100 hover:text-cail-dark ${extra || ''}`}
     >
       {children}
     </button>
   );
 }
 
-function HeadingSelect() {
-  return (
-    <select
-      onMouseDown={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        const val = e.target.value;
-        if (val === 'p') {
-          formatBlock('p');
-        } else {
-          formatBlock(val);
-        }
-        e.target.value = '';
-      }}
-      defaultValue=""
-      className="px-2 py-1.5 rounded border border-gray-200 text-sm text-gray-700 bg-white hover:border-gray-300 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none cursor-pointer"
-      title="Change block type"
-    >
-      <option value="" disabled>Heading</option>
-      <option value="p">Paragraph</option>
-      <option value="h1">Heading 1</option>
-      <option value="h2">Heading 2</option>
-      <option value="h3">Heading 3</option>
-      <option value="h4">Heading 4</option>
-      <option value="blockquote">Blockquote</option>
-    </select>
-  );
+function Sep() {
+  return <div className="w-px h-5 bg-gray-200 mx-0.5" />;
 }
 
-function FormattingToolbar({ onDirty }) {
+function FormattingToolbar({ onDirty, editableRef }) {
   const wrap = (fn) => () => { fn(); onDirty(); };
+  const [showFind, setShowFind] = useState(false);
+  const findRef = useRef(null);
+  const replaceRef = useRef(null);
+
+  function doFind() {
+    const term = findRef.current?.value;
+    if (!term) return;
+    window.getSelection().removeAllRanges();
+    // Use browser find — highlight matches
+    window.find(term, false, false, true, false, false, false);
+  }
+
+  function doReplace() {
+    const term = findRef.current?.value;
+    const replacement = replaceRef.current?.value;
+    if (!term || replacement == null) return;
+    const sel = window.getSelection();
+    if (sel.toString() === term) {
+      document.execCommand('insertText', false, replacement);
+      onDirty();
+    }
+    window.find(term, false, false, true, false, false, false);
+  }
+
+  function doReplaceAll() {
+    const el = editableRef?.current;
+    const term = findRef.current?.value;
+    const replacement = replaceRef.current?.value;
+    if (!el || !term || replacement == null) return;
+    // Simple innerHTML replacement for plain text
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    el.innerHTML = el.innerHTML.replace(new RegExp(`(?<=>)([^<]*?)${escaped}`, 'g'), (match) =>
+      match.replace(new RegExp(escaped, 'g'), replacement)
+    );
+    onDirty();
+  }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gray-50/80 rounded-t-xl">
-      <HeadingSelect />
+    <div className="border-b border-gray-200 bg-gray-50/80 rounded-t-xl">
+      <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5">
+        {/* Block type */}
+        <select
+          onMouseDown={(e) => e.stopPropagation()}
+          onChange={(e) => { const v = e.target.value; if (v) formatBlock(v); e.target.value = ''; onDirty(); }}
+          defaultValue=""
+          className="px-2 py-1 rounded border border-gray-200 text-xs text-gray-700 bg-white hover:border-gray-300 focus:border-cail-blue outline-none cursor-pointer"
+          title="Block type"
+        >
+          <option value="" disabled>Block</option>
+          <option value="p">Paragraph</option>
+          <option value="h1">H1</option>
+          <option value="h2">H2</option>
+          <option value="h3">H3</option>
+          <option value="h4">H4</option>
+          <option value="blockquote">Quote</option>
+        </select>
 
-      <div className="w-px h-5 bg-gray-200 mx-1" />
+        <Sep />
 
-      <ToolbarButton onClick={wrap(() => execCmd('bold'))} title="Bold (Ctrl+B)">
-        <strong>B</strong>
-      </ToolbarButton>
-      <ToolbarButton onClick={wrap(() => execCmd('italic'))} title="Italic (Ctrl+I)">
-        <em>I</em>
-      </ToolbarButton>
-      <ToolbarButton onClick={wrap(() => execCmd('underline'))} title="Underline (Ctrl+U)">
-        <span className="underline">U</span>
-      </ToolbarButton>
-      <ToolbarButton onClick={wrap(() => execCmd('superscript'))} title="Superscript">
-        x<sup>2</sup>
-      </ToolbarButton>
-      <ToolbarButton onClick={wrap(() => execCmd('subscript'))} title="Subscript">
-        x<sub>2</sub>
-      </ToolbarButton>
+        <TBtn onClick={wrap(() => execCmd('bold'))} title="Bold (Ctrl+B)"><strong>B</strong></TBtn>
+        <TBtn onClick={wrap(() => execCmd('italic'))} title="Italic (Ctrl+I)"><em>I</em></TBtn>
+        <TBtn onClick={wrap(() => execCmd('underline'))} title="Underline (Ctrl+U)"><span className="underline">U</span></TBtn>
+        <TBtn onClick={wrap(() => execCmd('strikeThrough'))} title="Strikethrough"><span className="line-through">S</span></TBtn>
+        <TBtn onClick={wrap(() => execCmd('superscript'))} title="Superscript">x<sup>2</sup></TBtn>
+        <TBtn onClick={wrap(() => execCmd('subscript'))} title="Subscript">x<sub>2</sub></TBtn>
 
-      <div className="w-px h-5 bg-gray-200 mx-1" />
+        <Sep />
 
-      <ToolbarButton onClick={wrap(() => execCmd('insertUnorderedList'))} title="Bullet list">
-        &bull; List
-      </ToolbarButton>
-      <ToolbarButton onClick={wrap(() => execCmd('insertOrderedList'))} title="Numbered list">
-        1. List
-      </ToolbarButton>
+        <TBtn onClick={wrap(() => execCmd('justifyLeft'))} title="Align left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+        </TBtn>
+        <TBtn onClick={wrap(() => execCmd('justifyCenter'))} title="Align center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+        </TBtn>
 
-      <div className="w-px h-5 bg-gray-200 mx-1" />
+        <Sep />
 
-      <ToolbarButton onClick={wrap(() => {
-        const url = prompt('Enter URL:');
-        if (url) execCmd('createLink', url);
-      })} title="Insert link">
-        Link
-      </ToolbarButton>
-      <ToolbarButton onClick={wrap(() => execCmd('unlink'))} title="Remove link">
-        Unlink
-      </ToolbarButton>
+        <TBtn onClick={wrap(() => execCmd('insertUnorderedList'))} title="Bullet list">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></svg>
+        </TBtn>
+        <TBtn onClick={wrap(() => execCmd('insertOrderedList'))} title="Numbered list">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><text x="2" y="8" fontSize="7" fill="currentColor" stroke="none" fontFamily="sans-serif">1</text><text x="2" y="14" fontSize="7" fill="currentColor" stroke="none" fontFamily="sans-serif">2</text><text x="2" y="20" fontSize="7" fill="currentColor" stroke="none" fontFamily="sans-serif">3</text></svg>
+        </TBtn>
+        <TBtn onClick={wrap(() => execCmd('indent'))} title="Indent">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><polyline points="3,10 6,14 3,18"/></svg>
+        </TBtn>
+        <TBtn onClick={wrap(() => execCmd('outdent'))} title="Outdent">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><polyline points="6,10 3,14 6,18"/></svg>
+        </TBtn>
 
-      <div className="w-px h-5 bg-gray-200 mx-1" />
+        <Sep />
 
-      <ToolbarButton onClick={wrap(() => execCmd('undo'))} title="Undo (Ctrl+Z)">
-        Undo
-      </ToolbarButton>
-      <ToolbarButton onClick={wrap(() => execCmd('redo'))} title="Redo (Ctrl+Shift+Z)">
-        Redo
-      </ToolbarButton>
+        <TBtn onClick={wrap(() => {
+          const url = prompt('Enter URL:');
+          if (url) execCmd('createLink', url);
+        })} title="Insert link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </TBtn>
+        <TBtn onClick={wrap(() => execCmd('unlink'))} title="Remove link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5"/></svg>
+        </TBtn>
 
-      <div className="w-px h-5 bg-gray-200 mx-1" />
+        <TBtn onClick={wrap(() => {
+          const cols = parseInt(prompt('Columns:', '3'), 10);
+          const rows = parseInt(prompt('Rows:', '3'), 10);
+          if (!cols || !rows) return;
+          const ths = Array(cols).fill('<th>&nbsp;</th>').join('');
+          const tds = Array(cols).fill('<td>&nbsp;</td>').join('');
+          const trs = Array(rows).fill(`<tr>${tds}</tr>`).join('');
+          execCmd('insertHTML', `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`);
+        })} title="Insert table">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+        </TBtn>
 
-      <ToolbarButton onClick={wrap(() => execCmd('removeFormat'))} title="Clear formatting">
-        Clear
-      </ToolbarButton>
+        <TBtn onClick={wrap(() => execCmd('insertHorizontalRule'))} title="Horizontal rule">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/></svg>
+        </TBtn>
+
+        <Sep />
+
+        <TBtn onClick={wrap(() => execCmd('undo'))} title="Undo (Ctrl+Z)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        </TBtn>
+        <TBtn onClick={wrap(() => execCmd('redo'))} title="Redo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+        </TBtn>
+
+        <Sep />
+
+        <TBtn onClick={wrap(() => execCmd('removeFormat'))} title="Clear formatting">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="4" x2="20" y2="20"/><path d="M7 21h10"/><path d="M9.5 4h5l-3 7"/></svg>
+        </TBtn>
+
+        <TBtn onClick={() => setShowFind(!showFind)} title="Find & Replace (Ctrl+H)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </TBtn>
+      </div>
+
+      {/* Find & Replace bar */}
+      {showFind && (
+        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-100 bg-gray-50/50">
+          <input
+            ref={findRef}
+            type="text"
+            placeholder="Find..."
+            className="px-2 py-1 text-xs border border-gray-200 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
+            onKeyDown={(e) => { if (e.key === 'Enter') doFind(); }}
+          />
+          <button onClick={doFind} className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">Find</button>
+          <input
+            ref={replaceRef}
+            type="text"
+            placeholder="Replace..."
+            className="px-2 py-1 text-xs border border-gray-200 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
+            onKeyDown={(e) => { if (e.key === 'Enter') doReplace(); }}
+          />
+          <button onClick={doReplace} className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">Replace</button>
+          <button onClick={doReplaceAll} className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">All</button>
+          <button onClick={() => setShowFind(false)} className="px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600">x</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -243,7 +429,7 @@ ${content}
 const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true, mathMl: true },
   ADD_TAGS: [...MATHML_TAGS, 'figure', 'figcaption', 'img'],
-  ADD_ATTR: [...MATHML_ATTRS, 'data-page', 'data-formula-id', 'data-formula-source', 'contenteditable', 'src', 'alt', 'loading'],
+  ADD_ATTR: [...MATHML_ATTRS, 'data-page', 'data-formula-id', 'data-formula-source', 'contenteditable', 'src', 'alt', 'loading', 'width', 'style'],
 };
 
 export default function HtmlTextDetail() {
@@ -727,20 +913,35 @@ export default function HtmlTextDetail() {
               ref={sourceRef}
               defaultValue={htmlContent}
               onChange={() => setDirty(true)}
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                  e.preventDefault();
+                  saveHtml();
+                }
+              }}
               className="w-full min-h-[75vh] max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-none"
               spellCheck={false}
             />
           ) : (
             <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <FormattingToolbar onDirty={() => setDirty(true)} />
-              <div
-                ref={editableRef}
-                contentEditable
-                suppressContentEditableWarning
-                onInput={handleEditableInput}
-                className="pdf-preview-pane min-h-[75vh] max-h-[75vh] overflow-auto bg-white p-6 focus:outline-none"
-                dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-              />
+              <FormattingToolbar onDirty={() => setDirty(true)} editableRef={editableRef} />
+              <div className="relative">
+                <div
+                  ref={editableRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={handleEditableInput}
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                      e.preventDefault();
+                      saveHtml();
+                    }
+                  }}
+                  className="pdf-preview-pane min-h-[75vh] max-h-[75vh] overflow-auto bg-white p-6 focus:outline-none"
+                  dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+                />
+                <ImageResizer editableRef={editableRef} onDirty={() => setDirty(true)} />
+              </div>
             </div>
           )}
         </div>
