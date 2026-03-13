@@ -403,14 +403,15 @@ router.post('/texts/:id/page-images', uploadLimiter, async (req, res) => {
   }
 });
 
-// ---- GET /texts/:id/page-image/:filename — serve page image (lightweight) --
+// ---- GET /texts/:id/page-image/:filename — serve page/figure image --------
 router.get('/texts/:id/page-image/:filename', async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const safe = sanitizeFilename(req.params.filename);
-    if (!safe || !/^page-\d+\.jpg$/.test(safe)) {
+    // Allow page-N.jpg (rendered pages) and page-NNN-figure-NN.ext (extracted figures)
+    if (!safe || !/^page-\d+(-figure-\d+)?\.\w+$/.test(safe)) {
       return res.status(400).json({ error: 'Invalid filename.' });
     }
 
@@ -424,7 +425,10 @@ router.get('/texts/:id/page-image/:filename', async (req, res) => {
       return res.status(404).json({ error: 'Page image not found.' });
     }
 
-    res.set('Content-Type', 'image/jpeg');
+    // Determine content type from extension
+    const ext = safe.split('.').pop().toLowerCase();
+    const mimeTypes = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp' };
+    res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
     res.set('Cache-Control', 'private, max-age=86400');
     res.send(buffer);
   } catch (err) {

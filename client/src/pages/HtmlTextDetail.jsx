@@ -293,13 +293,24 @@ export default function HtmlTextDetail() {
 
   const sanitizedHtml = useMemo(() => {
     let html = DOMPurify.sanitize(htmlContent, SANITIZE_CONFIG);
-    // Rewrite page-N.jpg src to API endpoint for preview
+    // Rewrite page image/figure src to API endpoint for preview
     html = html.replace(
-      /src="(page-\d+\.jpg)"/g,
+      /src="(page-[\w-]+\.\w+)"/g,
       (_, filename) => `src="${BASE}/api/texts/${id}/page-image/${filename}"`
     );
     return html;
   }, [htmlContent, id]);
+
+  // Mark broken images so CSS can hide them gracefully
+  useEffect(() => {
+    const el = editableRef.current;
+    if (!el) return;
+    const handler = (e) => {
+      if (e.target.tagName === 'IMG') e.target.classList.add('img-error');
+    };
+    el.addEventListener('error', handler, true);
+    return () => el.removeEventListener('error', handler, true);
+  });
 
   // When switching from source to visual, sync the source textarea back
   function switchToVisual() {
@@ -383,7 +394,7 @@ export default function HtmlTextDetail() {
   // Strip API base URL from page image src so we store portable relative paths
   function normalizeImageSrcs(html) {
     return html.replace(
-      new RegExp(`src="${BASE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/api/texts/\\d+/page-image/(page-\\d+\\.jpg)"`, 'g'),
+      new RegExp(`src="${BASE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/api/texts/\\d+/page-image/(page-[\\w-]+\\.\\w+)"`, 'g'),
       (_, filename) => `src="${filename}"`
     );
   }
@@ -484,8 +495,8 @@ export default function HtmlTextDetail() {
       content = sourceRef.current.value;
     }
 
-    // Collect page image references from the HTML
-    const imageRefs = [...content.matchAll(/src="(page-\d+\.jpg)"/g)].map((m) => m[1]);
+    // Collect page image references from the HTML (pages and extracted figures)
+    const imageRefs = [...content.matchAll(/src="(page-[\w-]+\.\w+)"/g)].map((m) => m[1]);
     const uniqueImages = [...new Set(imageRefs)];
 
     if (uniqueImages.length === 0) {
@@ -509,7 +520,7 @@ export default function HtmlTextDetail() {
 
       // Rewrite image paths to images/ subfolder for the download
       const downloadContent = content.replace(
-        /src="(page-\d+\.jpg)"/g,
+        /src="(page-[\w-]+\.\w+)"/g,
         (_, filename) => `src="images/${filename}"`
       );
       const fullHtml = buildDownloadHtml(title, downloadContent);

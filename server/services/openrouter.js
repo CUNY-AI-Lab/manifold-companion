@@ -1,9 +1,18 @@
 // ---------------------------------------------------------------------------
 // OpenRouter integration — PDF page parsing, HTML cleanup
 // Sends native PDF pages to Gemini. TeX math is converted to MathML via temml.
+// Figure assets are extracted from embedded PDF images via pdftohtml -xml.
 // ---------------------------------------------------------------------------
 
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { writeFile, readFile, readdir, unlink, mkdir, stat, rm } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { randomBytes } from 'crypto';
 import temml from 'temml';
+
+const execFileAsync = promisify(execFile);
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -71,6 +80,87 @@ async function callWithRetry(fn, maxRetries = 5) {
 }
 
 // ---------------------------------------------------------------------------
+// Figure extraction — uses pdftohtml -xml to extract embedded images
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract embedded figure images from a single-page PDF using pdftohtml -xml.
+ * Returns an array of { filename, width, height, data (Buffer) }.
+ * Filters out tiny images (< 40px wide/tall or < 2500 area).
+ */
+export async function extractFiguresFromPdf(pdfBase64, pageNumber) {
+  const id = randomBytes(8).toString('hex');
+  const workDir = join(tmpdir(), `mc-figures-${id}`);
+  const pdfPath = join(workDir, 'page.pdf');
+
+  try {
+    await mkdir(workDir, { recursive: true });
+
+    // Write the base64 PDF to a temp file
+    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+    await writeFile(pdfPath, pdfBuffer);
+
+    // Run pdftohtml -xml to extract layout + images
+    const xmlBase = join(workDir, 'layout');
+    try {
+      await execFileAsync('pdftohtml', ['-xml', '-f', '1', '-l', '1', pdfPath, xmlBase], {
+        timeout: 15000,
+      });
+    } catch (err) {
+      // pdftohtml may not be installed or may fail on certain PDFs
+      console.warn('pdftohtml figure extraction failed:', err.message);
+      return [];
+    }
+
+    // Read the XML output
+    const xmlPath = xmlBase + '.xml';
+    let xmlContent;
+    try {
+      xmlContent = await readFile(xmlPath, 'utf-8');
+    } catch {
+      return [];
+    }
+
+    // Parse image nodes from the XML
+    const imageRegex = /<image\s+([^>]+)>/gi;
+    const figures = [];
+    let figureIndex = 0;
+    let match;
+
+    while ((match = imageRegex.exec(xmlContent)) !== null) {
+      const attrs = match[1];
+      const width = parseInt(attrs.match(/width="(\d+)"/)?.[1] || '0', 10);
+      const height = parseInt(attrs.match(/height="(\d+)"/)?.[1] || '0', 10);
+      const src = attrs.match(/src="([^"]+)"/)?.[1];
+
+      // Filter out tiny images (icons, bullets, decorations)
+      if (width < 40 || height < 40 || width * height < 2500) continue;
+      if (!src) continue;
+
+      // Read the extracted image file
+      const imgPath = join(workDir, src);
+      let imgData;
+      try {
+        imgData = await readFile(imgPath);
+      } catch {
+        continue;
+      }
+
+      figureIndex++;
+      const ext = src.split('.').pop() || 'png';
+      const filename = `page-${String(pageNumber).padStart(3, '0')}-figure-${String(figureIndex).padStart(2, '0')}.${ext}`;
+
+      figures.push({ filename, width, height, data: imgData });
+    }
+
+    return figures;
+  } finally {
+    // Clean up temp directory
+    try { await rm(workDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // HTML extraction + postprocessing (minimal, like the working pipeline)
 // ---------------------------------------------------------------------------
 
@@ -125,8 +215,8 @@ Rules:
 - Skip running headers, running footers, and page numbers (unless they are meaningful content)
 - Printed mathematics must use TeX delimiters: \\(...\\) for inline math, \\[...\\] for display math
 - Do NOT use MathML. Do NOT use <math> tags. Use TeX only.
-- For diagrams, charts, graphs, or photos: use <figure><img src="page-PAGE_NUMBER.jpg" alt="Description of the visual"><figcaption>Description of the visual</figcaption></figure>
-- Replace PAGE_NUMBER with the current page number in the img src
+- For diagrams, charts, graphs, or photos: use ONLY the extracted figure filenames provided in the prompt. Do NOT invent image filenames.
+- If no figure assets are listed, do NOT use any <img> tags. Use <figure><figcaption>[Description of the visual]</figcaption></figure> instead.
 - Do NOT invent formulas from graphs — describe the graph instead
 - No CSS, no inline styles, no JavaScript
 - No <html>, <body>, <head> wrappers
@@ -140,13 +230,30 @@ Structural rules for visual formatting — reproduce the PDF's visual structure:
 - Table of contents or navigation lists: wrap in <nav>
 - Indented or offset blocks that are visually distinct from body text should be wrapped in a container, not left as loose paragraphs.`;
 
-export async function parsePdfPageToHtml(pdfBase64, pageNumber, totalPages, textHint) {
+export async function parsePdfPageToHtml(pdfBase64, pageNumber, totalPages, textHint, figureAssets = []) {
   const userParts = [
     `Convert this PDF page to semantic HTML. This is page ${pageNumber}` +
     (totalPages ? ` of ${totalPages}` : '') + '.',
     `Wrap output in <section data-page="${pageNumber}">.`,
     'Use \\\\(...\\\\) for inline math and \\\\[...\\\\] for display math.',
   ];
+
+  // Figure asset inventory — tell the model exactly which images exist
+  if (figureAssets.length > 0) {
+    userParts.push(
+      '',
+      'Extracted figure assets for this page (use ONLY these filenames for <img> tags):',
+    );
+    for (const fig of figureAssets) {
+      userParts.push(`  - ${fig.filename} (${fig.width}×${fig.height}px)`);
+    }
+    userParts.push('Do not reference any other image filenames.');
+  } else {
+    userParts.push(
+      '',
+      'No figure assets were extracted for this page. Do not use any <img> tags.',
+    );
+  }
 
   if (textHint && textHint.trim().length > 20) {
     userParts.push(
