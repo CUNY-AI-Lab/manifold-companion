@@ -137,8 +137,8 @@ export async function extractFiguresFromPdf(pdfBase64, pageNumber) {
       if (width < 40 || height < 40 || width * height < 2500) continue;
       if (!src) continue;
 
-      // Read the extracted image file
-      const imgPath = join(workDir, src);
+      // Read the extracted image file (src may be absolute or relative)
+      const imgPath = src.startsWith('/') ? src : join(workDir, src);
       let imgData;
       try {
         imgData = await readFile(imgPath);
