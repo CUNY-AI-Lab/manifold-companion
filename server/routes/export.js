@@ -162,16 +162,38 @@ router.post('/projects/:projectId/export', async (req, res) => {
       // Text node
       const text = getTextById(Number(node.textId));
       const textMeta = text ? getTextMetadata(text.id) : null;
-      const pages = text ? getPagesByText(text.id) : [];
-
-      const compiledText = pages
-        .filter((p) => p.ocr_text && p.filename !== '__compiled__')
-        .map((p) => p.ocr_text)
-        .join('\n\n---\n\n');
 
       const textTitle = textMeta?.dc_title || node.label || text?.name || 'Untitled';
       const textLang = textMeta?.dc_language || metadata.language;
       const textCreator = textMeta?.dc_creator || metadata.creators;
+
+      // PDF-to-HTML texts: export as .html; Image-to-Markdown texts: export as .md
+      if (text?.html_content && project.project_type === 'pdf_to_html') {
+        const htmlFilename = `text-${num}-${slugify(node.label || text?.name)}.html`;
+        const htmlContent = [
+          `<!-- title: ${textTitle} -->`,
+          `<!-- language: ${textLang} -->`,
+          `<!-- creator: ${textCreator} -->`,
+          '',
+          text.html_content,
+        ].join('\n');
+        archive.append(htmlContent, { name: htmlFilename });
+
+        const entry = {
+          label: textTitle,
+          source_path: htmlFilename,
+        };
+        if (node.children?.length) {
+          entry.children = node.children.map(processNode);
+        }
+        return entry;
+      }
+
+      const pages = text ? getPagesByText(text.id) : [];
+      const compiledText = pages
+        .filter((p) => p.ocr_text && p.filename !== '__compiled__')
+        .map((p) => p.ocr_text)
+        .join('\n\n---\n\n');
 
       const mdFilename = `text-${num}-${slugify(node.label || text?.name)}.md`;
       const mdContent = [
