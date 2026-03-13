@@ -341,6 +341,26 @@ body {
   background: #f8fafc;
 }
 
+/* --- Equation layout tables (borderless) ------------------------- */
+
+.pdf-preview-pane table.equation-table {
+  border: none;
+  margin: 0.5rem 0;
+}
+
+.pdf-preview-pane table.equation-table td {
+  border: none;
+  padding: 0.25rem 0.5rem;
+  vertical-align: middle;
+  background: transparent;
+}
+
+.pdf-preview-pane table.equation-table td:last-child {
+  text-align: right;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
 /* --- Figures / images -------------------------------------------- */
 
 .pdf-preview-pane figure {
