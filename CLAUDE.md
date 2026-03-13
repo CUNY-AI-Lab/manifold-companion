@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Multi-user OCR platform for manuscript digitization. Express backend serves a React SPA, uses SQLite for storage, and calls AWS Bedrock for AI-powered OCR and text processing.
+Multi-user document-processing platform with two first-class workflows:
+
+- **Image to Markdown** -- upload images or rasterized PDF pages, run OCR via Bedrock, review/edit markdown, and export for Manifold
+- **PDF to HTML** -- upload a source PDF, render pages browser-side, parse each page with Bedrock vision, clean the assembled HTML with Bedrock text models, and edit/download the generated HTML
+
+The app is an Express backend serving a React SPA, with SQLite for persistence and AWS Bedrock for AI-powered OCR and text processing.
 
 ## Dev Commands
 
@@ -31,8 +36,10 @@ There are no test or lint scripts configured.
 
 - **Backend**: Express 4, better-sqlite3, express-session (SQLite-backed), bcrypt, multer, sharp, helmet
 - **Frontend**: React 18, React Router 6, Tailwind CSS 3, marked + DOMPurify, pdfjs-dist
-- **AI/OCR**: AWS Bedrock -- Qwen 3 VL 235B (`qwen.qwen3-vl-235b-a22b`) for OCR, GPT-OSS 120B (`openai.gpt-oss-120b-1:0`) for text processing
+- **AI/OCR**: AWS Bedrock -- Qwen 3 VL 235B (`qwen.qwen3-vl-235b-a22b`) for OCR and PDF page parsing, GPT-OSS 120B (`openai.gpt-oss-120b-1:0`) for text processing, configurable formula-repair model via `BEDROCK_FORMULA_MODEL` or `BEDROCK_TEXT_MODEL`
 - **Database**: SQLite with WAL mode, foreign keys enabled
+
+Alternative under consideration for higher-fidelity PDF conversion: **Mathpix Convert API** as a provider-backed primary converter for documents where near-perfect structure/math fidelity matters more than keeping all inference inside Bedrock.
 
 ## Environment
 
@@ -43,6 +50,9 @@ Configuration via `.env` in project root (symlinked to `server/.env` because `do
 - `AWS_REGION` -- AWS region for Bedrock
 - `BEDROCK_OCR_MODEL` -- Vision model ID for OCR (currently `qwen.qwen3-vl-235b-a22b`)
 - `BEDROCK_TEXT_MODEL` -- Text model ID for summaries/translations (currently `openai.gpt-oss-120b-1:0`)
+- `BEDROCK_FORMULA_MODEL` -- Optional override model ID for PDF formula-to-MathML repair (falls back to `BEDROCK_TEXT_MODEL`)
+- `BEDROCK_PDF_VISION_MODEL` -- Optional override model ID for PDF page parsing (falls back to `BEDROCK_OCR_MODEL`)
+- `BEDROCK_PDF_CLEANUP_MODEL` -- Optional override model ID for PDF HTML cleanup (currently defaults in code to `qwen.qwen3-next-80b-a3b`)
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` -- Seeds initial admin user at startup (idempotent; only creates if not exists)
 - `TRUST_PROXY` -- Set `true` when behind Nginx (enables correct rate limiting and secure cookies)
 - `COOKIE_SECURE` -- Set `true` for HTTPS deployments (auto-enabled in production)
@@ -53,7 +63,7 @@ Configuration via `.env` in project root (symlinked to `server/.env` because `do
 
 Applied in order:
 1. **Helmet** -- CSP (no `unsafe-inline` scripts in production), COEP disabled for images
-2. **JSON body parser** -- 200kb limit (uploads use multer, not JSON)
+2. **JSON body parser** -- 2 MB limit (HTML editing needs more headroom than the original 200 KB cap)
 3. **Session** -- SQLite store, cookie name `mc.sid`, 24-hour TTL, `httpOnly`, `sameSite: 'lax'`
 4. **Auth rate limiter** -- 10 req/15 min on `/api/auth/login`, `/api/auth/register`, and `/api/auth/change-password`
 5. **CSRF check** (`middleware/csrf.js`) -- validates Origin/Referer header on all non-GET `/api` requests
@@ -62,10 +72,10 @@ Applied in order:
 ### Security Middleware
 
 - **`middleware/auth.js`**: `requireAuth` (validates session, attaches `req.user`, checks `status === 'approved'`), `requireAdmin` (chains requireAuth + checks `role === 'admin'`)
-- **`middleware/rateLimits.js`**: `aiLimiter` (50 req/hour for OCR, summary, translation), `uploadLimiter` (30 req/15 min) — both keyed by `req.session.userId` with IP fallback
+- **`middleware/rateLimits.js`**: `aiLimiter` (50 req/hour for OCR, summary, translation), `formulaRepairLimiter` (400 req/hour), `pdfVisionLimiter` (1200 req/hour), `uploadLimiter` (30 req/15 min) — all keyed by `req.session.userId` with IP fallback
 - **`middleware/csrf.js`**: `csrfCheck` rejects state-changing requests without matching Origin/Referer header
 - **`middleware/security.js`**: `sanitizeFilename()` (URL-decodes then strips traversal/null bytes/special chars), `validateEmail()`, `validatePassword()` (≥8 chars)
-- **`middleware/upload.js`**: Multer factory with extension allowlist (jpg/jpeg/png/tiff/bmp/webp), 10MB per-file limit, `validateImageMagicBytes()` for binary signature verification post-upload
+- **`middleware/upload.js`**: Multer factories for image uploads and source PDF uploads, image allowlist (jpg/jpeg/png/tiff/bmp/webp), PDF allowlist, `validateImageMagicBytes()` and `validatePdfMagicBytes()` for binary signature verification post-upload
 
 ### Validation Constants
 
@@ -84,10 +94,10 @@ All route modules except auth apply `requireAuth` at the router level. Admin rou
 ```
 /api/auth        → server/routes/auth.js      (login, register, logout, me, change-password)
 /api/admin       → server/routes/admin.js     (user management)
-/api/projects    → server/routes/projects.js  (CRUD)
-/api             → server/routes/texts.js     (texts, pages, upload, image serving, metadata, settings)
+/api/projects    → server/routes/projects.js  (CRUD + project type on create)
+/api             → server/routes/texts.js     (texts, pages, image upload, PDF upload, HTML storage, image/PDF serving, metadata, settings)
 /api             → server/routes/ocr.js       (SSE OCR pipeline — rate-limited by aiLimiter)
-/api             → server/routes/llm.js       (summary, translation — rate-limited by aiLimiter)
+/api             → server/routes/llm.js       (summary, translation, formula repair, PDF page parsing, PDF cleanup)
 /api             → server/routes/export.js    (ZIP export)
 ```
 
@@ -100,6 +110,8 @@ Every resource route uses a `verifyTextOwnership(textId, userId)` or `verifyProj
 Six tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`. Key conventions:
 
 - **`__compiled__` sentinel**: A page with `filename = '__compiled__'` stores user-edited full text. Must be filtered out from display queries (`pages.filter(p => p.filename !== '__compiled__')`). Referenced across `db.js`, `texts.js`, `ocr.js`, `llm.js`, `export.js`, and `TextDetail.jsx`.
+- **Project type**: `projects.project_type` is `image_to_markdown` or `pdf_to_html`; it is set at creation and used by the client routers to choose the correct UI.
+- **PDF-to-HTML text fields**: `texts.html_content`, `texts.source_pdf_name`, `texts.pdf_meta`, and `texts.formula_repair_status` store the generated HTML workflow state.
 - **Page upsert**: `savePageOCR()` uses `INSERT ... ON CONFLICT(text_id, filename) DO UPDATE` -- re-running OCR overwrites in place.
 - **Text status flow**: `pending → processing → ocrd → reviewed`
 - **Project expiry**: 90-day TTL set at creation, cleaned up by `server/services/cleanup.js` cron (runs every 24h).
@@ -117,22 +129,44 @@ Six tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`. Key c
 
 Model format dispatch in `bedrock.js` is based on model ID prefix: `qwen.*` and `openai.*` use OpenAI-compatible format; `amazon.nova*` uses Nova format; `anthropic.claude*` uses Anthropic Bedrock format.
 
+### PDF to HTML Pipeline
+
+Current primary path:
+1. User creates a `pdf_to_html` project and a text/document within it
+2. Client renders PDF pages to JPEGs in-browser with `pdfjs-dist`
+3. Client sends each page image to `POST /api/texts/:id/pdf-parse-page`
+4. Server uses Bedrock vision (`Qwen3-VL` by default) to return semantic page HTML
+5. Client assembles page sections into one document and sends it to `POST /api/texts/:id/pdf-cleanup`
+6. Server uses a text model (`Qwen3 Next 80B` by default) to normalize heading hierarchy and merge paragraph fragments while preserving page sections
+7. Client uploads the original PDF plus generated HTML via `POST /api/texts/:id/pdf-upload`
+8. User edits the saved HTML in `HtmlTextDetail.jsx` and can re-run formula repair on unresolved placeholders
+
+Important caveat:
+- This Bedrock-native pipeline is materially better than the original `pdfjs text -> heuristics` path, but it is still not near-perfect on textbook/math-heavy PDFs. Formula recall and deterministic heading preservation remain the main weak points.
+
+Alternative option:
+- **Mathpix Convert API** is the leading external option when near-perfect PDF conversion quality matters more than keeping inference inside Bedrock. It is currently not integrated, but should be considered the primary upgrade path if the Bedrock-native converter remains below quality requirements.
+
 ### File Storage (server/services/storage.js)
 
 ```
-data/{userId}/{projectId}/{textId}/{filename}.jpg
+data/{userId}/{projectId}/{textId}/{filename}
 ```
 
-50 MB quota per user, enforced at upload via `calculateUserStorage()` (real disk measurement, not Content-Length header). Only image files accepted by multer (jpg, png, tiff, bmp, webp) and validated via magic bytes post-upload. PDFs are rasterized client-side via pdfjs-dist before upload -- the server never receives PDF files. Export only serves files matching DB page records, not raw directory listings.
+50 MB quota per user, enforced at upload via `calculateUserStorage()` (real disk measurement, not Content-Length header). `image_to_markdown` texts store page images; `pdf_to_html` texts store the original uploaded PDF under the same per-text directory. Project deletion and the 90-day cleanup remove both image assets and source PDFs. Export only serves files matching the text workflow; the app does not expose raw directory listings.
 
 ### Client Architecture
 
 - **Global state**: Only `AuthContext` (user session). No Redux/Zustand. All page data is local `useState` with fetch-on-mount.
 - **API client** (`client/src/api/client.js`): Thin fetch wrapper, `credentials: 'same-origin'`. The `upload()` method omits Content-Type so browser sets multipart boundary. Export uses raw `fetch` for blob response.
+- **Route split by workflow**: `ProjectRoute.jsx` and `TextRoute.jsx` fetch the resource first, then branch to `ProjectView` / `TextDetail` for `image_to_markdown` or `PdfProjectView` / `HtmlTextDetail` for `pdf_to_html`.
 - **OCR streaming**: `TextDetail.jsx` uses native `EventSource` API (not the api client) for SSE.
-- **PDF processing**: `pdfToImages()` dynamically imports pdfjs-dist, rasterizes at 2x scale to canvas, converts to JPEG blobs.
+- **Image-to-Markdown PDF handling**: `pdfToImages()` dynamically imports pdfjs-dist, rasterizes at 2x scale to canvas, converts to JPEG blobs.
+- **PDF-to-HTML conversion**: `client/src/lib/pdfBedrockPipeline.js` renders PDF pages to images, sends them through the Bedrock hybrid pipeline, and uploads the final HTML. `client/src/lib/pdfToHtml.js` is legacy heuristic code and should not be treated as the preferred primary converter.
 - **Image resize**: `resizeImageBlob()` uses Canvas API to shrink images over 3.5 MB before upload.
 - **Markdown rendering**: All user-facing markdown uses `marked.parse()` piped through `DOMPurify.sanitize()`.
+- **HTML rendering**: `HtmlTextDetail.jsx` sanitizes rendered HTML while explicitly allowing MathML tags/attributes needed for formula display.
+- **PDF project text actions**: `PdfProjectView.jsx` supports create, replace upload, open editor, and delete for PDF-to-HTML texts.
 
 ### Tailwind Theme (client/tailwind.config.js)
 
@@ -212,3 +246,5 @@ These are intentional copy-paste patterns to be aware of when making changes:
 - `verifyTextOwnership()` -- duplicated in `texts.js`, `ocr.js`, `llm.js`
 - `compileFullText()` -- duplicated in `ocr.js`, `llm.js`
 - `pdfToImages()` and `resizeImageBlob()` -- duplicated in `ProjectView.jsx`, `TextDetail.jsx`
+- Formula batching is centralized in `client/src/lib/formulaRepair.js`; keep `PdfProjectView.jsx` and `HtmlTextDetail.jsx` aligned when changing formula-repair UX.
+- The legacy browser heuristic converter in `client/src/lib/pdfToHtml.js` and the current Bedrock hybrid path in `client/src/lib/pdfBedrockPipeline.js` may diverge. Prefer changing the Bedrock path unless intentionally reviving the heuristic fallback.

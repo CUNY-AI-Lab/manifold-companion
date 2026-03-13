@@ -4,21 +4,19 @@
 
 import { Router } from 'express';
 import { join } from 'path';
-import { readFile, readdir, unlink } from 'fs/promises';
+import { readFile, unlink } from 'fs/promises';
 import sharp from 'sharp';
 import { requireAuth } from '../middleware/auth.js';
 import { uploadLimiter } from '../middleware/rateLimits.js';
-import { createUpload, validateImageMagicBytes } from '../middleware/upload.js';
+import { createUpload, createPdfUpload, validateImageMagicBytes, validatePdfMagicBytes } from '../middleware/upload.js';
 import { sanitizeFilename } from '../middleware/security.js';
 import {
   createText,
   getTextById,
-  getTextsByProject,
   updateText,
   deleteText,
   getProjectById,
   getPagesByText,
-  getPageById,
   savePageText,
   getTextMetadata,
   saveTextMetadata,
@@ -29,6 +27,8 @@ import {
   deletePage,
   reorderPages,
   getMaxPageNumber,
+  getTextHtml,
+  saveTextHtml,
 } from '../db.js';
 import {
   getTextDir,
@@ -90,6 +90,21 @@ function verifyProjectOwnership(projectId, userId) {
   return { project };
 }
 
+function requireProjectType(project, expectedType) {
+  if (project.project_type !== expectedType) {
+    return { status: 400, error: `This action is only available for ${expectedType} projects.` };
+  }
+  return {};
+}
+
+function requireImageProject(project) {
+  return requireProjectType(project, 'image_to_markdown');
+}
+
+function requirePdfProject(project) {
+  return requireProjectType(project, 'pdf_to_html');
+}
+
 // ---------------------------------------------------------------------------
 // Text CRUD
 // ---------------------------------------------------------------------------
@@ -124,7 +139,7 @@ router.get('/texts/:id', (req, res) => {
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const pages = getPagesByText(result.text.id);
-    res.json({ ...result.text, pages });
+    res.json({ ...result.text, pages, project_type: result.project.project_type });
   } catch (err) {
     console.error('GET /texts/:id error:', err);
     res.status(500).json({ error: 'Internal server error.' });
@@ -191,6 +206,8 @@ router.post('/texts/:id/upload', uploadLimiter, async (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     // [HIGH-4] Check storage quota using real disk measurement, not Content-Length header
     const quota = req.user.role === 'admin' ? MAX_ADMIN_STORAGE_BYTES : MAX_STORAGE_BYTES;
@@ -256,6 +273,96 @@ router.post('/texts/:id/upload', uploadLimiter, async (req, res) => {
   }
 });
 
+// ---- POST /texts/:id/pdf-upload — upload source PDF + generated HTML -----
+router.post('/texts/:id/pdf-upload', uploadLimiter, async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const quota = req.user.role === 'admin' ? MAX_ADMIN_STORAGE_BYTES : MAX_STORAGE_BYTES;
+    const currentUsage = await calculateUserStorage(req.user.id);
+    if (currentUsage >= quota) {
+      const limitLabel = req.user.role === 'admin' ? '500 MB' : '50 MB';
+      return res.status(413).json({ error: `Storage quota exceeded (${limitLabel} limit).` });
+    }
+
+    const upload = createPdfUpload(req.user.id, result.project.id, result.text.id);
+    const mw = upload.single('pdf');
+
+    mw(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        console.error('PDF upload error:', uploadErr);
+        const safeMsg = uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'PDF file too large.'
+          : uploadErr.code === 'LIMIT_FILE_COUNT'
+            ? 'Only one PDF can be uploaded at a time.'
+            : 'PDF upload failed. Please try again.';
+        return res.status(400).json({ error: safeMsg });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No PDF uploaded.' });
+      }
+
+      if (!validatePdfMagicBytes(req.file.path)) {
+        try { await unlink(req.file.path); } catch { /* ignore */ }
+        return res.status(400).json({ error: 'Uploaded file is not a valid PDF.' });
+      }
+
+      const htmlContent = typeof req.body.html_content === 'string' ? req.body.html_content : '';
+      if (!htmlContent.trim()) {
+        try { await unlink(req.file.path); } catch { /* ignore */ }
+        return res.status(400).json({ error: 'Generated HTML content is required.' });
+      }
+
+      let pdfMeta = null;
+      if (req.body.pdf_meta) {
+        try {
+          pdfMeta = JSON.parse(req.body.pdf_meta);
+        } catch {
+          try { await unlink(req.file.path); } catch { /* ignore */ }
+          return res.status(400).json({ error: 'Invalid PDF metadata payload.' });
+        }
+      }
+
+      const formulaRepairStatus =
+        typeof req.body.formula_repair_status === 'string' && req.body.formula_repair_status.trim()
+          ? req.body.formula_repair_status.trim()
+          : 'not_needed';
+
+      const existingHtml = getTextHtml(result.text.id);
+      if (existingHtml?.source_pdf_name && existingHtml.source_pdf_name !== req.file.filename) {
+        try {
+          await unlink(join(getTextDir(req.user.id, result.project.id, result.text.id), existingHtml.source_pdf_name));
+        } catch {
+          // Old PDF may not exist anymore.
+        }
+      }
+
+      await refreshUserStorage(req.user.id);
+      saveTextHtml(result.text.id, htmlContent, {
+        sourcePdfName: req.file.filename,
+        pdfMeta,
+        formulaRepairStatus,
+      });
+      updateText(result.text.id, { status: 'reviewed' });
+      const html = getTextHtml(result.text.id);
+      res.status(201).json({
+        ok: true,
+        source_pdf_name: req.file.filename,
+        html_content: html?.html_content || '',
+        pdf_meta: html?.pdf_meta || null,
+        formula_repair_status: html?.formula_repair_status || formulaRepairStatus,
+      });
+    });
+  } catch (err) {
+    console.error('POST /texts/:id/pdf-upload error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Pages
 // ---------------------------------------------------------------------------
@@ -265,6 +372,8 @@ router.get('/texts/:id/pages', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     const pages = getPagesByText(result.text.id);
     res.json(pages);
@@ -279,6 +388,8 @@ router.post('/texts/:id/pages/:pageId', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     const { text: ocrText } = req.body || {};
     if (ocrText === undefined) {
@@ -334,6 +445,8 @@ router.put('/texts/:id/pages/reorder', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     const { pageIds } = req.body || {};
     if (!Array.isArray(pageIds) || pageIds.length === 0) {
@@ -371,6 +484,51 @@ router.get('/texts/:id/result', (req, res) => {
     res.json({ text: compiled, pageCount: pages.length });
   } catch (err) {
     console.error('GET /texts/:id/result error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+router.get('/texts/:id/html', (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const html = getTextHtml(result.text.id);
+    res.json({
+      html_content: html?.html_content || '',
+      source_pdf_name: html?.source_pdf_name || null,
+      pdf_meta: html?.pdf_meta || null,
+      formula_repair_status: html?.formula_repair_status || null,
+    });
+  } catch (err) {
+    console.error('GET /texts/:id/html error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+router.put('/texts/:id/html', (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const { html_content, pdf_meta, formula_repair_status } = req.body || {};
+    if (html_content === undefined) {
+      return res.status(400).json({ error: 'HTML content is required.' });
+    }
+
+    saveTextHtml(result.text.id, html_content, {
+      pdfMeta: pdf_meta,
+      formulaRepairStatus: formula_repair_status,
+    });
+
+    const html = getTextHtml(result.text.id);
+    res.json(html || {});
+  } catch (err) {
+    console.error('PUT /texts/:id/html error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
@@ -433,6 +591,8 @@ router.get('/texts/:id/settings', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     const settings = getTextSettings(result.text.id);
     res.json(settings || {});
@@ -447,6 +607,8 @@ router.post('/texts/:id/settings', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     const { prompt, model, temperature, max_tokens } = req.body || {};
     const validated = {};
@@ -492,6 +654,8 @@ router.delete('/texts/:id/settings', (req, res) => {
   try {
     const result = verifyTextOwnership(Number(req.params.id), req.user.id);
     if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requireImageProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
 
     deleteTextSettings(result.text.id);
     res.json({ ok: true });
@@ -546,6 +710,37 @@ router.get('/texts/:id/image/:filename', async (req, res) => {
     res.send(output);
   } catch (err) {
     console.error('GET /texts/:id/image/:filename error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+router.get('/texts/:id/source-pdf/:filename', async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const safe = sanitizeFilename(req.params.filename);
+    if (!safe || safe !== result.text.source_pdf_name) {
+      return res.status(404).json({ error: 'PDF not found.' });
+    }
+
+    const dir = getTextDir(req.user.id, result.project.id, result.text.id);
+    const filePath = join(dir, safe);
+
+    let buffer;
+    try {
+      buffer = await readFile(filePath);
+    } catch {
+      return res.status(404).json({ error: 'PDF not found.' });
+    }
+
+    res.set('Content-Type', 'application/pdf');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  } catch (err) {
+    console.error('GET /texts/:id/source-pdf/:filename error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

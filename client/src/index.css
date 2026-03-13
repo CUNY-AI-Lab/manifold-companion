@@ -25,3 +25,418 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+.html-editor-shell .ck.ck-editor {
+  border-radius: 0.75rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 75vh;
+}
+
+.html-editor-shell .ck.ck-editor__main {
+  flex: 1;
+  min-height: 0;
+}
+
+.html-editor-shell .ck.ck-editor__main > .ck-editor__editable {
+  min-height: 75vh;
+  max-height: 75vh;
+  overflow: auto;
+  padding: 1.25rem 1.5rem;
+  line-height: 1.65;
+}
+
+.html-editor-shell .ck-source-editing-area textarea {
+  width: 100%;
+  border: 0;
+  padding: 1rem 1.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  min-height: 75vh;
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.html-editor-shell .ck-content .formula-block {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #dbe4f0;
+}
+
+.html-editor-shell .ck-content math {
+  display: block;
+  overflow-x: auto;
+}
+
+.html-editor-shell .ck-content .formula-block[data-formula-source]::after {
+  content: attr(data-formula-source);
+  display: block;
+  margin-top: 0.65rem;
+  color: #475569;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.html-editor-shell .ck-content .toc-entry {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.html-editor-shell .ck-content .toc-entry__title {
+  flex: 1;
+}
+
+.html-editor-shell .ck-content h1,
+.html-editor-shell .ck-content h2,
+.html-editor-shell .ck-content h3 {
+  line-height: 1.25;
+}
+
+/* ===================================================================
+   Preview pane — mirrors textbook-style PDF formatting
+   =================================================================== */
+
+.pdf-preview-pane {
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.75;
+  color: #1a1a1a;
+}
+
+/* --- Headings ---------------------------------------------------- */
+
+.pdf-preview-pane h1 {
+  font-size: 1.7rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+  border-bottom: 2px solid #c7d2de;
+  padding-bottom: 0.5rem;
+  color: #1e293b;
+}
+
+.pdf-preview-pane h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 1.75rem 0 0.5rem;
+  color: #1e3a5f;
+}
+
+.pdf-preview-pane h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.4rem;
+  color: #334155;
+}
+
+.pdf-preview-pane h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1rem 0 0.35rem;
+  color: #475569;
+}
+
+.pdf-preview-pane p {
+  margin: 0.5rem 0;
+}
+
+/* --- Page sections ----------------------------------------------- */
+
+.pdf-preview-pane section[data-page] {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* --- Example / exercise boxes (section > header pattern) --------- */
+/* The model wraps examples in <section><header>Example N</header>... */
+
+.pdf-preview-pane section[data-page] > section {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);
+  border-radius: 0.625rem;
+  border: 1px solid #fde68a;
+}
+
+.pdf-preview-pane section[data-page] > section > header,
+.pdf-preview-pane section[data-page] > section > h3:first-child,
+.pdf-preview-pane section[data-page] > section > h4:first-child {
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #92400e;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #fcd34d;
+}
+
+/* Nested sections inside examples (for sub-parts) keep lighter style */
+.pdf-preview-pane section[data-page] > section > section {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 0.5rem;
+  border: 1px solid #fde68a;
+}
+
+/* --- Aside: definitions, theorems, "Try it Now" boxes ------------ */
+
+.pdf-preview-pane aside {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 0.625rem;
+  border: 1px solid #93c5fd;
+  border-left: 4px solid #3b82f6;
+}
+
+.pdf-preview-pane aside > h2:first-child,
+.pdf-preview-pane aside > h3:first-child,
+.pdf-preview-pane aside > h4:first-child {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #1e40af;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #93c5fd;
+}
+
+/* --- Blockquote: theorem/definition callouts ---------------------- */
+
+.pdf-preview-pane blockquote {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-radius: 0.625rem;
+  border: 1px solid #86efac;
+  border-left: 4px solid #22c55e;
+  color: #14532d;
+}
+
+.pdf-preview-pane blockquote > h2:first-child,
+.pdf-preview-pane blockquote > h3:first-child,
+.pdf-preview-pane blockquote > h4:first-child {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #166534;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #86efac;
+}
+
+/* --- Header element (used for chapter headers, section labels) ---- */
+
+.pdf-preview-pane > header,
+.pdf-preview-pane section[data-page] > header {
+  margin-bottom: 0.75rem;
+}
+
+/* --- Footer (copyright, license notices) ------------------------- */
+
+.pdf-preview-pane footer {
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.85rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* --- Navigation / TOC -------------------------------------------- */
+
+.pdf-preview-pane nav {
+  margin: 0.5rem 0 1rem;
+}
+
+.pdf-preview-pane nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.pdf-preview-pane nav li {
+  padding: 0.2rem 0;
+  color: #475569;
+}
+
+.pdf-preview-pane .toc-entry {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0;
+}
+
+.pdf-preview-pane .toc-entry__title {
+  flex: 1;
+}
+
+.pdf-preview-pane .toc-entry__page {
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* --- Lists ------------------------------------------------------- */
+
+.pdf-preview-pane ul {
+  margin: 0.5rem 0;
+  padding-left: 1.75rem;
+}
+
+.pdf-preview-pane ol {
+  margin: 0.5rem 0;
+  padding-left: 1.75rem;
+}
+
+.pdf-preview-pane li {
+  margin: 0.25rem 0;
+}
+
+/* Lettered lists: ol[type="a"] */
+.pdf-preview-pane ol[type="a"] {
+  list-style-type: lower-alpha;
+}
+
+.pdf-preview-pane ol[type="A"] {
+  list-style-type: upper-alpha;
+}
+
+.pdf-preview-pane ol[type="i"] {
+  list-style-type: lower-roman;
+}
+
+/* --- Tables ------------------------------------------------------ */
+
+.pdf-preview-pane table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  width: 100%;
+  font-size: 0.95rem;
+}
+
+.pdf-preview-pane th,
+.pdf-preview-pane td {
+  border: 1px solid #cbd5e1;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.pdf-preview-pane th {
+  background: #f1f5f9;
+  font-weight: 600;
+  color: #334155;
+}
+
+.pdf-preview-pane tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+/* --- Figures / images -------------------------------------------- */
+
+.pdf-preview-pane figure {
+  margin: 1.5rem 0;
+  text-align: center;
+  padding: 1rem;
+  background: #fafafa;
+  border-radius: 0.5rem;
+  border: 1px dashed #d1d5db;
+}
+
+.pdf-preview-pane figcaption {
+  font-style: italic;
+  color: #6b7280;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+/* --- Formula blocks (unresolved math placeholders) --------------- */
+
+.pdf-preview-pane .formula-block {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+  border: 1px solid #e9ecef;
+  font-family: 'Cambria Math', 'STIX Two Math', serif;
+}
+
+/* --- Links ------------------------------------------------------- */
+
+.pdf-preview-pane a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pdf-preview-pane a:hover {
+  color: #1d4ed8;
+}
+
+/* --- Inline elements --------------------------------------------- */
+
+.pdf-preview-pane strong {
+  font-weight: 700;
+}
+
+.pdf-preview-pane em {
+  font-style: italic;
+}
+
+.pdf-preview-pane sup, .pdf-preview-pane sub {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+/* --- MathJax containers ------------------------------------------ */
+
+/* Inline math — must stay inline, no overflow tricks */
+.pdf-preview-pane mjx-container {
+  display: inline !important;
+  overflow-x: visible;
+}
+
+.pdf-preview-pane mjx-container svg {
+  display: inline !important;
+}
+
+/* Display math (block-level) — add spacing, scroll only when needed */
+.pdf-preview-pane mjx-container[display="true"],
+.pdf-preview-pane p > mjx-container:only-child {
+  display: block !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.75rem 0;
+  scrollbar-width: none;
+}
+
+.pdf-preview-pane mjx-container[display="true"]::-webkit-scrollbar,
+.pdf-preview-pane p > mjx-container:only-child::-webkit-scrollbar {
+  display: none;
+}
+
+.pdf-preview-pane mjx-container[display="true"] svg,
+.pdf-preview-pane p > mjx-container:only-child svg {
+  display: block !important;
+}
+
+/* --- Contenteditable hover/focus indicators ---------------------- */
+
+.pdf-preview-pane[contenteditable]:focus {
+  outline: none;
+}
+
+.pdf-preview-pane[contenteditable] > *:hover {
+  outline: 1px dashed #cbd5e1;
+  outline-offset: 2px;
+  border-radius: 2px;
+}

@@ -11,6 +11,7 @@ import { getTextDir } from '../services/storage.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tiff', '.bmp', '.webp']);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file
+const MAX_PDF_FILE_SIZE = 50 * 1024 * 1024; // bounded by project quota in practice
 
 // [HIGH-1] Magic byte signatures for image validation
 const MAGIC_BYTES = {
@@ -47,6 +48,16 @@ export function validateImageMagicBytes(filePath) {
         && buf.length >= 12 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return true;
 
     return false;
+  } catch {
+    return false;
+  }
+}
+
+export function validatePdfMagicBytes(filePath) {
+  try {
+    const buf = readFileSync(filePath, { length: 5 });
+    if (buf.length < 5) return false;
+    return buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2D;
   } catch {
     return false;
   }
@@ -98,6 +109,48 @@ export function createUpload(userId, projectId, textId) {
     limits: {
       fileSize: MAX_FILE_SIZE,
       files: 200, // reasonable upper bound per upload batch
+    },
+  });
+}
+
+export function createPdfUpload(userId, projectId, textId) {
+  const dest = getTextDir(userId, projectId, textId);
+
+  const storage = multer.diskStorage({
+    destination: async (_req, _file, cb) => {
+      try {
+        await mkdir(dest, { recursive: true });
+        cb(null, dest);
+      } catch (err) {
+        cb(err);
+      }
+    },
+
+    filename: (_req, file, cb) => {
+      const safe = sanitizeFilename(file.originalname);
+      if (!safe) {
+        return cb(new Error('Invalid filename.'));
+      }
+      cb(null, safe);
+    },
+  });
+
+  const fileFilter = (_req, file, cb) => {
+    const ext = extname(file.originalname).toLowerCase();
+    if (ext === '.pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed.'));
+    }
+  };
+
+  return multer({
+    storage,
+    fileFilter,
+    limits: {
+      fileSize: MAX_PDF_FILE_SIZE,
+      files: 1,
+      fieldSize: 10 * 1024 * 1024,
     },
   });
 }
