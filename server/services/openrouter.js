@@ -1,7 +1,9 @@
 // ---------------------------------------------------------------------------
 // OpenRouter integration — PDF page parsing, HTML cleanup
-// Sends native PDF pages to Gemini. Math output is TeX delimiters for MathJax.
+// Sends native PDF pages to Gemini. TeX math is converted to MathML via temml.
 // ---------------------------------------------------------------------------
+
+import temml from 'temml';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -123,8 +125,8 @@ Rules:
 - Skip running headers, running footers, and page numbers (unless they are meaningful content)
 - Printed mathematics must use TeX delimiters: \\(...\\) for inline math, \\[...\\] for display math
 - Do NOT use MathML. Do NOT use <math> tags. Use TeX only.
-- Do NOT use <img> tags (no image assets are available)
-- For diagrams, charts, or photos: use <figure><figcaption>[Description of the visual]</figcaption></figure>
+- For diagrams, charts, graphs, or photos: use <figure><img src="page-PAGE_NUMBER.jpg" alt="Description of the visual"><figcaption>Description of the visual</figcaption></figure>
+- Replace PAGE_NUMBER with the current page number in the img src
 - Do NOT invent formulas from graphs — describe the graph instead
 - No CSS, no inline styles, no JavaScript
 - No <html>, <body>, <head> wrappers
@@ -301,13 +303,46 @@ function wrapOrphanedHeaders(innerHtml) {
 }
 
 // ---------------------------------------------------------------------------
-// cleanupPdfHtml — normalize structure, then wrap in article.
+// convertTexToMathML — replace TeX delimiters with native MathML via temml
+// Runs after all pages are assembled, before wrapping in article.
+// ---------------------------------------------------------------------------
+
+function convertTexToMathML(html) {
+  // Display math: \[...\]
+  html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, tex) => {
+    try {
+      return temml.renderToString(tex.trim(), { displayMode: true });
+    } catch {
+      // If temml can't parse it, leave the TeX as-is in a fallback span
+      return `<span class="math-fallback" title="TeX parse error">${escapeHtml(match)}</span>`;
+    }
+  });
+
+  // Inline math: \(...\)
+  html = html.replace(/\\\(([\s\S]*?)\\\)/g, (match, tex) => {
+    try {
+      return temml.renderToString(tex.trim(), { displayMode: false });
+    } catch {
+      return `<span class="math-fallback" title="TeX parse error">${escapeHtml(match)}</span>`;
+    }
+  });
+
+  return html;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ---------------------------------------------------------------------------
+// cleanupPdfHtml — normalize structure, convert TeX→MathML, wrap in article.
 // No LLM cleanup pass — the per-page output from Gemini is good enough.
-// We only do deterministic structural normalization.
+// We only do deterministic structural normalization + math conversion.
 // ---------------------------------------------------------------------------
 
 export async function cleanupPdfHtml(html) {
   let result = normalizeCalloutBoxes(html);
+  result = convertTexToMathML(result);
   if (/<article\b/i.test(result)) return result;
   return `<article class="pdf-html-document">\n${result}\n</article>`;
 }

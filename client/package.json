@@ -12,6 +12,7 @@
     "ckeditor5": "^47.6.1",
     "dompurify": "^3.2.0",
     "heic2any": "^0.0.4",
+    "jszip": "^3.10.1",
     "marked": "^15.0.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.0.0",
