@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
+import JSZip from 'jszip';
 import { api, BASE } from '../api/client';
 import { applyFormulaRepairs, extractFormulaCandidatesFromHtml } from '../lib/pdfToHtml';
 import { repairFormulasInBatches } from '../lib/formulaRepair';
@@ -24,7 +25,7 @@ const MATHML_ATTRS = [
   'xmlns:xlink', 'xlink:href',
 ];
 
-const MATHJAX_CDN = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-svg.js';
+// MathJax removed — math is now native MathML converted server-side via temml
 
 // ---------------------------------------------------------------------------
 // Formatting toolbar for contenteditable
@@ -147,26 +148,6 @@ function FormattingToolbar({ onDirty }) {
   );
 }
 
-function loadMathJax() {
-  if (window.MathJax) return Promise.resolve();
-  return new Promise((resolve) => {
-    window.MathJax = {
-      tex: {
-        inlineMath: [['\\(', '\\)']],
-        displayMath: [['\\[', '\\]']],
-      },
-      svg: { fontCache: 'global' },
-      startup: { typeset: false },
-    };
-    const script = document.createElement('script');
-    script.id = 'mathjax-script';
-    script.src = MATHJAX_CDN;
-    script.async = true;
-    script.onload = () => resolve();
-    document.head.appendChild(script);
-  });
-}
-
 function buildDownloadHtml(title, content) {
   const safeTitle = title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return `<!DOCTYPE html>
@@ -175,13 +156,6 @@ function buildDownloadHtml(title, content) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${safeTitle}</title>
-<script>
-MathJax = {
-  tex: { inlineMath: [['\\\\(', '\\\\)']], displayMath: [['\\\\[', '\\\\]']] },
-  svg: { fontCache: 'global' }
-};
-</script>
-<script src="${MATHJAX_CDN}" async></script>
 <style>
   body { font-family: Georgia, 'Times New Roman', serif; max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.75; color: #1a1a1a; }
 
@@ -239,6 +213,7 @@ MathJax = {
 
   /* Figures / images */
   figure { margin: 1.5rem 0; text-align: center; padding: 1rem; background: #fafafa; border-radius: 0.5rem; border: 1px dashed #d1d5db; }
+  figure img { max-width: 100%; height: auto; border-radius: 0.375rem; }
   figcaption { font-style: italic; color: #6b7280; margin-top: 0.5rem; font-size: 0.9rem; }
 
   /* Formula blocks */
@@ -253,11 +228,10 @@ MathJax = {
   em { font-style: italic; }
   sup, sub { font-size: 0.75em; line-height: 0; }
 
-  /* MathJax — inline math must stay inline */
-  mjx-container { display: inline !important; overflow-x: visible; }
-  mjx-container svg { display: inline !important; }
-  mjx-container[display="true"], p > mjx-container:only-child { display: block !important; overflow-x: auto; margin: 0.75rem 0; }
-  mjx-container[display="true"] svg, p > mjx-container:only-child svg { display: block !important; }
+  /* MathML */
+  math { font-size: 1.1em; }
+  math[display="block"] { display: block; margin: 0.75rem 0; overflow-x: auto; }
+  .math-fallback { font-family: 'Cambria Math', 'STIX Two Math', serif; color: #b91c1c; }
 </style>
 </head>
 <body>
@@ -268,8 +242,8 @@ ${content}
 
 const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true, mathMl: true },
-  ADD_TAGS: [...MATHML_TAGS, 'figure', 'figcaption', 'mjx-container'],
-  ADD_ATTR: [...MATHML_ATTRS, 'data-page', 'data-formula-id', 'data-formula-source', 'contenteditable'],
+  ADD_TAGS: [...MATHML_TAGS, 'figure', 'figcaption', 'img'],
+  ADD_ATTR: [...MATHML_ATTRS, 'data-page', 'data-formula-id', 'data-formula-source', 'contenteditable', 'src', 'alt', 'loading'],
 };
 
 export default function HtmlTextDetail() {
@@ -317,30 +291,15 @@ export default function HtmlTextDetail() {
     return () => { active = false; };
   }, [id]);
 
-  const sanitizedHtml = useMemo(() => DOMPurify.sanitize(htmlContent, SANITIZE_CONFIG), [htmlContent]);
-
-  // MathJax typesetting for the editable preview
-  useEffect(() => {
-    if (sourceMode || !editableRef.current) return;
-    let cancelled = false;
-
-    (async () => {
-      await loadMathJax();
-      if (cancelled || !editableRef.current) return;
-      if (window.MathJax?.typesetPromise) {
-        if (window.MathJax.typesetClear) {
-          window.MathJax.typesetClear([editableRef.current]);
-        }
-        try {
-          await window.MathJax.typesetPromise([editableRef.current]);
-        } catch {
-          // ignore
-        }
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [sourceMode, sanitizedHtml]);
+  const sanitizedHtml = useMemo(() => {
+    let html = DOMPurify.sanitize(htmlContent, SANITIZE_CONFIG);
+    // Rewrite page-N.jpg src to API endpoint for preview
+    html = html.replace(
+      /src="(page-\d+\.jpg)"/g,
+      (_, filename) => `src="${BASE}/api/texts/${id}/page-image/${filename}"`
+    );
+    return html;
+  }, [htmlContent, id]);
 
   // When switching from source to visual, sync the source textarea back
   function switchToVisual() {
@@ -355,8 +314,8 @@ export default function HtmlTextDetail() {
   // When switching from visual to source, read from the editable div
   function switchToSource() {
     if (editableRef.current) {
-      // Read innerHTML to capture any edits made in contenteditable
-      setHtmlContent(editableRef.current.innerHTML);
+      // Read innerHTML and normalize image srcs back to relative paths
+      setHtmlContent(normalizeImageSrcs(editableRef.current.innerHTML));
     }
     setSourceMode(true);
   }
@@ -421,6 +380,14 @@ export default function HtmlTextDetail() {
     return () => { active = false; };
   }, [id, sourcePdfName]);
 
+  // Strip API base URL from page image src so we store portable relative paths
+  function normalizeImageSrcs(html) {
+    return html.replace(
+      new RegExp(`src="${BASE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/api/texts/\\d+/page-image/(page-\\d+\\.jpg)"`, 'g'),
+      (_, filename) => `src="${filename}"`
+    );
+  }
+
   async function saveHtml() {
     setSaving(true);
     setError('');
@@ -428,7 +395,7 @@ export default function HtmlTextDetail() {
       // Read latest content from whichever mode is active
       let contentToSave = htmlContent;
       if (!sourceMode && editableRef.current) {
-        contentToSave = editableRef.current.innerHTML;
+        contentToSave = normalizeImageSrcs(editableRef.current.innerHTML);
       } else if (sourceMode && sourceRef.current) {
         contentToSave = sourceRef.current.value;
       }
@@ -506,22 +473,77 @@ export default function HtmlTextDetail() {
     runFormulaRepair('auto');
   }, [text, htmlContent, formulaStatus, repairing]);
 
-  function downloadHtml() {
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadHtml() {
     const title = text?.name || 'Document';
     let content = htmlContent;
     if (!sourceMode && editableRef.current) {
-      content = editableRef.current.innerHTML;
+      content = normalizeImageSrcs(editableRef.current.innerHTML);
     } else if (sourceMode && sourceRef.current) {
       content = sourceRef.current.value;
     }
-    const fullHtml = buildDownloadHtml(title, content);
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    // Collect page image references from the HTML
+    const imageRefs = [...content.matchAll(/src="(page-\d+\.jpg)"/g)].map((m) => m[1]);
+    const uniqueImages = [...new Set(imageRefs)];
+
+    if (uniqueImages.length === 0) {
+      // No images — download as plain HTML
+      const fullHtml = buildDownloadHtml(title, content);
+      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    // Download as ZIP with images in an images/ subfolder
+    setDownloading(true);
+    try {
+      const zip = new JSZip();
+      const imgFolder = zip.folder('images');
+
+      // Rewrite image paths to images/ subfolder for the download
+      const downloadContent = content.replace(
+        /src="(page-\d+\.jpg)"/g,
+        (_, filename) => `src="images/${filename}"`
+      );
+      const fullHtml = buildDownloadHtml(title, downloadContent);
+      zip.file('index.html', fullHtml);
+
+      // Fetch each page image and add to ZIP
+      const fetches = uniqueImages.map(async (filename) => {
+        try {
+          const res = await fetch(
+            `${BASE}/api/texts/${id}/page-image/${filename}`,
+            { credentials: 'same-origin' }
+          );
+          if (res.ok) {
+            const blob = await res.blob();
+            imgFolder.file(filename, blob);
+          }
+        } catch {
+          // Skip images that can't be fetched
+        }
+      });
+      await Promise.all(fetches);
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError('Download failed: ' + err.message);
+    } finally {
+      setDownloading(false);
+    }
   }
 
   if (loading) {
@@ -567,7 +589,7 @@ export default function HtmlTextDetail() {
             </div>
             <h1 className="font-display font-semibold text-2xl text-cail-dark">{text.name}</h1>
             <p className="text-sm text-gray-500 mt-2">
-              Click directly on the text to edit. Use View Source for raw HTML editing. Download includes MathJax for offline viewing.
+              Click directly on the text to edit. Use View Source for raw HTML editing. Math renders natively in any modern browser.
             </p>
             {sourcePdfName && (
               <a
@@ -599,9 +621,10 @@ export default function HtmlTextDetail() {
             </button>
             <button
               onClick={downloadHtml}
-              className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200"
+              disabled={downloading}
+              className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
             >
-              Download HTML
+              {downloading ? 'Packaging...' : 'Download'}
             </button>
             <button
               onClick={saveHtml}

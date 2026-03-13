@@ -92,6 +92,8 @@ export default function PdfProjectView() {
           setUploadProgress(`Parsing page ${progress.pageNumber}/${progress.totalPages} (Gemini Flash, native PDF)...`);
         } else if (progress.stage === 'cleanup') {
           setUploadProgress('Normalizing headings and merging fragments...');
+        } else if (progress.stage === 'upload-images') {
+          setUploadProgress('Uploading page images...');
         }
       });
 

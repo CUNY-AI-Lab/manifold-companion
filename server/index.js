@@ -48,8 +48,8 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: IS_PRODUCTION
-        ? ["'self'", "https://static.cloudflareinsights.com", "https://cdn.jsdelivr.net"]
-        : ["'self'", "'unsafe-inline'", "https://static.cloudflareinsights.com", "https://cdn.jsdelivr.net"],
+        ? ["'self'", "https://static.cloudflareinsights.com"]
+        : ["'self'", "'unsafe-inline'", "https://static.cloudflareinsights.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:"],

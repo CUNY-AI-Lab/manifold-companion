@@ -352,6 +352,12 @@ body {
   border: 1px dashed #d1d5db;
 }
 
+.pdf-preview-pane figure img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
+
 .pdf-preview-pane figcaption {
   font-style: italic;
   color: #6b7280;
@@ -397,36 +403,22 @@ body {
   line-height: 0;
 }
 
-/* --- MathJax containers ------------------------------------------ */
+/* --- MathML (native browser rendering via temml) -------------------- */
 
-/* Inline math — must stay inline, no overflow tricks */
-.pdf-preview-pane mjx-container {
-  display: inline !important;
-  overflow-x: visible;
+.pdf-preview-pane math {
+  font-size: 1.1em;
 }
 
-.pdf-preview-pane mjx-container svg {
-  display: inline !important;
-}
-
-/* Display math (block-level) — add spacing, scroll only when needed */
-.pdf-preview-pane mjx-container[display="true"],
-.pdf-preview-pane p > mjx-container:only-child {
-  display: block !important;
-  overflow-x: auto;
-  overflow-y: hidden;
+.pdf-preview-pane math[display="block"] {
+  display: block;
   margin: 0.75rem 0;
-  scrollbar-width: none;
+  overflow-x: auto;
 }
 
-.pdf-preview-pane mjx-container[display="true"]::-webkit-scrollbar,
-.pdf-preview-pane p > mjx-container:only-child::-webkit-scrollbar {
-  display: none;
-}
-
-.pdf-preview-pane mjx-container[display="true"] svg,
-.pdf-preview-pane p > mjx-container:only-child svg {
-  display: block !important;
+.pdf-preview-pane .math-fallback {
+  font-family: 'Cambria Math', 'STIX Two Math', serif;
+  color: #b91c1c;
+  font-size: 0.9em;
 }
 
 /* --- Contenteditable hover/focus indicators ---------------------- */

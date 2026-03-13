@@ -363,6 +363,76 @@ router.post('/texts/:id/pdf-upload', uploadLimiter, async (req, res) => {
   }
 });
 
+// ---- POST /texts/:id/page-images — upload rendered page JPEGs -----------
+router.post('/texts/:id/page-images', uploadLimiter, async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const typeCheck = requirePdfProject(result.project);
+    if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
+
+    const upload = createUpload(req.user.id, result.project.id, result.text.id);
+    const mw = upload.array('pages', 500);
+
+    mw(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        console.error('Page image upload error:', uploadErr);
+        return res.status(400).json({ error: 'Page image upload failed.' });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'No images uploaded.' });
+      }
+
+      // Validate each file is actually an image
+      const validFiles = [];
+      for (const file of req.files) {
+        if (validateImageMagicBytes(file.path)) {
+          validFiles.push(file.filename);
+        } else {
+          try { await unlink(file.path); } catch { /* ignore */ }
+        }
+      }
+
+      await refreshUserStorage(req.user.id);
+      res.status(201).json({ uploaded: validFiles.length, files: validFiles });
+    });
+  } catch (err) {
+    console.error('POST /texts/:id/page-images error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- GET /texts/:id/page-image/:filename — serve page image (lightweight) --
+router.get('/texts/:id/page-image/:filename', async (req, res) => {
+  try {
+    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    const safe = sanitizeFilename(req.params.filename);
+    if (!safe || !/^page-\d+\.jpg$/.test(safe)) {
+      return res.status(400).json({ error: 'Invalid filename.' });
+    }
+
+    const dir = getTextDir(req.user.id, result.project.id, result.text.id);
+    const filePath = join(dir, safe);
+
+    let buffer;
+    try {
+      buffer = await readFile(filePath);
+    } catch {
+      return res.status(404).json({ error: 'Page image not found.' });
+    }
+
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.send(buffer);
+  } catch (err) {
+    console.error('GET /texts/:id/page-image/:filename error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Pages
 // ---------------------------------------------------------------------------
