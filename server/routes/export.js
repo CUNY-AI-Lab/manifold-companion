@@ -3,8 +3,12 @@
 // ---------------------------------------------------------------------------
 
 import { Router } from 'express';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import archiver from 'archiver';
 import { requireAuth } from '../middleware/auth.js';
+import { convertHtmlTexToMathML } from '../services/openrouter.js';
+import { getTextDir } from '../services/storage.js';
 import {
   getProjectById,
   getTextById,
@@ -132,7 +136,7 @@ router.post('/projects/:projectId/export', async (req, res) => {
     let fileCounter = 0;
 
     // Recursive tree walker — processes each node, adds files to archive, returns toc entries
-    function processNode(node) {
+    async function processNode(node) {
       fileCounter++;
       const num = String(fileCounter).padStart(2, '0');
 
@@ -154,7 +158,7 @@ router.post('/projects/:projectId/export', async (req, res) => {
           start_section: true,
         };
         if (node.children?.length) {
-          entry.children = node.children.map(processNode);
+          entry.children = await Promise.all(node.children.map(processNode));
         }
         return entry;
       }
@@ -170,13 +174,42 @@ router.post('/projects/:projectId/export', async (req, res) => {
       // PDF-to-HTML texts: export as .html; Image-to-Markdown texts: export as .md
       if (text?.html_content && project.project_type === 'pdf_to_html') {
         const htmlFilename = `text-${num}-${slugify(node.label || text?.name)}.html`;
-        const htmlContent = [
-          `<!-- title: ${textTitle} -->`,
-          `<!-- language: ${textLang} -->`,
-          `<!-- creator: ${textCreator} -->`,
-          '',
-          text.html_content,
-        ].join('\n');
+        // Convert TeX→MathML at export time for Manifold compatibility
+        let mathmlHtml = convertHtmlTexToMathML(text.html_content);
+
+        // Collect image references and rewrite src to relative paths in the ZIP
+        const imageRefs = [...mathmlHtml.matchAll(/src="(page-[\w-]+\.\w+)"/g)].map((m) => m[1]);
+        const uniqueImages = [...new Set(imageRefs)];
+        if (uniqueImages.length > 0) {
+          // Add images to a subfolder in the archive
+          const imgDir = `images-${num}`;
+          const textDir = getTextDir(req.user.id, project.id, text.id);
+          for (const imgFilename of uniqueImages) {
+            try {
+              const imgBuffer = await readFile(join(textDir, imgFilename));
+              archive.append(imgBuffer, { name: `${imgDir}/${imgFilename}` });
+            } catch {
+              // Skip missing images
+            }
+          }
+          // Rewrite image paths to point to the subfolder
+          mathmlHtml = mathmlHtml.replace(
+            /src="(page-[\w-]+\.\w+)"/g,
+            (_, fn) => `src="${imgDir}/${fn}"`
+          );
+        }
+
+        // Wrap in a proper HTML document so Manifold can parse <head>/<body>
+        const htmlContent = `<!DOCTYPE html>
+<html lang="${escapeAttr(textLang)}">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(textTitle)}</title>
+</head>
+<body>
+${mathmlHtml}
+</body>
+</html>`;
         archive.append(htmlContent, { name: htmlFilename });
 
         const entry = {
@@ -184,7 +217,7 @@ router.post('/projects/:projectId/export', async (req, res) => {
           source_path: htmlFilename,
         };
         if (node.children?.length) {
-          entry.children = node.children.map(processNode);
+          entry.children = await Promise.all(node.children.map(processNode));
         }
         return entry;
       }
@@ -212,13 +245,13 @@ router.post('/projects/:projectId/export', async (req, res) => {
         source_path: mdFilename,
       };
       if (node.children?.length) {
-        entry.children = node.children.map(processNode);
+        entry.children = await Promise.all(node.children.map(processNode));
       }
       return entry;
     }
 
     // Process all top-level nodes
-    const manifestToc = resolvedToc.map(processNode);
+    const manifestToc = await Promise.all(resolvedToc.map(processNode));
 
     // Build manifest.yml with recursive toc
     const manifestLines = [
@@ -266,6 +299,22 @@ router.post('/projects/:projectId/export', async (req, res) => {
 function escapeYaml(str) {
   if (!str) return '';
   return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
+ * Escape a string for safe use in HTML text content.
+ */
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Escape a string for safe use in HTML attributes.
+ */
+function escapeAttr(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**

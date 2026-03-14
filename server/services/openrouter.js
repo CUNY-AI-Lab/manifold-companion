@@ -213,11 +213,10 @@ Rules:
 - Use semantic HTML tags: h1, h2, h3, h4, p, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, aside, section, header, footer, figure, figcaption, nav, strong, em, sup, sub, span
 - Preserve ALL visible text in correct reading order
 - Skip running headers, running footers, and page numbers (unless they are meaningful content)
-- Mathematics MUST use TeX delimiters. The distinction between INLINE and DISPLAY math is critical:
-  - INLINE math \\(...\\): for variables, short expressions, and math that appears within a sentence of text. Example: <p>The function \\(f(x) = x^2\\) is defined for all \\(x\\).</p>
-  - DISPLAY math \\[...\\]: for ANY equation or formula that stands alone on its own line, is centered, or is visually separated from the surrounding text. This includes: equations, definitions, theorems, derivation steps, numbered equations, and any math that is NOT embedded in a sentence. Example: <p>The quadratic formula is:</p>\\[x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]
-  - When in doubt, use DISPLAY math. A standalone equation should NEVER use inline delimiters.
-- Do NOT use MathML. Do NOT use <math> tags. Use TeX only.
+- Mathematics MUST use TeX delimiters — never MathML or <math> tags:
+  - Inline math: \\(...\\) for variables and expressions within a sentence
+  - Display math: \\[...\\] for standalone equations, centered formulas, or anything on its own line
+  - IMPORTANT: always match delimiters — \\( must close with \\), and \\[ must close with \\]. Never mix them.
 - For multi-column equation layouts (e.g. numbered equations with equation numbers on the right, or aligned equation/answer pairs), use a borderless table: <table class="equation-table"><tr><td>\\[...\\]</td><td>(1)</td></tr></table>. This preserves the visual alignment from the PDF.
 - For diagrams, charts, graphs, or photos: use ONLY the extracted figure filenames provided in the prompt. Do NOT invent image filenames.
 - If no figure assets are listed, do NOT use any <img> tags. Use <figure><figcaption>[Description of the visual]</figcaption></figure> instead.
@@ -418,17 +417,31 @@ function wrapOrphanedHeaders(innerHtml) {
 // Runs after all pages are assembled, before wrapping in article.
 // ---------------------------------------------------------------------------
 
+function isSubstantialMath(tex) {
+  // Don't promote trivially short expressions (single variables, simple symbols)
+  // Only promote expressions that look like real equations/formulas
+  const trimmed = tex.trim();
+  if (trimmed.length < 4) return false; // single vars like "f", "h", "a"
+  // Must contain an operator, fraction, relation, or other "equation-like" content
+  return /[=<>+\-*/]|\\(?:frac|sqrt|sum|prod|int|lim|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|to|infty|left|right|begin|end)/.test(trimmed);
+}
+
 function promoteInlineToDisplay(html) {
-  // Pre-conversion: promote \(...\) to \[...\] when it's clearly standalone.
+  // Pre-conversion: promote \(...\) to \[...\] when it's clearly a standalone equation.
   // Pattern: a <p> (or <td>) whose only meaningful content is a single \(...\) expression.
+  // Guard: only promote substantial math (equations), not single variables.
   html = html.replace(
     /(<(?:p|td)[^>]*>)\s*\\\(([\s\S]*?)\\\)\s*(<\/(?:p|td)>)/gi,
-    (match, open, tex, close) => `${open}\\[${tex}\\]${close}`
+    (match, open, tex, close) => {
+      if (!isSubstantialMath(tex)) return match;
+      return `${open}\\[${tex}\\]${close}`;
+    }
   );
   // Also promote when the line is just \(...\) possibly with an equation number like (1)
   html = html.replace(
     /(<(?:p|td)[^>]*>)\s*\\\(([\s\S]*?)\\\)\s*(\(\d+\))?\s*(<\/(?:p|td)>)/gi,
     (match, open, tex, eqNum, close) => {
+      if (!isSubstantialMath(tex)) return match;
       const suffix = eqNum ? ` ${eqNum}` : '';
       return `${open}\\[${tex}\\]${suffix}${close}`;
     }
@@ -440,34 +453,68 @@ function convertTexToMathML(html) {
   // First promote obviously-display inline math to display
   html = promoteInlineToDisplay(html);
 
-  // Display math: \[...\]
-  html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, tex) => {
-    try {
-      return temml.renderToString(tex.trim(), { displayMode: true });
-    } catch {
-      // If temml can't parse it, leave the TeX as-is in a fallback span
-      return `<span class="math-fallback" title="TeX parse error">${escapeHtml(match)}</span>`;
+  // First pass: fix mismatched delimiters (\[...\) or \(...\]) before conversion
+  html = html.replace(/\\\[([^]*?)\\\)/g, (match, tex) => {
+    // \[ opened but \) closed — treat as display if short, else leave alone
+    if (tex.length < 500 && !/<\/(?:p|section|div|article|table)\b/i.test(tex)) {
+      return `\\[${tex}\\]`;
     }
+    return match;
+  });
+  html = html.replace(/\\\(([^]*?)\\\]/g, (match, tex) => {
+    // \( opened but \] closed — treat as inline if short, else leave alone
+    if (tex.length < 500 && !/<\/(?:p|section|div|article|table)\b/i.test(tex)) {
+      return `\\(${tex}\\)`;
+    }
+    return match;
   });
 
-  // Inline math: \(...\)
-  html = html.replace(/\\\(([\s\S]*?)\\\)/g, (match, tex) => {
+  // Display math: \[...\]
+  // Guard: refuse matches that cross block-level HTML boundaries
+  // Also demote trivial expressions (single variables) to inline
+  html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, tex) => {
+    if (tex.length > 2000 || /<\/(?:p|section|div|article|table|header|footer)\b/i.test(tex)) {
+      return match; // false positive — mismatched delimiters spanning blocks
+    }
+    const trimmed = tex.trim();
+    const useDisplay = isSubstantialMath(trimmed);
     try {
-      let mathml = temml.renderToString(tex.trim(), { displayMode: false });
-      // temml omits display attr on inline math — Manifold requires display="inline"
-      mathml = mathml.replace(/^<math(?!\s+display=)/, '<math display="inline"');
+      let mathml = temml.renderToString(trimmed, { displayMode: useDisplay });
+      if (!useDisplay) {
+        mathml = mathml.replace(/^<math(?:\s+display="[^"]*")?/, '<math display="inline"');
+        return `<span class="math-inline">${mathml}</span>`;
+      }
       return mathml;
     } catch {
       return `<span class="math-fallback" title="TeX parse error">${escapeHtml(match)}</span>`;
     }
   });
 
-  // Post-conversion: promote any <math display="inline"> that is the sole child of a <p>
-  // to display="block" — catches cases the pre-conversion step missed
+  // Inline math: \(...\)
+  // Guard: refuse matches that cross block-level HTML boundaries
+  // Wrap in <span> to force inline rendering (browsers render bare <math> as block in contenteditable)
+  html = html.replace(/\\\(([\s\S]*?)\\\)/g, (match, tex) => {
+    if (tex.length > 1000 || /<\/(?:p|section|div|article|table|header|footer)\b/i.test(tex)) {
+      return match;
+    }
+    try {
+      let mathml = temml.renderToString(tex.trim(), { displayMode: false });
+      mathml = mathml.replace(/^<math(?!\s+display=)/, '<math display="inline"');
+      return `<span class="math-inline">${mathml}</span>`;
+    } catch {
+      return `<span class="math-fallback" title="TeX parse error">${escapeHtml(match)}</span>`;
+    }
+  });
+
+  // Post-conversion: promote any inline math that is the sole child of a <p>
+  // to display="block" — but only for substantial math, not single variables
   html = html.replace(
-    /(<p[^>]*>)\s*(<math display="inline")([\s\S]*?<\/math>)\s*(<\/p>)/gi,
-    (match, pOpen, mathOpen, rest, pClose) =>
-      `${pOpen}<math display="block"${rest}${pClose}`
+    /(<p[^>]*>)\s*(?:<span class="math-inline">)?(<math display="inline")([\s\S]*?<\/math>)(?:<\/span>)?\s*(<\/p>)/gi,
+    (match, pOpen, mathOpen, rest, pClose) => {
+      const textContent = rest.replace(/<[^>]+>/g, '').trim();
+      if (textContent.length < 4) return match;
+      return `${pOpen}<math display="block"${rest}${pClose}`;
+    }
   );
 
   return html;
@@ -478,16 +525,64 @@ function escapeHtml(str) {
 }
 
 // ---------------------------------------------------------------------------
-// cleanupPdfHtml — normalize structure, convert TeX→MathML, wrap in article.
-// No LLM cleanup pass — the per-page output from Gemini is good enough.
-// We only do deterministic structural normalization + math conversion.
+// cleanupPdfHtml — normalize structure, wrap in article.
+// TeX stays as-is (\(...\) and \[...\]) — rendered client-side by KaTeX.
+// MathML conversion happens only at Manifold export time.
 // ---------------------------------------------------------------------------
 
 export async function cleanupPdfHtml(html) {
   let result = normalizeCalloutBoxes(html);
-  result = convertTexToMathML(result);
   if (/<article\b/i.test(result)) return result;
   return `<article class="pdf-html-document">\n${result}\n</article>`;
+}
+
+// ---------------------------------------------------------------------------
+// convertTexToMathML — exported for use at Manifold export time only.
+// Called by the export route, NOT during page parsing/cleanup.
+// ---------------------------------------------------------------------------
+
+export function convertHtmlTexToMathML(html) {
+  // Fix mismatched delimiters first
+  html = html.replace(/\\\[([^]*?)\\\)/g, (match, tex) => {
+    if (tex.length < 500 && !/<\/(?:p|section|div|article|table)\b/i.test(tex)) {
+      return `\\[${tex}\\]`;
+    }
+    return match;
+  });
+  html = html.replace(/\\\(([^]*?)\\\]/g, (match, tex) => {
+    if (tex.length < 500 && !/<\/(?:p|section|div|article|table)\b/i.test(tex)) {
+      return `\\(${tex}\\)`;
+    }
+    return match;
+  });
+
+  // Display math: \[...\]
+  html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, tex) => {
+    if (tex.length > 2000 || /<\/(?:p|section|div|article|table|header|footer)\b/i.test(tex)) {
+      return match;
+    }
+    try {
+      return temml.renderToString(tex.trim(), { displayMode: true });
+    } catch {
+      return match; // leave TeX as-is if temml fails
+    }
+  });
+
+  // Inline math: \(...\)
+  html = html.replace(/\\\(([\s\S]*?)\\\)/g, (match, tex) => {
+    if (tex.length > 1000 || /<\/(?:p|section|div|article|table|header|footer)\b/i.test(tex)) {
+      return match;
+    }
+    try {
+      let mathml = temml.renderToString(tex.trim(), { displayMode: false });
+      mathml = mathml.replace(/^<math(?!\s+display=)/, '<math display="inline"');
+      return mathml;
+    } catch {
+      return match;
+    }
+  });
+
+  return html;
 }
 
 // ---------------------------------------------------------------------------
