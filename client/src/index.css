@@ -156,12 +156,18 @@ body {
 /* --- Example / exercise boxes (section > header pattern) --------- */
 /* The model wraps examples in <section><header>Example N</header>... */
 
-.pdf-preview-pane section[data-page] > section {
+/* Callout boxes: only sections with a <header> child (examples, definitions, etc.) */
+.pdf-preview-pane section[data-page] > section:has(> header) {
   margin: 1.25rem 0;
   padding: 1rem 1.25rem;
   background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);
   border-radius: 0.625rem;
   border: 1px solid #fde68a;
+}
+
+/* Plain sections without headers — no box styling */
+.pdf-preview-pane section[data-page] > section:not(:has(> header)) {
+  margin: 1rem 0;
 }
 
 .pdf-preview-pane section[data-page] > section > header,
@@ -177,8 +183,8 @@ body {
   border-bottom: 1px solid #fcd34d;
 }
 
-/* Nested sections inside examples (for sub-parts) keep lighter style */
-.pdf-preview-pane section[data-page] > section > section {
+/* Nested sections inside callout boxes (for sub-parts) keep lighter style */
+.pdf-preview-pane section[data-page] > section:has(> header) > section {
   margin: 0.75rem 0;
   padding: 0.75rem 1rem;
   background: rgba(255, 255, 255, 0.6);
@@ -448,6 +454,15 @@ body {
 }
 
 .pdf-preview-pane math[display="inline"] {
+  display: inline;
+}
+
+/* Span wrapper forces inline rendering in contenteditable (browsers render bare <math> as block) */
+.pdf-preview-pane .math-inline {
+  display: inline;
+}
+
+.pdf-preview-pane .math-inline math {
   display: inline;
 }
 

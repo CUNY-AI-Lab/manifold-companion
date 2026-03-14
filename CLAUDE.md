@@ -35,11 +35,10 @@ There are no test or lint scripts configured.
 ## Tech Stack
 
 - **Backend**: Express 4, better-sqlite3, express-session (SQLite-backed), bcrypt, multer, sharp, helmet
-- **Frontend**: React 18, React Router 6, Tailwind CSS 3, marked + DOMPurify, pdfjs-dist
-- **AI/OCR**: AWS Bedrock -- Qwen 3 VL 235B (`qwen.qwen3-vl-235b-a22b`) for OCR and PDF page parsing, GPT-OSS 120B (`openai.gpt-oss-120b-1:0`) for text processing, configurable formula-repair model via `BEDROCK_FORMULA_MODEL` or `BEDROCK_TEXT_MODEL`
+- **Frontend**: React 18, React Router 6, Tailwind CSS 3, marked + DOMPurify, pdfjs-dist, KaTeX (client-side TeX rendering)
+- **AI/OCR**: AWS Bedrock for OCR (`qwen.qwen3-vl-235b-a22b`) and text processing (`openai.gpt-oss-120b-1:0`); OpenRouter (Gemini 3 Flash) for PDF page parsing and HTML cleanup
+- **Math**: temml (server-side TeX→MathML conversion at Manifold export time)
 - **Database**: SQLite with WAL mode, foreign keys enabled
-
-Alternative under consideration for higher-fidelity PDF conversion: **Mathpix Convert API** as a provider-backed primary converter for documents where near-perfect structure/math fidelity matters more than keeping all inference inside Bedrock.
 
 ## Environment
 
@@ -50,9 +49,8 @@ Configuration via `.env` in project root (symlinked to `server/.env` because `do
 - `AWS_REGION` -- AWS region for Bedrock
 - `BEDROCK_OCR_MODEL` -- Vision model ID for OCR (currently `qwen.qwen3-vl-235b-a22b`)
 - `BEDROCK_TEXT_MODEL` -- Text model ID for summaries/translations (currently `openai.gpt-oss-120b-1:0`)
-- `BEDROCK_FORMULA_MODEL` -- Optional override model ID for PDF formula-to-MathML repair (falls back to `BEDROCK_TEXT_MODEL`)
-- `BEDROCK_PDF_VISION_MODEL` -- Optional override model ID for PDF page parsing (falls back to `BEDROCK_OCR_MODEL`)
-- `BEDROCK_PDF_CLEANUP_MODEL` -- Optional override model ID for PDF HTML cleanup (currently defaults in code to `qwen.qwen3-next-80b-a3b`)
+- `OPENROUTER_API_KEY` -- API key for OpenRouter (used for PDF page parsing and HTML cleanup)
+- `OPENROUTER_PDF_MODEL` -- OpenRouter model for PDF parsing (default `google/gemini-3-flash-preview`)
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` -- Seeds initial admin user at startup (idempotent; only creates if not exists)
 - `TRUST_PROXY` -- Set `true` when behind Nginx (enables correct rate limiting and secure cookies)
 - `COOKIE_SECURE` -- Set `true` for HTTPS deployments (auto-enabled in production)
@@ -72,7 +70,7 @@ Applied in order:
 ### Security Middleware
 
 - **`middleware/auth.js`**: `requireAuth` (validates session, attaches `req.user`, checks `status === 'approved'`), `requireAdmin` (chains requireAuth + checks `role === 'admin'`)
-- **`middleware/rateLimits.js`**: `aiLimiter` (50 req/hour for OCR, summary, translation), `formulaRepairLimiter` (400 req/hour), `pdfVisionLimiter` (1200 req/hour), `uploadLimiter` (30 req/15 min) — all keyed by `req.session.userId` with IP fallback
+- **`middleware/rateLimits.js`**: `aiLimiter` (50 req/hour for OCR, summary, translation), `pdfVisionLimiter` (1200 req/hour), `uploadLimiter` (30 req/15 min) — all keyed by `req.session.userId` with IP fallback
 - **`middleware/csrf.js`**: `csrfCheck` rejects state-changing requests without matching Origin/Referer header
 - **`middleware/security.js`**: `sanitizeFilename()` (URL-decodes then strips traversal/null bytes/special chars), `validateEmail()`, `validatePassword()` (≥8 chars)
 - **`middleware/upload.js`**: Multer factories for image uploads and source PDF uploads, image allowlist (jpg/jpeg/png/tiff/bmp/webp), PDF allowlist, `validateImageMagicBytes()` and `validatePdfMagicBytes()` for binary signature verification post-upload
@@ -97,7 +95,7 @@ All route modules except auth apply `requireAuth` at the router level. Admin rou
 /api/projects    → server/routes/projects.js  (CRUD + project type on create)
 /api             → server/routes/texts.js     (texts, pages, image upload, PDF upload, HTML storage, image/PDF serving, metadata, settings)
 /api             → server/routes/ocr.js       (SSE OCR pipeline — rate-limited by aiLimiter)
-/api             → server/routes/llm.js       (summary, translation, formula repair, PDF page parsing, PDF cleanup)
+/api             → server/routes/llm.js       (summary, translation, PDF page parsing, PDF cleanup)
 /api             → server/routes/export.js    (ZIP export)
 ```
 
@@ -131,21 +129,27 @@ Model format dispatch in `bedrock.js` is based on model ID prefix: `qwen.*` and 
 
 ### PDF to HTML Pipeline
 
-Current primary path:
 1. User creates a `pdf_to_html` project and a text/document within it
 2. Client renders PDF pages to JPEGs in-browser with `pdfjs-dist`
 3. Client sends each page image to `POST /api/texts/:id/pdf-parse-page`
-4. Server uses Bedrock vision (`Qwen3-VL` by default) to return semantic page HTML
+4. Server uses OpenRouter (Gemini 3 Flash) to return semantic page HTML with TeX math delimiters
 5. Client assembles page sections into one document and sends it to `POST /api/texts/:id/pdf-cleanup`
-6. Server uses a text model (`Qwen3 Next 80B` by default) to normalize heading hierarchy and merge paragraph fragments while preserving page sections
+6. Server uses OpenRouter to normalize heading hierarchy and merge paragraph fragments
 7. Client uploads the original PDF plus generated HTML via `POST /api/texts/:id/pdf-upload`
-8. User edits the saved HTML in `HtmlTextDetail.jsx` and can re-run formula repair on unresolved placeholders
+8. User edits the saved HTML in `HtmlTextDetail.jsx`; can reprocess the PDF without re-uploading
 
-Important caveat:
-- This Bedrock-native pipeline is materially better than the original `pdfjs text -> heuristics` path, but it is still not near-perfect on textbook/math-heavy PDFs. Formula recall and deterministic heading preservation remain the main weak points.
+### Math Architecture
 
-Alternative option:
-- **Mathpix Convert API** is the leading external option when near-perfect PDF conversion quality matters more than keeping inference inside Bedrock. It is currently not integrated, but should be considered the primary upgrade path if the Bedrock-native converter remains below quality requirements.
+TeX is the storage format; MathML is generated only at Manifold export time.
+
+- **Storage**: HTML contains TeX delimiters — `\(...\)` for inline math, `\[...\]` for display math
+- **Editor rendering**: KaTeX auto-render processes TeX in the contenteditable div; rendered spans are `contenteditable="false"` to prevent corruption
+- **Saving**: KaTeX rendered spans are converted back to TeX delimiters before persisting (via `extractTexFromKatex()`)
+- **Download**: Downloaded HTML includes KaTeX CDN scripts for self-contained TeX rendering
+- **Manifold export**: `convertHtmlTexToMathML()` in `server/services/openrouter.js` uses temml to convert TeX→MathML at export time, with `display="inline"` for inline math per Manifold requirements
+- **Export ZIP**: HTML files are wrapped in proper `<!DOCTYPE html><html><head><body>` structure; referenced page images are included in `images-NN/` subfolders
+
+Manifold MathML requirements: 30 core elements, `display="inline"` required for inline math, `alttext` recommended. See https://manifoldscholar.github.io/manifold-docusaurus/docs/backend/manifold_editor#mathml
 
 ### File Storage (server/services/storage.js)
 
@@ -165,7 +169,7 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **PDF-to-HTML conversion**: `client/src/lib/pdfBedrockPipeline.js` renders PDF pages to images, sends them through the Bedrock hybrid pipeline, and uploads the final HTML. `client/src/lib/pdfToHtml.js` is legacy heuristic code and should not be treated as the preferred primary converter.
 - **Image resize**: `resizeImageBlob()` uses Canvas API to shrink images over 3.5 MB before upload.
 - **Markdown rendering**: All user-facing markdown uses `marked.parse()` piped through `DOMPurify.sanitize()`.
-- **HTML rendering**: `HtmlTextDetail.jsx` sanitizes rendered HTML while explicitly allowing MathML tags/attributes needed for formula display.
+- **HTML rendering**: `HtmlTextDetail.jsx` sanitizes rendered HTML while allowing MathML tags/attributes. KaTeX auto-render converts TeX delimiters to visual math in the contenteditable preview; `extractTexFromKatex()` reverses this before saving.
 - **PDF project text actions**: `PdfProjectView.jsx` supports create, replace upload, open editor, and delete for PDF-to-HTML texts.
 
 ### Tailwind Theme (client/tailwind.config.js)
@@ -246,5 +250,4 @@ These are intentional copy-paste patterns to be aware of when making changes:
 - `verifyTextOwnership()` -- duplicated in `texts.js`, `ocr.js`, `llm.js`
 - `compileFullText()` -- duplicated in `ocr.js`, `llm.js`
 - `pdfToImages()` and `resizeImageBlob()` -- duplicated in `ProjectView.jsx`, `TextDetail.jsx`
-- Formula batching is centralized in `client/src/lib/formulaRepair.js`; keep `PdfProjectView.jsx` and `HtmlTextDetail.jsx` aligned when changing formula-repair UX.
-- The legacy browser heuristic converter in `client/src/lib/pdfToHtml.js` and the current Bedrock hybrid path in `client/src/lib/pdfBedrockPipeline.js` may diverge. Prefer changing the Bedrock path unless intentionally reviving the heuristic fallback.
+- The legacy browser heuristic converter in `client/src/lib/pdfToHtml.js` and the current pipeline in `client/src/lib/pdfBedrockPipeline.js` may diverge. Prefer changing the pipeline path unless intentionally reviving the heuristic fallback.
