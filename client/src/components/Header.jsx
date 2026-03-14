@@ -65,14 +65,7 @@ function AboutModal({ open, onClose }) {
           </p>
 
           <p>
-            It supports two workflows: <strong className="text-cail-dark">Image to Markdown</strong> for
-            OCR-based text extraction from scanned pages, and <strong className="text-cail-dark">PDF to HTML</strong> for
-            converting source PDFs into structured, editable HTML with math support. You can review, edit,
-            summarize, and translate the results — all within the browser.
-          </p>
-
-          <p>
-            The tool is designed as a companion to{' '}
+            It supports two workflows, designed as a companion to{' '}
             <a
               href="https://cuny.manifoldapp.org/"
               target="_blank"
@@ -85,42 +78,46 @@ function AboutModal({ open, onClose }) {
             and shared as open-access scholarly works.
           </p>
 
-          <div className="bg-cail-cream rounded-xl p-4 space-y-2">
-            <h3 className="font-display font-semibold text-cail-dark text-sm">What you can do</h3>
+          <div className="bg-cail-cream rounded-xl p-4 space-y-3">
+            <div>
+              <h3 className="font-display font-semibold text-cail-dark text-sm">Image to Markdown</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Best for <strong className="text-gray-700">scanned pages, photographs of documents, and handwritten texts</strong>.
+                Upload images (JPEG, PNG, TIFF, BMP, WebP, HEIC) or rasterized PDFs and the platform extracts
+                text via OCR into editable Markdown. Review and correct page by page, then export.
+              </p>
+            </div>
+            <div className="border-t border-gray-200 pt-3">
+              <h3 className="font-display font-semibold text-cail-dark text-sm">PDF to HTML</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Best for <strong className="text-gray-700">digital PDFs like textbooks, articles, and reports</strong> where
+                you want to preserve structure — headings, tables, lists, and mathematical formulas.
+                Upload a source PDF and the platform converts it to semantic HTML that you can edit
+                in a rich-text editor.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+            <h3 className="font-display font-semibold text-cail-dark text-sm">Both workflows include</h3>
             <ul className="space-y-1.5 text-sm text-gray-600">
               <li className="flex items-start gap-2">
                 <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Upload scanned pages (JPEG, PNG, TIFF, BMP, WebP, HEIC) or multi-page PDFs
+                AI-powered summaries and translations
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Run AI-powered OCR to extract text from handwritten or printed documents
+                Dublin Core metadata for scholarly cataloging
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Convert PDFs to structured HTML with semantic headings, tables, and TeX math
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Review and edit extracted text page by page or as full HTML
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Generate summaries and translations using large language models
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Add Dublin Core metadata for scholarly cataloging
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Export projects as ZIP archives ready for Manifold import
+                Export as ZIP archives ready for Manifold import
               </li>
             </ul>
           </div>
 
           <p className="text-xs text-gray-400 pt-2">
-            Powered by Qwen and GPT-OSS (AWS Bedrock) and Gemini (OpenRouter).
+            Powered by AI vision and language models.
           </p>
         </div>
       </div>
