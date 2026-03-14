@@ -59,15 +59,16 @@ function AboutModal({ open, onClose }) {
 
         <div className="space-y-4 text-sm text-gray-600 leading-relaxed">
           <p>
-            The <strong className="text-cail-dark">Manifold Companion</strong> is an AI-powered OCR tool built by the{' '}
+            The <strong className="text-cail-dark">Manifold Companion</strong> is a document-processing platform built by the{' '}
             <strong className="text-cail-dark">CUNY AI Lab</strong> to help researchers, students, and instructors
-            digitize manuscript pages, historical documents, and other printed or handwritten texts.
+            digitize manuscript pages, historical documents, textbooks, and other printed or handwritten texts.
           </p>
 
           <p>
-            Upload images or PDFs of your source material and the platform will use vision AI models to extract
-            text via optical character recognition. You can then review, edit, summarize, and translate the
-            results — all within the browser.
+            It supports two workflows: <strong className="text-cail-dark">Image to Markdown</strong> for
+            OCR-based text extraction from scanned pages, and <strong className="text-cail-dark">PDF to HTML</strong> for
+            converting source PDFs into structured, editable HTML with math support. You can review, edit,
+            summarize, and translate the results — all within the browser.
           </p>
 
           <p>
@@ -97,7 +98,11 @@ function AboutModal({ open, onClose }) {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cail-teal mt-0.5">&#10003;</span>
-                Review and edit extracted text page by page
+                Convert PDFs to structured HTML with semantic headings, tables, and TeX math
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-cail-teal mt-0.5">&#10003;</span>
+                Review and edit extracted text page by page or as full HTML
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cail-teal mt-0.5">&#10003;</span>
@@ -115,7 +120,7 @@ function AboutModal({ open, onClose }) {
           </div>
 
           <p className="text-xs text-gray-400 pt-2">
-            Powered by open-weight models (Qwen, GPT-OSS) served via AWS Bedrock.
+            Powered by Qwen and GPT-OSS (AWS Bedrock) and Gemini (OpenRouter).
           </p>
         </div>
       </div>
