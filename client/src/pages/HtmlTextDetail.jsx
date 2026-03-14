@@ -29,6 +29,26 @@ const MATHML_ATTRS = [
 
 // Math rendering: TeX stored in HTML, rendered client-side with KaTeX, converted to MathML at Manifold export
 
+const DC_FIELDS = [
+  { key: 'dc_title', label: 'Title' },
+  { key: 'dc_creator', label: 'Creator' },
+  { key: 'dc_subject', label: 'Subject' },
+  { key: 'dc_description', label: 'Description' },
+  { key: 'dc_publisher', label: 'Publisher' },
+  { key: 'dc_contributor', label: 'Contributor' },
+  { key: 'dc_date', label: 'Date' },
+  { key: 'dc_type', label: 'Type' },
+  { key: 'dc_format', label: 'Format' },
+  { key: 'dc_identifier', label: 'Identifier' },
+  { key: 'dc_source', label: 'Source' },
+  { key: 'dc_language', label: 'Language' },
+  { key: 'dc_relation', label: 'Relation' },
+  { key: 'dc_coverage', label: 'Coverage' },
+  { key: 'dc_rights', label: 'Rights' },
+];
+
+const TABS = ['Review', 'Details'];
+
 // ---------------------------------------------------------------------------
 // Image resize overlay — click image to select, drag handles to resize
 // ---------------------------------------------------------------------------
@@ -38,7 +58,6 @@ function ImageResizer({ editableRef, onDirty }) {
   const [rect, setRect] = useState(null);
   const dragging = useRef(null);
 
-  // Listen for clicks on images inside the editable area
   useEffect(() => {
     const el = editableRef.current;
     if (!el) return;
@@ -85,7 +104,6 @@ function ImageResizer({ editableRef, onDirty }) {
     if (!target) return;
     const startX = e.clientX;
     const startW = target.offsetWidth;
-    const aspectRatio = target.naturalWidth / target.naturalHeight || startW / target.offsetHeight;
 
     function onPointerMove(ev) {
       const dx = corner.includes('right') ? ev.clientX - startX : startX - ev.clientX;
@@ -113,19 +131,16 @@ function ImageResizer({ editableRef, onDirty }) {
 
   return (
     <>
-      {/* Selection border */}
       <div
         className="absolute pointer-events-none border-2 border-cail-blue rounded-sm z-40"
         style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
       />
-      {/* Size label */}
       <div
         className="absolute z-50 px-1.5 py-0.5 rounded bg-cail-blue text-white text-[10px] font-medium whitespace-nowrap pointer-events-none"
         style={{ top: rect.top - 22, left: rect.left }}
       >
         {target.getAttribute('width') || Math.round(rect.width)}px
       </div>
-      {/* Corner handles */}
       <div
         className={handleClass}
         style={{ top: rect.top - 5, left: rect.left + rect.width - 5, cursor: 'nesw-resize' }}
@@ -185,6 +200,32 @@ function getBlockTag() {
   return 'p';
 }
 
+/**
+ * Unwrap selected content from its closest callout container (section with header, aside, blockquote).
+ * Moves the inner content out and removes the wrapper.
+ */
+function unwrapCallout() {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  let node = sel.anchorNode;
+  while (node && node.nodeType !== 1) node = node.parentNode;
+  // Walk up to find the callout container
+  while (node) {
+    const tag = node.tagName?.toLowerCase();
+    if (tag === 'aside' || tag === 'blockquote') break;
+    if (tag === 'section' && node.querySelector(':scope > header')) break;
+    if (tag === 'article' || tag === 'body') { node = null; break; }
+    node = node.parentNode;
+  }
+  if (!node || !node.parentNode) return;
+  // Move all children out before the container, then remove container
+  const parent = node.parentNode;
+  while (node.firstChild) {
+    parent.insertBefore(node.firstChild, node);
+  }
+  parent.removeChild(node);
+}
+
 function FormattingToolbar({ onDirty, editableRef }) {
   const wrap = (fn) => () => { fn(); onDirty(); };
   const [showFind, setShowFind] = useState(false);
@@ -213,7 +254,6 @@ function FormattingToolbar({ onDirty, editableRef }) {
     const term = findRef.current?.value;
     if (!term) return;
     window.getSelection().removeAllRanges();
-    // Use browser find — highlight matches
     window.find(term, false, false, true, false, false, false);
   }
 
@@ -234,7 +274,6 @@ function FormattingToolbar({ onDirty, editableRef }) {
     const term = findRef.current?.value;
     const replacement = replaceRef.current?.value;
     if (!el || !term || replacement == null) return;
-    // Simple innerHTML replacement for plain text
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     el.innerHTML = el.innerHTML.replace(new RegExp(`(?<=>)([^<]*?)${escaped}`, 'g'), (match) =>
       match.replace(new RegExp(escaped, 'g'), replacement)
@@ -338,12 +377,16 @@ function FormattingToolbar({ onDirty, editableRef }) {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="4" x2="20" y2="20"/><path d="M7 21h10"/><path d="M9.5 4h5l-3 7"/></svg>
         </TBtn>
 
+        {/* Unwrap from callout box */}
+        <TBtn onClick={wrap(unwrapCallout)} title="Remove callout box (unwrap from section/aside)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 2"/><path d="M8 12h8"/><path d="M12 8l4 4-4 4"/></svg>
+        </TBtn>
+
         <TBtn onClick={() => setShowFind(!showFind)} title="Find & Replace (Ctrl+H)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </TBtn>
       </div>
 
-      {/* Find & Replace bar */}
       {showFind && (
         <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-100 bg-gray-50/50">
           <input
@@ -384,78 +427,48 @@ function buildDownloadHtml(title, content) {
   onload="renderMathInElement(document.body,{delimiters:[{left:'\\\\[',right:'\\\\]',display:true},{left:'\\\\(',right:'\\\\)',display:false}],throwOnError:false});"><\/script>
 <style>
   body { font-family: Georgia, 'Times New Roman', serif; max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.75; color: #1a1a1a; }
-
-  /* Headings */
   h1 { font-size: 1.7rem; font-weight: 700; margin: 1.5rem 0 0.75rem; border-bottom: 2px solid #c7d2de; padding-bottom: 0.5rem; color: #1e293b; }
   h2 { font-size: 1.35rem; font-weight: 600; margin: 1.75rem 0 0.5rem; color: #1e3a5f; }
   h3 { font-size: 1.1rem; font-weight: 600; margin: 1.25rem 0 0.4rem; color: #334155; }
   h4 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.35rem; color: #475569; }
   p { margin: 0.5rem 0; }
-
-  /* Page sections */
   section[data-page] { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
-
-  /* Callout boxes: only sections with a header child */
   section[data-page] > section:has(> header) { margin: 1.25rem 0; padding: 1rem 1.25rem; background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%); border-radius: 0.625rem; border: 1px solid #fde68a; }
   section[data-page] > section:not(:has(> header)) { margin: 1rem 0; }
   section[data-page] > section > header,
   section[data-page] > section > h3:first-child,
   section[data-page] > section > h4:first-child { font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.03em; color: #92400e; margin: 0 0 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid #fcd34d; }
   section[data-page] > section:has(> header) > section { margin: 0.75rem 0; padding: 0.75rem 1rem; background: rgba(255,255,255,0.6); border-radius: 0.5rem; border: 1px solid #fde68a; }
-
-  /* Aside: definitions, theorems, callouts */
   aside { margin: 1.25rem 0; padding: 1rem 1.25rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 0.625rem; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
   aside > h2:first-child, aside > h3:first-child, aside > h4:first-child { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #1e40af; margin: 0 0 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid #93c5fd; }
-
-  /* Blockquote: theorem/definition callouts */
   blockquote { margin: 1.25rem 0; padding: 1rem 1.25rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 0.625rem; border: 1px solid #86efac; border-left: 4px solid #22c55e; color: #14532d; }
   blockquote > h2:first-child, blockquote > h3:first-child, blockquote > h4:first-child { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #166534; margin: 0 0 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid #86efac; }
-
-  /* Header elements */
   body > header, section[data-page] > header { margin-bottom: 0.75rem; }
-
-  /* Footer */
   footer { margin-top: 1.5rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #64748b; font-style: italic; }
-
-  /* Navigation / TOC */
   nav { margin: 0.5rem 0 1rem; }
   nav ul { list-style: none; padding: 0; margin: 0; }
   nav li { padding: 0.2rem 0; color: #475569; }
   .toc-entry { display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; }
   .toc-entry__title { flex: 1; }
   .toc-entry__page { color: #6b7280; white-space: nowrap; }
-
-  /* Lists */
   ul, ol { margin: 0.5rem 0; padding-left: 1.75rem; }
   li { margin: 0.25rem 0; }
   ol[type="a"] { list-style-type: lower-alpha; }
   ol[type="A"] { list-style-type: upper-alpha; }
   ol[type="i"] { list-style-type: lower-roman; }
-
-  /* Tables */
   table { border-collapse: collapse; margin: 1rem 0; width: 100%; font-size: 0.95rem; }
   th, td { border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem; text-align: left; }
   th { background: #f1f5f9; font-weight: 600; color: #334155; }
   tbody tr:nth-child(even) { background: #f8fafc; }
-
-  /* Equation layout tables — borderless */
   table.equation-table { border: none; margin: 0.5rem 0; }
   table.equation-table td { border: none; padding: 0.25rem 0.5rem; vertical-align: middle; background: transparent; }
   table.equation-table td:last-child { text-align: right; color: #6b7280; white-space: nowrap; }
-
-  /* Figures / images */
   figure { margin: 1.5rem 0; text-align: center; padding: 1rem; background: #fafafa; border-radius: 0.5rem; border: 1px dashed #d1d5db; }
   figure img { max-width: 100%; height: auto; border-radius: 0.375rem; }
   figcaption { font-style: italic; color: #6b7280; margin-top: 0.5rem; font-size: 0.9rem; }
-
-  /* Formula blocks */
   .formula-block { margin: 1rem 0; padding: 0.75rem 1rem; background: #f8f9fa; border-radius: 0.5rem; border: 1px solid #e9ecef; }
-
-  /* Links */
   a { color: #2563eb; text-decoration: underline; text-underline-offset: 2px; }
   a:hover { color: #1d4ed8; }
-
-  /* Inline elements */
   strong { font-weight: 700; }
   em { font-style: italic; }
   sup, sub { font-size: 0.75em; line-height: 0; }
@@ -484,20 +497,14 @@ const KATEX_OPTIONS = {
   strict: false,
 };
 
-/**
- * Run KaTeX auto-render on a DOM element.
- * Wraps rendered math in contenteditable="false" spans so users can't break them.
- */
 function renderTexInElement(el) {
   if (!el) return;
   renderMathInElement(el, KATEX_OPTIONS);
-  // Make rendered math non-editable to prevent accidental corruption
   el.querySelectorAll('.katex-display, .katex').forEach((span) => {
     const wrapper = span.closest('[data-katex-wrapper]');
     if (!wrapper) {
       const parent = span.parentNode;
       if (parent && !parent.hasAttribute('data-katex-wrapper')) {
-        // Only wrap if the immediate parent isn't already a wrapper
         const w = document.createElement('span');
         w.setAttribute('data-katex-wrapper', 'true');
         w.setAttribute('contenteditable', 'false');
@@ -509,15 +516,9 @@ function renderTexInElement(el) {
   });
 }
 
-/**
- * Convert KaTeX rendered spans back to TeX delimiters for storage.
- * Extracts the original TeX from <annotation encoding="application/x-tex">.
- */
 function extractTexFromKatex(html) {
   const div = document.createElement('div');
   div.innerHTML = html;
-
-  // Process display math first (katex-display wrappers)
   div.querySelectorAll('.katex-display').forEach((el) => {
     const annotation = el.querySelector('annotation[encoding="application/x-tex"]');
     if (annotation) {
@@ -526,14 +527,64 @@ function extractTexFromKatex(html) {
       wrapper.replaceWith(document.createTextNode(`\\[${tex}\\]`));
     }
   });
-
-  // Process inline math
   div.querySelectorAll('.katex').forEach((el) => {
     const annotation = el.querySelector('annotation[encoding="application/x-tex"]');
     if (annotation) {
       const tex = annotation.textContent;
       const wrapper = el.closest('[data-katex-wrapper]') || el;
       wrapper.replaceWith(document.createTextNode(`\\(${tex}\\)`));
+    }
+  });
+  return div.innerHTML;
+}
+
+/**
+ * Add anchor IDs to headings and link TOC entries to their corresponding sections.
+ */
+function linkTocEntries(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+
+  // Build a map of heading text → ID
+  const headingMap = new Map();
+  div.querySelectorAll('h1, h2, h3, h4').forEach((heading) => {
+    const text = heading.textContent.trim();
+    if (!text) return;
+    const slug = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 80);
+    if (!slug) return;
+    // Avoid duplicates
+    let id = slug;
+    let counter = 2;
+    while (headingMap.has(id)) { id = `${slug}-${counter++}`; }
+    heading.id = id;
+    headingMap.set(id, text);
+  });
+
+  // Find TOC entries and try to link them
+  div.querySelectorAll('.toc-entry__title').forEach((titleEl) => {
+    const titleText = titleEl.textContent.trim();
+    if (!titleText || titleEl.querySelector('a')) return; // already linked
+
+    // Try to find a matching heading by normalized text comparison
+    let bestId = null;
+    const normalizedTitle = titleText.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    div.querySelectorAll('h1[id], h2[id], h3[id], h4[id]').forEach((h) => {
+      if (bestId) return;
+      const normalizedHeading = h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      // Match if one contains the other or they share significant overlap
+      if (normalizedHeading === normalizedTitle ||
+          normalizedHeading.includes(normalizedTitle) ||
+          normalizedTitle.includes(normalizedHeading)) {
+        bestId = h.id;
+      }
+    });
+
+    if (bestId) {
+      const link = document.createElement('a');
+      link.href = `#${bestId}`;
+      link.textContent = titleText;
+      titleEl.textContent = '';
+      titleEl.appendChild(link);
     }
   });
 
@@ -558,20 +609,32 @@ export default function HtmlTextDetail() {
   const [toast, setToast] = useState('');
   const [sourceMode, setSourceMode] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState('Review');
+
+  // Details tab state
+  const [summary, setSummary] = useState('');
+  const [metadata, setMetadata] = useState({});
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [savingMetadata, setSavingMetadata] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     async function load() {
       try {
-        const [textData, htmlData] = await Promise.all([
+        const [textData, htmlData, summaryData, metaData] = await Promise.all([
           api.get(`/api/texts/${id}`),
           api.get(`/api/texts/${id}/html`),
+          api.get(`/api/texts/${id}/summary`).catch(() => ({ summary: '' })),
+          api.get(`/api/texts/${id}/metadata`).catch(() => ({})),
         ]);
         if (!active) return;
         setText(textData);
         setHtmlContent(htmlData.html_content || '');
         setSourcePdfName(htmlData.source_pdf_name || '');
+        setSummary(summaryData.summary || '');
+        setMetadata(metaData || {});
       } catch (err) {
         if (active) setError(err.message);
       } finally {
@@ -585,15 +648,16 @@ export default function HtmlTextDetail() {
 
   const sanitizedHtml = useMemo(() => {
     let html = DOMPurify.sanitize(htmlContent, SANITIZE_CONFIG);
-    // Rewrite page image/figure src to API endpoint for preview
     html = html.replace(
       /src="(page-[\w-]+\.\w+)"/g,
       (_, filename) => `src="${BASE}/api/texts/${id}/page-image/${filename}"`
     );
+    // Add TOC links
+    html = linkTocEntries(html);
     return html;
   }, [htmlContent, id]);
 
-  // Mark broken images so CSS can hide them gracefully
+  // Mark broken images
   useEffect(() => {
     const el = editableRef.current;
     if (!el) return;
@@ -604,45 +668,38 @@ export default function HtmlTextDetail() {
     return () => el.removeEventListener('error', handler, true);
   });
 
-  // Render TeX with KaTeX after content loads or changes
+  // Render TeX with KaTeX after content loads
   const katexRenderedRef = useRef('');
   useEffect(() => {
     const el = editableRef.current;
-    if (!el || sourceMode) return;
-    // Only re-render if the HTML actually changed
+    if (!el || sourceMode || activeTab !== 'Review') return;
     if (katexRenderedRef.current === sanitizedHtml) return;
     katexRenderedRef.current = sanitizedHtml;
-    // Small delay to let DOM settle after dangerouslySetInnerHTML
     const timer = setTimeout(() => renderTexInElement(el), 50);
     return () => clearTimeout(timer);
-  }, [sanitizedHtml, sourceMode]);
+  }, [sanitizedHtml, sourceMode, activeTab]);
 
-  // When switching from source to visual, sync the source textarea back
   function switchToVisual() {
     if (sourceRef.current) {
       const newHtml = sourceRef.current.value;
       setHtmlContent(newHtml);
-      katexRenderedRef.current = ''; // force KaTeX re-render
+      katexRenderedRef.current = '';
       setDirty(true);
     }
     setSourceMode(false);
   }
 
-  // When switching from visual to source, read from the editable div
   function switchToSource() {
     if (editableRef.current) {
-      // Extract TeX from KaTeX spans and normalize image srcs
       setHtmlContent(extractTexFromKatex(normalizeImageSrcs(editableRef.current.innerHTML)));
     }
     setSourceMode(true);
   }
 
-  // Track edits in the contenteditable div
   function handleEditableInput() {
     setDirty(true);
   }
 
-  // Extract content from the editor, converting KaTeX back to TeX
   function getEditableContent() {
     if (!sourceMode && editableRef.current) {
       return extractTexFromKatex(normalizeImageSrcs(editableRef.current.innerHTML));
@@ -657,11 +714,7 @@ export default function HtmlTextDetail() {
     let active = true;
 
     async function loadPdfPreview() {
-      if (!sourcePdfName) {
-        setPdfPages([]);
-        return;
-      }
-
+      if (!sourcePdfName) { setPdfPages([]); return; }
       setPdfLoading(true);
       try {
         const pdfjsLib = await import('pdfjs-dist');
@@ -669,16 +722,13 @@ export default function HtmlTextDetail() {
           'pdfjs-dist/build/pdf.worker.mjs',
           import.meta.url
         ).toString();
-
         const res = await fetch(`${BASE}/api/texts/${id}/source-pdf/${encodeURIComponent(sourcePdfName)}`, {
           credentials: 'same-origin',
         });
         if (!res.ok) throw new Error('Failed to load source PDF.');
-
         const buffer = await res.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
         const rendered = [];
-
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
           const page = await pdf.getPage(pageNumber);
           const viewport = page.getViewport({ scale: 1.25 });
@@ -694,7 +744,6 @@ export default function HtmlTextDetail() {
             height: viewport.height,
           });
         }
-
         if (active) setPdfPages(rendered);
       } catch (err) {
         if (active) setError(err.message);
@@ -707,7 +756,6 @@ export default function HtmlTextDetail() {
     return () => { active = false; };
   }, [id, sourcePdfName]);
 
-  // Strip API base URL from page image src so we store portable relative paths
   function normalizeImageSrcs(html) {
     return html.replace(
       new RegExp(`src="${BASE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/api/texts/\\d+/page-image/(page-[\\w-]+\\.\\w+)"`, 'g'),
@@ -720,10 +768,7 @@ export default function HtmlTextDetail() {
     setError('');
     try {
       const contentToSave = getEditableContent();
-
-      await api.put(`/api/texts/${id}/html`, {
-        html_content: contentToSave,
-      });
+      await api.put(`/api/texts/${id}/html`, { html_content: contentToSave });
       setHtmlContent(contentToSave);
       setDirty(false);
       setToast('HTML saved.');
@@ -760,7 +805,7 @@ export default function HtmlTextDetail() {
       });
 
       setHtmlContent(result.html);
-      katexRenderedRef.current = ''; // force re-render of KaTeX
+      katexRenderedRef.current = '';
       setDirty(false);
       setToast('PDF reprocessed successfully.');
       setTimeout(() => setToast(''), 3000);
@@ -772,18 +817,61 @@ export default function HtmlTextDetail() {
     }
   }
 
+  // --- Details tab functions ---
+
+  async function handleGenerateSummary() {
+    setGeneratingSummary(true);
+    setError('');
+    try {
+      const data = await api.post(`/api/texts/${id}/summary`);
+      setSummary(data.summary || '');
+      setToast('Summary generated.');
+      setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGeneratingSummary(false);
+    }
+  }
+
+  async function saveSummary() {
+    setSavingSummary(true);
+    setError('');
+    try {
+      await api.put(`/api/texts/${id}/summary`, { summary });
+      setToast('Summary saved.');
+      setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingSummary(false);
+    }
+  }
+
+  async function saveMetadata() {
+    setSavingMetadata(true);
+    setError('');
+    try {
+      await api.post(`/api/texts/${id}/metadata`, metadata);
+      setToast('Metadata saved.');
+      setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingMetadata(false);
+    }
+  }
+
   const [downloading, setDownloading] = useState(false);
 
   async function downloadHtml() {
     const title = text?.name || 'Document';
     const content = getEditableContent();
 
-    // Collect page image references from the HTML (pages and extracted figures)
     const imageRefs = [...content.matchAll(/src="(page-[\w-]+\.\w+)"/g)].map((m) => m[1]);
     const uniqueImages = [...new Set(imageRefs)];
 
     if (uniqueImages.length === 0) {
-      // No images — download as plain HTML
       const fullHtml = buildDownloadHtml(title, content);
       const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -795,21 +883,16 @@ export default function HtmlTextDetail() {
       return;
     }
 
-    // Download as ZIP with images in an images/ subfolder
     setDownloading(true);
     try {
       const zip = new JSZip();
       const imgFolder = zip.folder('images');
-
-      // Rewrite image paths to images/ subfolder for the download
       const downloadContent = content.replace(
         /src="(page-[\w-]+\.\w+)"/g,
         (_, filename) => `src="images/${filename}"`
       );
       const fullHtml = buildDownloadHtml(title, downloadContent);
       zip.file('index.html', fullHtml);
-
-      // Fetch each page image and add to ZIP
       const fetches = uniqueImages.map(async (filename) => {
         try {
           const res = await fetch(
@@ -820,12 +903,9 @@ export default function HtmlTextDetail() {
             const blob = await res.blob();
             imgFolder.file(filename, blob);
           }
-        } catch {
-          // Skip images that can't be fetched
-        }
+        } catch { /* skip */ }
       });
       await Promise.all(fetches);
-
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
@@ -872,9 +952,11 @@ export default function HtmlTextDetail() {
       {error && (
         <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
+          <button onClick={() => setError('')} className="ml-3 text-red-400 hover:text-red-600">&times;</button>
         </div>
       )}
 
+      {/* Header card */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
           <div>
@@ -882,15 +964,12 @@ export default function HtmlTextDetail() {
               PDF to HTML
             </div>
             <h1 className="font-display font-semibold text-2xl text-cail-dark">{text.name}</h1>
-            <p className="text-sm text-gray-500 mt-2">
-              Click directly on the text to edit. Use View Source for raw HTML editing. Math renders via KaTeX.
-            </p>
             {sourcePdfName && (
               <a
                 href={`${BASE}/api/texts/${id}/source-pdf/${encodeURIComponent(sourcePdfName)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-cail-blue hover:text-cail-navy mt-3"
+                className="inline-flex items-center gap-2 text-sm text-cail-blue hover:text-cail-navy mt-2"
               >
                 View source PDF
               </a>
@@ -934,142 +1013,225 @@ export default function HtmlTextDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6">
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="font-display font-semibold text-lg text-cail-dark">Source PDF</h2>
-            <div className="flex items-center gap-2">
-              {sourcePdfName && (
-                <>
-                  <button
-                    onClick={() => setPdfZoom((z) => Math.max(0.5, z - 0.25))}
-                    className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
-                    title="Zoom out"
-                  >
-                    -
-                  </button>
-                  <button
-                    onClick={() => setPdfZoom(1)}
-                    className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:bg-gray-100 tabular-nums"
-                    title="Reset zoom"
-                  >
-                    {Math.round(pdfZoom * 100)}%
-                  </button>
-                  <button
-                    onClick={() => setPdfZoom((z) => Math.min(3, z + 0.25))}
-                    className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
-                    title="Zoom in"
-                  >
-                    +
-                  </button>
-                  <a
-                    href={`${BASE}/api/texts/${id}/source-pdf/${encodeURIComponent(sourcePdfName)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm font-medium text-cail-blue hover:text-cail-navy ml-2"
-                  >
-                    Open in New Tab
-                  </a>
-                </>
+      {/* Tab bar */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="flex gap-1 -mb-px overflow-x-auto">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === tab
+                  ? 'border-cail-blue text-cail-blue'
+                  : 'border-transparent text-gray-500 hover:text-cail-dark hover:border-gray-300'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* ======================== REVIEW TAB ======================== */}
+      {activeTab === 'Review' && (
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6">
+          {/* Source PDF pane */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <h2 className="font-display font-semibold text-lg text-cail-dark">Source PDF</h2>
+              <div className="flex items-center gap-2">
+                {sourcePdfName && (
+                  <>
+                    <button
+                      onClick={() => setPdfZoom((z) => Math.max(0.5, z - 0.25))}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
+                      title="Zoom out"
+                    >
+                      -
+                    </button>
+                    <button
+                      onClick={() => setPdfZoom(1)}
+                      className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:bg-gray-100 tabular-nums"
+                      title="Reset zoom"
+                    >
+                      {Math.round(pdfZoom * 100)}%
+                    </button>
+                    <button
+                      onClick={() => setPdfZoom((z) => Math.min(3, z + 0.25))}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
+                      title="Zoom in"
+                    >
+                      +
+                    </button>
+                    <a
+                      href={`${BASE}/api/texts/${id}/source-pdf/${encodeURIComponent(sourcePdfName)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium text-cail-blue hover:text-cail-navy ml-2"
+                    >
+                      Open in New Tab
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="min-h-[75vh] max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50">
+              {!sourcePdfName && (
+                <div className="min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
+                  Source PDF unavailable.
+                </div>
+              )}
+              {sourcePdfName && pdfLoading && (
+                <div className="min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
+                  Rendering PDF preview...
+                </div>
+              )}
+              {sourcePdfName && !pdfLoading && pdfPages.length > 0 && (
+                <div className="p-4" style={{ minWidth: pdfZoom > 1 ? `${pdfZoom * 100}%` : undefined }}>
+                  <div className="space-y-4">
+                    {pdfPages.map((page) => (
+                      <figure key={page.pageNumber} className="bg-white rounded-lg shadow-sm border border-gray-200">
+                        <div className="px-3 py-2 text-xs font-medium tracking-wide text-gray-500 uppercase border-b border-gray-100 sticky top-0 bg-white z-10">
+                          Page {page.pageNumber}
+                        </div>
+                        <img
+                          src={page.dataUrl}
+                          alt={`PDF page ${page.pageNumber}`}
+                          className="block h-auto w-full"
+                        />
+                      </figure>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>
-          <div className="min-h-[75vh] max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50">
-            {!sourcePdfName && (
-              <div className="min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
-                Source PDF unavailable.
+
+          {/* Editor pane */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <h2 className="font-display font-semibold text-lg text-cail-dark">
+                {sourceMode ? 'HTML Source' : 'Document'}
+              </h2>
+              <div className="inline-flex rounded-full bg-gray-100 p-0.5">
+                <button
+                  onClick={() => { if (sourceMode) switchToVisual(); }}
+                  className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+                    !sourceMode ? 'bg-white text-cail-dark shadow-sm' : 'text-gray-500 hover:text-cail-dark'
+                  }`}
+                >
+                  Visual
+                </button>
+                <button
+                  onClick={() => { if (!sourceMode) switchToSource(); }}
+                  className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+                    sourceMode ? 'bg-white text-cail-dark shadow-sm' : 'text-gray-500 hover:text-cail-dark'
+                  }`}
+                >
+                  Source
+                </button>
               </div>
-            )}
-            {sourcePdfName && pdfLoading && (
-              <div className="min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
-                Rendering PDF preview...
-              </div>
-            )}
-            {sourcePdfName && !pdfLoading && pdfPages.length > 0 && (
-              <div className="space-y-4 p-4">
-                {pdfPages.map((page) => (
-                  <figure key={page.pageNumber} className="bg-white rounded-lg shadow-sm border border-gray-200">
-                    <div className="px-3 py-2 text-xs font-medium tracking-wide text-gray-500 uppercase border-b border-gray-100 sticky top-0 bg-white z-10">
-                      Page {page.pageNumber}
-                    </div>
-                    <div className="overflow-auto">
-                      <img
-                        src={page.dataUrl}
-                        alt={`PDF page ${page.pageNumber}`}
-                        className="block h-auto"
-                        style={{ width: `${pdfZoom * 100}%`, maxWidth: 'none', minWidth: pdfZoom > 1 ? `${pdfZoom * 100}%` : undefined }}
-                      />
-                    </div>
-                  </figure>
-                ))}
+            </div>
+
+            {sourceMode ? (
+              <textarea
+                ref={sourceRef}
+                defaultValue={htmlContent}
+                onChange={() => setDirty(true)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                    e.preventDefault();
+                    saveHtml();
+                  }
+                }}
+                className="w-full min-h-[75vh] max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-none"
+                spellCheck={false}
+              />
+            ) : (
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <FormattingToolbar onDirty={() => setDirty(true)} editableRef={editableRef} />
+                <div className="relative">
+                  <div
+                    ref={editableRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={handleEditableInput}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                        e.preventDefault();
+                        saveHtml();
+                      }
+                    }}
+                    className="pdf-preview-pane min-h-[75vh] max-h-[75vh] overflow-auto bg-white p-6 focus:outline-none"
+                    dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+                  />
+                  <ImageResizer editableRef={editableRef} onDirty={() => setDirty(true)} />
+                </div>
               </div>
             )}
           </div>
         </div>
+      )}
 
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="font-display font-semibold text-lg text-cail-dark">
-              {sourceMode ? 'HTML Source' : 'Document'}
-            </h2>
-            <div className="inline-flex rounded-full bg-gray-100 p-0.5">
-              <button
-                onClick={() => { if (sourceMode) switchToVisual(); }}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition ${
-                  !sourceMode ? 'bg-white text-cail-dark shadow-sm' : 'text-gray-500 hover:text-cail-dark'
-                }`}
-              >
-                Visual
-              </button>
-              <button
-                onClick={() => { if (!sourceMode) switchToSource(); }}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition ${
-                  sourceMode ? 'bg-white text-cail-dark shadow-sm' : 'text-gray-500 hover:text-cail-dark'
-                }`}
-              >
-                Source
-              </button>
-            </div>
-          </div>
-
-          {sourceMode ? (
+      {/* ======================== DETAILS TAB ======================== */}
+      {activeTab === 'Details' && (
+        <div className="space-y-8">
+          {/* Summary */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+            <h3 className="font-display font-semibold text-lg text-cail-dark mb-4">Summary</h3>
             <textarea
-              ref={sourceRef}
-              defaultValue={htmlContent}
-              onChange={() => setDirty(true)}
-              onKeyDown={(e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                  e.preventDefault();
-                  saveHtml();
-                }
-              }}
-              className="w-full min-h-[75vh] max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-none"
-              spellCheck={false}
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              rows={4}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-y"
+              placeholder="Add a summary for this document..."
             />
-          ) : (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <FormattingToolbar onDirty={() => setDirty(true)} editableRef={editableRef} />
-              <div className="relative">
-                <div
-                  ref={editableRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  onInput={handleEditableInput}
-                  onKeyDown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                      e.preventDefault();
-                      saveHtml();
-                    }
-                  }}
-                  className="pdf-preview-pane min-h-[75vh] max-h-[75vh] overflow-auto bg-white p-6 focus:outline-none"
-                  dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-                />
-                <ImageResizer editableRef={editableRef} onDirty={() => setDirty(true)} />
-              </div>
+            <div className="flex items-center gap-3 mt-3">
+              <button
+                onClick={handleGenerateSummary}
+                disabled={generatingSummary}
+                className="px-4 py-2 rounded-full bg-cail-teal text-white text-sm font-medium hover:bg-cail-azure disabled:opacity-50"
+              >
+                {generatingSummary ? 'Generating...' : 'Generate with AI'}
+              </button>
+              <button
+                onClick={saveSummary}
+                disabled={savingSummary}
+                className="px-4 py-2 rounded-full bg-cail-blue text-white text-sm font-medium hover:bg-cail-navy disabled:opacity-50"
+              >
+                {savingSummary ? 'Saving...' : 'Save'}
+              </button>
             </div>
-          )}
+          </div>
+
+          {/* Dublin Core Metadata */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display font-semibold text-lg text-cail-dark">Dublin Core Metadata</h3>
+              <button
+                onClick={saveMetadata}
+                disabled={savingMetadata}
+                className="px-4 py-2 rounded-full bg-cail-blue text-white text-sm font-medium hover:bg-cail-navy disabled:opacity-50"
+              >
+                {savingMetadata ? 'Saving...' : 'Save Metadata'}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {DC_FIELDS.map((field) => (
+                <div key={field.key}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
+                  <input
+                    type="text"
+                    value={metadata[field.key] || ''}
+                    onChange={(e) => setMetadata((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
