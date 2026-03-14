@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Multi-user document-processing platform with two first-class workflows:
 
 - **Image to Markdown** -- upload images or rasterized PDF pages, run OCR via Bedrock, review/edit markdown, and export for Manifold
-- **PDF to HTML** -- upload a source PDF, render pages browser-side, parse each page with Bedrock vision, clean the assembled HTML with Bedrock text models, and edit/download the generated HTML
+- **PDF to HTML** -- upload a source PDF, render pages browser-side, parse each page with OpenRouter (Gemini 3 Flash), clean the assembled HTML, and edit/download the generated HTML
 
-The app is an Express backend serving a React SPA, with SQLite for persistence and AWS Bedrock for AI-powered OCR and text processing.
+The app is an Express backend serving a React SPA, with SQLite for persistence, AWS Bedrock for OCR/summaries/translations, and OpenRouter for PDF-to-HTML conversion.
 
 ## Dev Commands
 
@@ -36,8 +36,9 @@ There are no test or lint scripts configured.
 
 - **Backend**: Express 4, better-sqlite3, express-session (SQLite-backed), bcrypt, multer, sharp, helmet
 - **Frontend**: React 18, React Router 6, Tailwind CSS 3, marked + DOMPurify, pdfjs-dist, KaTeX (client-side TeX rendering)
-- **AI/OCR**: AWS Bedrock for OCR (`qwen.qwen3-vl-235b-a22b`) and text processing (`openai.gpt-oss-120b-1:0`); OpenRouter (Gemini 3 Flash) for PDF page parsing and HTML cleanup
-- **Math**: temml (server-side TeX→MathML conversion at Manifold export time)
+- **AI/OCR**: AWS Bedrock for image OCR (`qwen.qwen3-vl-235b-a22b`), summaries, and translations (`openai.gpt-oss-120b-1:0`); OpenRouter (Gemini 3 Flash) for PDF page parsing and HTML cleanup
+- **Math**: KaTeX (client-side TeX rendering in editor), temml (server-side TeX→MathML at Manifold export)
+- **System deps**: `pdftohtml` from `poppler-utils` (used by figure extraction in `openrouter.js`)
 - **Database**: SQLite with WAL mode, foreign keys enabled
 
 ## Environment
@@ -70,7 +71,7 @@ Applied in order:
 ### Security Middleware
 
 - **`middleware/auth.js`**: `requireAuth` (validates session, attaches `req.user`, checks `status === 'approved'`), `requireAdmin` (chains requireAuth + checks `role === 'admin'`)
-- **`middleware/rateLimits.js`**: `aiLimiter` (50 req/hour for OCR, summary, translation), `pdfVisionLimiter` (1200 req/hour), `uploadLimiter` (30 req/15 min) — all keyed by `req.session.userId` with IP fallback
+- **`middleware/rateLimits.js`**: `aiLimiter` (50 req/hour for OCR, summary, translation), `pdfVisionLimiter` (1200 req/hour for PDF page parsing), `uploadLimiter` (30 req/15 min) — all keyed by `req.session.userId` with IP fallback
 - **`middleware/csrf.js`**: `csrfCheck` rejects state-changing requests without matching Origin/Referer header
 - **`middleware/security.js`**: `sanitizeFilename()` (URL-decodes then strips traversal/null bytes/special chars), `validateEmail()`, `validatePassword()` (≥8 chars)
 - **`middleware/upload.js`**: Multer factories for image uploads and source PDF uploads, image allowlist (jpg/jpeg/png/tiff/bmp/webp), PDF allowlist, `validateImageMagicBytes()` and `validatePdfMagicBytes()` for binary signature verification post-upload
@@ -127,16 +128,25 @@ Six tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`. Key c
 
 Model format dispatch in `bedrock.js` is based on model ID prefix: `qwen.*` and `openai.*` use OpenAI-compatible format; `amazon.nova*` uses Nova format; `anthropic.claude*` uses Anthropic Bedrock format.
 
-### PDF to HTML Pipeline
+### PDF to HTML Pipeline (OpenRouter)
+
+The entire PDF-to-HTML pipeline uses OpenRouter (`server/services/openrouter.js`), not Bedrock. The client pipeline orchestrator is `client/src/lib/pdfBedrockPipeline.js` (name is a historical artifact).
 
 1. User creates a `pdf_to_html` project and a text/document within it
 2. Client renders PDF pages to JPEGs in-browser with `pdfjs-dist`
 3. Client sends each page image to `POST /api/texts/:id/pdf-parse-page`
-4. Server uses OpenRouter (Gemini 3 Flash) to return semantic page HTML with TeX math delimiters
+4. Server calls `parsePdfPageToHtml()` via OpenRouter (Gemini 3 Flash) to return semantic page HTML with TeX math delimiters
 5. Client assembles page sections into one document and sends it to `POST /api/texts/:id/pdf-cleanup`
-6. Server uses OpenRouter to normalize heading hierarchy and merge paragraph fragments
+6. Server calls `cleanupPdfHtml()` via OpenRouter to normalize heading hierarchy and merge paragraph fragments
 7. Client uploads the original PDF plus generated HTML via `POST /api/texts/:id/pdf-upload`
 8. User edits the saved HTML in `HtmlTextDetail.jsx`; can reprocess the PDF without re-uploading
+
+`openrouter.js` also exports:
+- `extractFiguresFromPdf()` — extracts embedded figures using `pdftohtml -xml` (requires poppler-utils)
+- `convertHtmlTexToMathML()` — export-time TeX→MathML conversion using temml
+- `callWithRetry()` — exponential backoff on 429/5xx responses
+
+Note: `bedrock.js` still contains vestigial PDF functions (`parsePdfPageToHtml`, `cleanupPdfHtml`, `repairFormulasToMathMl`) from the original pipeline. These are **dead code** — all PDF routes in `llm.js` import from `openrouter.js`.
 
 ### Math Architecture
 
@@ -166,10 +176,11 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **Route split by workflow**: `ProjectRoute.jsx` and `TextRoute.jsx` fetch the resource first, then branch to `ProjectView` / `TextDetail` for `image_to_markdown` or `PdfProjectView` / `HtmlTextDetail` for `pdf_to_html`.
 - **OCR streaming**: `TextDetail.jsx` uses native `EventSource` API (not the api client) for SSE.
 - **Image-to-Markdown PDF handling**: `pdfToImages()` dynamically imports pdfjs-dist, rasterizes at 2x scale to canvas, converts to JPEG blobs.
-- **PDF-to-HTML conversion**: `client/src/lib/pdfBedrockPipeline.js` renders PDF pages to images, sends them through the Bedrock hybrid pipeline, and uploads the final HTML. `client/src/lib/pdfToHtml.js` is legacy heuristic code and should not be treated as the preferred primary converter.
+- **PDF-to-HTML conversion**: `client/src/lib/pdfBedrockPipeline.js` renders PDF pages to images, sends them through the OpenRouter pipeline, and uploads the final HTML. `client/src/lib/pdfToHtml.js` is legacy heuristic code and should not be used.
 - **Image resize**: `resizeImageBlob()` uses Canvas API to shrink images over 3.5 MB before upload.
 - **Markdown rendering**: All user-facing markdown uses `marked.parse()` piped through `DOMPurify.sanitize()`.
 - **HTML rendering**: `HtmlTextDetail.jsx` sanitizes rendered HTML while allowing MathML tags/attributes. KaTeX auto-render converts TeX delimiters to visual math in the contenteditable preview; `extractTexFromKatex()` reverses this before saving.
+- **Image zoom**: Both editors have scroll-to-zoom + drag-to-pan on image/PDF panes (lightbox-style interaction). `TextDetail.jsx` Review tab uses `reviewZoom`/`reviewPan` state; `HtmlTextDetail.jsx` uses `pdfZoom` with `minWidth`-based horizontal scroll.
 - **PDF project text actions**: `PdfProjectView.jsx` supports create, replace upload, open editor, and delete for PDF-to-HTML texts.
 
 ### Tailwind Theme (client/tailwind.config.js)

@@ -364,6 +364,10 @@ export default function TextDetail() {
   const [pageText, setPageText] = useState('');
   const [savingPage, setSavingPage] = useState(false);
   const reviewTextareaRef = useRef(null);
+  const [reviewZoom, setReviewZoom] = useState(1);
+  const [reviewPan, setReviewPan] = useState({ x: 0, y: 0 });
+  const [reviewDragging, setReviewDragging] = useState(false);
+  const reviewDragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
   // Translation state
   const [translation, setTranslation] = useState('');
@@ -631,6 +635,8 @@ export default function TextDetail() {
   useEffect(() => {
     if (activeTab === 'Review' && visiblePages.length > 0 && visiblePages[reviewPage]) {
       setPageText(visiblePages[reviewPage].ocr_text || '');
+      setReviewZoom(1);
+      setReviewPan({ x: 0, y: 0 });
     }
   }, [activeTab, reviewPage, pages]);
 
@@ -1242,14 +1248,66 @@ export default function TextDetail() {
                 </div>
 
                 {/* Image */}
-                <div className="flex-1 bg-white rounded-2xl border border-gray-100 overflow-hidden flex items-center justify-center min-w-0">
-                  {visiblePages[reviewPage] && (
-                    <img
-                      src={`${BASE}/api/texts/${id}/image/${visiblePages[reviewPage].filename}`}
-                      alt={`Page ${reviewPage + 1}`}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  )}
+                <div className="flex-1 bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col min-w-0">
+                  <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-gray-100">
+                    <button
+                      onClick={() => { setReviewZoom((z) => { const n = Math.max(1, z - 0.25); if (n <= 1) setReviewPan({ x: 0, y: 0 }); return n; }); }}
+                      disabled={reviewZoom <= 1}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+                      title="Zoom out"
+                    >-</button>
+                    <button
+                      onClick={() => { setReviewZoom(1); setReviewPan({ x: 0, y: 0 }); }}
+                      className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:bg-gray-100 tabular-nums"
+                      title="Reset zoom"
+                    >{Math.round(reviewZoom * 100)}%</button>
+                    <button
+                      onClick={() => setReviewZoom((z) => Math.min(5, z + 0.25))}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
+                      title="Zoom in"
+                    >+</button>
+                  </div>
+                  <div
+                    className="flex-1 overflow-hidden flex items-center justify-center"
+                    style={{ cursor: reviewZoom > 1 ? (reviewDragging ? 'grabbing' : 'grab') : 'default' }}
+                    onWheel={(e) => {
+                      e.stopPropagation();
+                      const delta = e.deltaY > 0 ? 0.25 : -0.25;
+                      setReviewZoom((z) => {
+                        const next = Math.min(5, Math.max(1, z + delta));
+                        if (next <= 1) setReviewPan({ x: 0, y: 0 });
+                        return next;
+                      });
+                    }}
+                    onMouseDown={(e) => {
+                      if (reviewZoom <= 1) return;
+                      e.preventDefault();
+                      setReviewDragging(true);
+                      reviewDragStart.current = { x: e.clientX, y: e.clientY, panX: reviewPan.x, panY: reviewPan.y };
+                    }}
+                    onMouseMove={(e) => {
+                      if (!reviewDragging) return;
+                      setReviewPan({
+                        x: reviewDragStart.current.panX + (e.clientX - reviewDragStart.current.x),
+                        y: reviewDragStart.current.panY + (e.clientY - reviewDragStart.current.y),
+                      });
+                    }}
+                    onMouseUp={() => setReviewDragging(false)}
+                    onMouseLeave={() => setReviewDragging(false)}
+                  >
+                    {visiblePages[reviewPage] && (
+                      <img
+                        src={`${BASE}/api/texts/${id}/image/${visiblePages[reviewPage].filename}`}
+                        alt={`Page ${reviewPage + 1}`}
+                        className="max-w-full max-h-full object-contain pointer-events-none select-none"
+                        style={{
+                          transform: `scale(${reviewZoom}) translate(${reviewPan.x / reviewZoom}px, ${reviewPan.y / reviewZoom}px)`,
+                          transformOrigin: 'center center',
+                        }}
+                        draggable={false}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 {/* Text editor with toolbar */}
