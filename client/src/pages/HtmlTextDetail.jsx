@@ -944,39 +944,53 @@ export default function HtmlTextDetail() {
         </div>
       )}
 
-      <Link to={`/projects/${text.project_id}`} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-cail-dark mb-6">
-        <span>&larr;</span>
+      <Link to={`/projects/${text.project_id}`} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-cail-dark mb-4 group">
+        <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
         Back to Project
       </Link>
 
+      <h1 className="font-display font-semibold text-2xl text-cail-dark mb-4">{text.name}</h1>
+
       {error && (
-        <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
           <button onClick={() => setError('')} className="ml-3 text-red-400 hover:text-red-600">&times;</button>
         </div>
       )}
 
-      {/* Header card */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-          <div>
-            <div className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 mb-3">
-              PDF to HTML
-            </div>
-            <h1 className="font-display font-semibold text-2xl text-cail-dark">{text.name}</h1>
+      {/* Tab bar */}
+      <div className="border-b border-gray-200 mb-4">
+        <nav className="flex gap-1 -mb-px overflow-x-auto">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === tab
+                  ? 'border-cail-blue text-cail-blue'
+                  : 'border-transparent text-gray-500 hover:text-cail-dark hover:border-gray-300'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* ======================== REVIEW TAB ======================== */}
+      {activeTab === 'Review' && (
+        <div>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
             {sourcePdfName && (
               <a
                 href={`${BASE}/api/texts/${id}/source-pdf/${encodeURIComponent(sourcePdfName)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-cail-blue hover:text-cail-navy mt-2"
+                className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200"
               >
-                View source PDF
+                View Source PDF
               </a>
             )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
             {reprocessProgress && (
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
                 {reprocessProgress}
@@ -1010,30 +1024,6 @@ export default function HtmlTextDetail() {
               {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Save HTML'}
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* Tab bar */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="flex gap-1 -mb-px overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === tab
-                  ? 'border-cail-blue text-cail-blue'
-                  : 'border-transparent text-gray-500 hover:text-cail-dark hover:border-gray-300'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* ======================== REVIEW TAB ======================== */}
-      {activeTab === 'Review' && (
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6">
           {/* Source PDF pane */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -1170,6 +1160,7 @@ export default function HtmlTextDetail() {
               </div>
             )}
           </div>
+        </div>
         </div>
       )}
 
