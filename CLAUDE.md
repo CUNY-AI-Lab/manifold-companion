@@ -97,12 +97,14 @@ Applied in order:
 
 Session-based cookie auth with session regeneration on login (prevents fixation). Users register as `status: 'pending'` (with optional display name) and cannot log in until admin sets them to `'approved'`. Three statuses: `pending`, `approved`, `disabled`. Two roles: `user`, `admin`. The `/me` endpoint destroys sessions for non-approved accounts and returns `display_name`, `token_allowance`, and current `token_usage`. Users can update their own display name via `PUT /api/auth/profile`.
 
+**Password reset**: Token-based flow via `POST /api/auth/forgot-password` (generates 32-byte hex token, 1-hour expiry, sends SES email) and `POST /api/auth/reset-password` (validates token, hashes new password). Anti-enumeration: forgot-password always returns success regardless of email existence. Both endpoints are rate-limited by `authLimiter`.
+
 All route modules except auth apply `requireAuth` at the router level. Admin routes apply `requireAdmin`.
 
 ### Route Structure
 
 ```
-/api/auth                          → server/routes/auth.js         (login, register, logout, me, profile, change-password)
+/api/auth                          → server/routes/auth.js         (login, register, logout, me, profile, change-password, forgot/reset password)
 /api/admin                         → server/routes/admin.js        (user mgmt, bulk approval, usage stats, backups)
 /api/users                         → server/routes/users.js        (user search for share autocomplete)
 /api/projects                      → server/routes/projects.js     (CRUD + project type on create)
@@ -145,6 +147,7 @@ Twelve tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `p
 - **Notifications**: `notifications` table stores in-app notifications with `user_id`, `type`, `title`, `body`, `link`, `read` (0/1), and `created_at`. Types: `ocr_complete`, `account_approved`, `project_shared`, `comment_reply`, `comment_mention`. `notification_preferences` table stores per-user email toggles (`email_ocr_complete`, `email_project_shared`, `email_comment_reply`, `email_comment_mention`) defaulting to 1 (enabled).
 - **Display names**: `users.display_name` (nullable TEXT). Shown in annotations, shares, version history. Falls back to email when null.
 - **Token allowances**: `users.token_allowance` (default 5,000,000) and `users.token_usage_reset_at` (timestamp). Quota is enforced by `checkTokenQuota` middleware on all AI routes.
+- **Password reset**: `users.password_reset_token` and `users.password_reset_expires_at` columns (added via migration). Token is 32-byte hex, expires after 1 hour. Cleared after successful reset.
 - **API usage logs**: `api_usage_logs` table records every AI API call with `user_id`, `project_id`, `text_id`, `endpoint`, `model`, `tokens_in`, `tokens_out`, and `created_at`. Indexed on `(user_id, created_at)` and `(project_id)`. Token usage is calculated as `SUM(tokens_in + tokens_out)` since `token_usage_reset_at`.
 
 ### OCR Pipeline (server/routes/ocr.js + server/services/bedrock.js)
@@ -238,6 +241,11 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **Admin panel** (`AdminPanel.jsx`): Three-tab layout — Users (inline name editing, bulk approval, token usage/allowance display as `used / total`, usage reset), Usage (period selector, summary cards, per-endpoint/user/project breakdowns), Backups (create/download/delete database+file backups). Backup download uses `BASE` prefix for subpath compatibility. The Tokens column shows `usage / allowance` per user (e.g., "245.3K / 5.0M") with color coding when usage exceeds 80%.
 - **Registration**: `RegisterPage.jsx` includes optional display name field. `AuthContext` exposes `updateProfile()` for name changes.
 - **About page**: `AboutPage.jsx` at `/about` — editorial-style full page with scroll-triggered reveal animations, hero with diagonal slice, workflow step-by-step guides (timeline layout), collaboration features, and a quick-reference table. Replaced the old inline About modal in Header.
+- **Password reset**: `ForgotPasswordPage.jsx` and `ResetPasswordPage.jsx` provide token-based password recovery. Login page links to forgot-password. Reset page reads `?token=` from URL.
+- **Usage breakdown**: `UsageBreakdown.jsx` portal modal fetches `GET /api/projects/usage` and shows per-project storage bars (teal) and per-project + per-endpoint token bars (blue/violet). Opened by clicking storage or token usage bars on the dashboard.
+- **Keyboard shortcuts**: `KeyboardShortcuts.jsx` portal modal shows available shortcuts by section. Triggered by pressing `?` in editors or clicking the `?` toolbar button. Both `TextDetail.jsx` and `HtmlTextDetail.jsx` integrate it with Ctrl+S/Cmd+S save.
+- **Mobile responsiveness**: Dashboard uses `grid-cols-1 sm:grid-cols-2` for usage bars. Admin panel has `overflow-x-auto` tables and responsive flex layouts. Editors use `flex-col md:flex-row` for Review tab. Notification dropdown and annotation sidebar are full-width on mobile.
+- **`.env.example`**: Template file for environment setup, documenting all required and optional variables.
 
 ### Tailwind Theme (client/tailwind.config.js)
 
