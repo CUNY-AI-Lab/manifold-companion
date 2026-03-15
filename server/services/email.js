@@ -12,6 +12,10 @@ const FROM_ADDRESS = process.env.SES_FROM_EMAIL || 'manifold-companion@cuny.qzz.
 const APP_NAME = 'Manifold Companion';
 const APP_URL = process.env.APP_URL || 'https://tools.cuny.qzz.io/manifold-companion';
 
+function esc(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function emailTemplate(title, bodyHtml) {
   return `<!DOCTYPE html>
 <html>
@@ -53,7 +57,7 @@ export async function sendOcrCompleteEmail(to, projectName, textName) {
   await sendEmail(
     to,
     `OCR complete: ${textName}`,
-    `<p>OCR processing has finished for <strong>${textName}</strong> in project <strong>${projectName}</strong>.</p>
+    `<p>OCR processing has finished for <strong>${esc(textName)}</strong> in project <strong>${esc(projectName)}</strong>.</p>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">Review Results</a></p>`
   );
 }
@@ -71,7 +75,7 @@ export async function sendProjectSharedEmail(to, ownerName, projectName, role) {
   await sendEmail(
     to,
     `${ownerName} shared a project with you`,
-    `<p><strong>${ownerName}</strong> shared the project <strong>${projectName}</strong> with you as <strong>${role}</strong>.</p>
+    `<p><strong>${esc(ownerName)}</strong> shared the project <strong>${esc(projectName)}</strong> with you as <strong>${esc(role)}</strong>.</p>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">View Project</a></p>`
   );
 }
@@ -81,8 +85,8 @@ export async function sendCommentReplyEmail(to, replierName, commentSnippet, tex
   await sendEmail(
     to,
     `${replierName} replied to your comment`,
-    `<p><strong>${replierName}</strong> replied to your comment on <strong>${textName}</strong>:</p>
-     <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 12px 0; color: #4b5563;">${snippet}</blockquote>
+    `<p><strong>${esc(replierName)}</strong> replied to your comment on <strong>${esc(textName)}</strong>:</p>
+     <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 12px 0; color: #4b5563;">${esc(snippet)}</blockquote>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">View Comment</a></p>`
   );
 }
@@ -92,8 +96,8 @@ export async function sendMentionEmail(to, mentionerName, commentSnippet, textNa
   await sendEmail(
     to,
     `${mentionerName} mentioned you in a comment`,
-    `<p><strong>${mentionerName}</strong> mentioned you in a comment on <strong>${textName}</strong>:</p>
-     <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 12px 0; color: #4b5563;">${snippet}</blockquote>
+    `<p><strong>${esc(mentionerName)}</strong> mentioned you in a comment on <strong>${esc(textName)}</strong>:</p>
+     <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 12px 0; color: #4b5563;">${esc(snippet)}</blockquote>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">View Comment</a></p>`
   );
 }

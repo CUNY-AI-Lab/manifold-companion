@@ -72,13 +72,16 @@ router.get('/texts/:id/annotations', (req, res) => {
 // ---- POST /texts/:id/annotations — create an annotation --------------------
 router.post('/texts/:id/annotations', (req, res) => {
   try {
-    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'viewer');
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const { anchor_type, anchor_data, body, parent_id, mentions } = req.body || {};
 
     if (!body || !body.trim()) {
       return res.status(400).json({ error: 'Annotation body is required.' });
+    }
+    if (body.length > 10000) {
+      return res.status(400).json({ error: 'Comment is too long (max 10,000 characters).' });
     }
     if (!anchor_type || !['range', 'point', 'global'].includes(anchor_type)) {
       return res.status(400).json({ error: 'Valid anchor_type is required (range, point, or global).' });
@@ -154,6 +157,9 @@ router.put('/texts/:id/annotations/:annotId', (req, res) => {
     const { body } = req.body || {};
     if (!body || !body.trim()) {
       return res.status(400).json({ error: 'Annotation body is required.' });
+    }
+    if (body.length > 10000) {
+      return res.status(400).json({ error: 'Comment is too long (max 10,000 characters).' });
     }
 
     updateAnnotationBody(annotation.id, body.trim());
@@ -232,7 +238,7 @@ router.delete('/texts/:id/annotations/:annotId', (req, res) => {
 // ---- POST /texts/:id/annotations/:annotId/replies — add a reply ------------
 router.post('/texts/:id/annotations/:annotId/replies', (req, res) => {
   try {
-    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'viewer');
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const parent = getAnnotationById(Number(req.params.annotId));
@@ -243,6 +249,9 @@ router.post('/texts/:id/annotations/:annotId/replies', (req, res) => {
     const { body, mentions } = req.body || {};
     if (!body || !body.trim()) {
       return res.status(400).json({ error: 'Reply body is required.' });
+    }
+    if (body.length > 10000) {
+      return res.status(400).json({ error: 'Reply is too long (max 10,000 characters).' });
     }
 
     // Validate mentions

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api, BASE } from '../api/client';
 import SharePanel from '../components/SharePanel';
+import { SplitModal, MergeModal } from '../components/SplitMergeModals';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -133,6 +134,11 @@ export default function ProjectView() {
   const [exporting, setExporting] = useState(false);
   const [newSectionLabel, setNewSectionLabel] = useState('');
 
+  // Split/Merge modals
+  const [showMerge, setShowMerge] = useState(false);
+  const [splitTextId, setSplitTextId] = useState(null);
+  const [splitPages, setSplitPages] = useState([]);
+
   useEffect(() => {
     loadProject();
   }, [id]);
@@ -182,6 +188,22 @@ export default function ProjectView() {
     try {
       await api.del(`/api/texts/${textId}`);
       await loadProject();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function openSplit(textId) {
+    try {
+      const data = await api.get(`/api/texts/${textId}/pages`);
+      const pages = (data.pages || data || []).filter(p => p.filename !== '__compiled__');
+      if (pages.length < 2) {
+        setToast('Need at least 2 pages to split.');
+        setTimeout(() => setToast(''), 3000);
+        return;
+      }
+      setSplitPages(pages);
+      setSplitTextId(textId);
     } catch (err) {
       setError(err.message);
     }
@@ -703,9 +725,22 @@ export default function ProjectView() {
 
       {/* Texts list */}
       <div className="space-y-4">
-        <h2 className="font-display font-semibold text-lg text-cail-dark">
-          Texts ({texts.length})
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-display font-semibold text-lg text-cail-dark">
+            Texts ({texts.length})
+          </h2>
+          {canEdit && texts.length >= 2 && (
+            <button
+              onClick={() => setShowMerge(true)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              Merge
+            </button>
+          )}
+        </div>
 
         {texts.length === 0 && (
           <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
@@ -775,6 +810,14 @@ export default function ProjectView() {
               </Link>
               {canEdit && (
                 <button
+                  onClick={() => openSplit(text.id)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                  Split
+                </button>
+              )}
+              {canEdit && (
+                <button
                   onClick={() => deleteText(text.id)}
                   className="px-3 py-1.5 rounded-full text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
                 >
@@ -787,6 +830,24 @@ export default function ProjectView() {
       </div>
 
       <SharePanel projectId={Number(id)} open={showShare} onClose={() => setShowShare(false)} />
+
+      {splitTextId && (
+        <SplitModal
+          textId={splitTextId}
+          pages={splitPages}
+          onClose={() => setSplitTextId(null)}
+          onSplit={() => { setSplitTextId(null); loadProject(); }}
+        />
+      )}
+
+      {showMerge && (
+        <MergeModal
+          texts={texts}
+          projectId={Number(id)}
+          onClose={() => setShowMerge(false)}
+          onMerge={() => { setShowMerge(false); loadProject(); }}
+        />
+      )}
 
       {/* Export Modal */}
       {showExport && (

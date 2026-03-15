@@ -103,7 +103,7 @@ All route modules except auth apply `requireAuth` at the router level. Admin rou
 /api/users                         → server/routes/users.js        (user search for share autocomplete)
 /api/projects                      → server/routes/projects.js     (CRUD + project type on create)
 /api/projects/:projectId/shares    → server/routes/shares.js       (project sharing CRUD — owner only)
-/api                               → server/routes/texts.js        (texts, pages, upload, HTML, search, versions)
+/api                               → server/routes/texts.js        (texts, pages, upload, HTML, search, versions, split, merge)
 /api                               → server/routes/ocr.js          (SSE OCR pipeline — rate-limited by aiLimiter)
 /api                               → server/routes/llm.js          (summary, translation, PDF page parsing, PDF cleanup)
 /api                               → server/routes/export.js       (ZIP export)
@@ -135,7 +135,8 @@ Twelve tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `p
 - **Admin seeding**: `initDatabase()` calls `seedAdmin()` which creates admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars if not already present.
 - **Project shares**: `project_shares` table tracks `(project_id, user_id, role)` with UNIQUE constraint. Roles: `viewer`, `editor`. Cascade deletes on project or user removal.
 - **Version history**: `text_versions` table stores content snapshots with `content_type` (`compiled`, `html`, `page`), user attribution, and timestamp. Auto-pruned to 50 versions per text+type. Versions are created automatically when saving text content (before overwrite).
-- **Annotations**: `annotations` table supports threaded comments with `parent_id` for replies, `anchor_type` (`range`, `point`, `global`), and `anchor_data` (JSON with CSS selectors or paragraph offsets). Supports resolve/unresolve workflow with `resolved_by` and `resolved_at`. The `mentions` column (JSON array of user IDs) stores @mention data per annotation.
+- **Annotations**: `annotations` table supports threaded comments with `parent_id` for replies, `anchor_type` (`range`, `point`, `global`), and `anchor_data` (JSON with CSS selectors or paragraph offsets). Supports resolve/unresolve workflow with `resolved_by` and `resolved_at`. The `mentions` column (JSON array of user IDs) stores @mention data per annotation. Body length capped at 10,000 characters. Edit restricted to own annotations; delete allowed for own annotations or project owner.
+- **Split/Merge**: `POST /texts/:id/split` copies page images and records into new texts by group assignment. `POST /projects/:projectId/texts/merge` combines pages from multiple texts, prefixing filenames with `t{textId}_` to avoid collisions. Both endpoints check storage quota before copying and cap count (20 splits, 50 merge sources). Failed file copies are logged and skipped (page record not created).
 - **@Mentions**: `getProjectMembers(projectId)` returns owner + shared users for autocomplete. `GET /api/texts/:id/mentions/users` serves the member list. Annotations and replies accept `mentions` array, validated against project membership. Client renders `@Name` as highlighted blue spans.
 - **Notifications**: `notifications` table stores in-app notifications with `user_id`, `type`, `title`, `body`, `link`, `read` (0/1), and `created_at`. Types: `ocr_complete`, `account_approved`, `project_shared`, `comment_reply`, `comment_mention`. `notification_preferences` table stores per-user email toggles (`email_ocr_complete`, `email_project_shared`, `email_comment_reply`, `email_comment_mention`) defaulting to 1 (enabled).
 - **Display names**: `users.display_name` (nullable TEXT). Shown in annotations, shares, version history. Falls back to email when null.
@@ -224,7 +225,8 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **Search**: `SearchBar.jsx` provides debounced search with a 3-result dropdown and "See all" link to `/search` page. `SearchPage.jsx` shows full results grouped by project.
 - **Collaboration UI**: `SharePanel.jsx` (portal modal) for owners to add/remove/update shares by email. `ProjectView.jsx` and `PdfProjectView.jsx` show role-based UI (hide edit/delete for viewers, share button for owners).
 - **Version history**: `VersionHistory.jsx` (portal modal) shows version list with GitHub-style diff view (Myers algorithm, HTML-aware line splitting) and revert. Accessible via "History" button in the Review tab of both editors.
-- **Annotations**: `AnnotationSidebar.jsx` (slide-out panel) for threaded comments with replies, resolve/unresolve, delete, and @mentions. Type `@` in comment/reply textarea to see project member autocomplete dropdown. Mentions stored as user ID arrays and rendered as highlighted spans. Accessible via "Comments" button in the Review tab.
+- **Annotations**: `AnnotationSidebar.jsx` (slide-out panel) for threaded comments with replies, resolve/unresolve, edit/delete, and @mentions. Type `@` in comment/reply textarea to see project member autocomplete dropdown. Mentions stored as user ID arrays and rendered as highlighted spans. Edit/delete available on own annotations (owners can delete any). Reply edit/delete buttons always visible. Uses `useAuth()` hook for current user identity (not async `/me` fetch). Accessible via "Comments" button in the Review tab.
+- **Split/Merge**: `SplitMergeModals.jsx` provides two portal modals. `SplitModal` shows a color-coded page grid where clicking cycles pages through groups; supports group naming, add/remove groups, auto-assign. `MergeModal` lets users select texts with checkboxes, reorder with up/down arrows, and name the merged text. Split button appears per text card, merge button in texts header (when 2+ texts, editor+ role). Both in `ProjectView.jsx` (image_to_markdown only).
 - **Notifications UI**: `NotificationBell.jsx` in Header shows bell icon with unread count badge, dropdown notification list with per-type icons, mark-read on click (navigates to `link`), mark-all-read, and a gear icon to toggle email preferences. Polls `/api/notifications/unread-count` every 30 seconds. Comment/mention notification links include `?annotations=1` to auto-open the annotations sidebar.
 - **Tab deep linking**: Both `TextDetail.jsx` and `HtmlTextDetail.jsx` read `?tab=` and `?annotations=1` query params on mount to set the initial active tab and auto-open the annotations sidebar (used by search results and notification links).
 - **Admin panel** (`AdminPanel.jsx`): Three-tab layout — Users (inline name editing, bulk approval, token allowance controls, usage reset), Usage (period selector, summary cards, per-endpoint/user/project breakdowns), Backups (create/download/delete database+file backups). Backup download uses `BASE` prefix for subpath compatibility.
@@ -296,6 +298,9 @@ Fixes applied (2026-02-24):
 - **Last-admin guard**: Cannot delete the only remaining admin account (`admin.js`)
 - **Export tree depth limit**: `validateTree()` rejects TOC nesting deeper than 10 levels (`export.js`)
 - **Language validation**: `default_language` on project create/update validated against `ALLOWED_LANGUAGES` (`projects.js`)
+- **Email HTML escaping**: All user-supplied values in email templates are escaped via `esc()` to prevent HTML injection (`email.js`)
+- **Annotation body cap**: Comments/replies limited to 10,000 characters (`annotations.js`)
+- **Split/merge quota**: Both endpoints check storage quota before file copies; splits capped at 20, merges at 50 (`texts.js`)
 
 ### AWS GuardDuty
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 function formatTime(ts) {
   const d = new Date(ts);
@@ -251,15 +252,86 @@ function MentionInput({ value, onChange, onMention, members, placeholder, classN
   );
 }
 
+function ReplyItem({ reply, textId, currentUserEmail, role, onRefresh, members, memberMap }) {
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(reply.body);
+  const [saving, setSaving] = useState(false);
+  const canEdit = reply.user_email === currentUserEmail;
+  const canDelete = role === 'owner' || reply.user_email === currentUserEmail;
+
+  async function handleSaveEdit() {
+    if (!editBody.trim() || saving) return;
+    setSaving(true);
+    try {
+      await api.put(`/api/texts/${textId}/annotations/${reply.id}`, { body: editBody.trim() });
+      setEditing(false);
+      onRefresh();
+    } catch { /* ignore */ }
+    setSaving(false);
+  }
+
+  async function handleDelete() {
+    if (!confirm('Delete this reply?')) return;
+    try {
+      await api.del(`/api/texts/${textId}/annotations/${reply.id}`);
+      onRefresh();
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="mb-2 group">
+      <div className="flex items-center gap-1">
+        <span className="w-6 h-6 rounded-full bg-cail-teal/20 text-cail-teal flex items-center justify-center text-[10px] font-display font-semibold">
+          {initials(reply)}
+        </span>
+        <span className="text-xs font-medium text-cail-dark">{displayName(reply)}</span>
+        <span className="text-[10px] text-gray-400">{formatTime(reply.created_at)}</span>
+      </div>
+      {editing ? (
+        <div className="mt-1">
+          <textarea
+            value={editBody}
+            onChange={e => setEditBody(e.target.value)}
+            rows={2}
+            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-cail-blue resize-none"
+          />
+          <div className="flex gap-1 mt-1">
+            <button onClick={handleSaveEdit} disabled={!editBody.trim() || saving} className="text-[10px] text-cail-blue hover:underline disabled:opacity-50">Save</button>
+            <button onClick={() => { setEditing(false); setEditBody(reply.body); }} className="text-[10px] text-gray-400 hover:underline">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-cail-dark mt-0.5 whitespace-pre-wrap">
+            {renderBody(reply.body, reply.mentions, memberMap)}
+          </p>
+          <div className="flex gap-2 mt-0.5">
+            {canEdit && (
+              <button onClick={() => setEditing(true)} className="text-[10px] text-gray-400 hover:text-cail-blue">Edit</button>
+            )}
+            {canDelete && (
+              <button onClick={handleDelete} className="text-[10px] text-gray-400 hover:text-red-500">Delete</button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh, members, memberMap }) {
   const [showReplies, setShowReplies] = useState(false);
   const [replies, setReplies] = useState([]);
   const [replyBody, setReplyBody] = useState('');
   const [replyMentions, setReplyMentions] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(annotation.body);
+  const [savingEdit, setSavingEdit] = useState(false);
   const replyRef = useRef(null);
 
   const canResolve = role === 'owner' || role === 'editor';
+  const canEdit = annotation.user_email === currentUserEmail;
   const canDelete = role === 'owner' || annotation.user_email === currentUserEmail;
 
   async function loadReplies() {
@@ -292,6 +364,17 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
       // ignore
     }
     setSubmitting(false);
+  }
+
+  async function handleSaveEdit() {
+    if (!editBody.trim() || savingEdit) return;
+    setSavingEdit(true);
+    try {
+      await api.put(`/api/texts/${textId}/annotations/${annotation.id}`, { body: editBody.trim() });
+      setEditing(false);
+      onRefresh();
+    } catch { /* ignore */ }
+    setSavingEdit(false);
   }
 
   async function toggleResolve() {
@@ -333,14 +416,34 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
         )}
       </div>
 
-      <p className="mt-2 text-sm text-cail-dark whitespace-pre-wrap">
-        {renderBody(annotation.body, annotation.mentions, memberMap)}
-      </p>
+      {editing ? (
+        <div className="mt-2">
+          <textarea
+            value={editBody}
+            onChange={e => setEditBody(e.target.value)}
+            rows={3}
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-cail-blue resize-none"
+          />
+          <div className="flex gap-2 mt-1">
+            <button onClick={handleSaveEdit} disabled={!editBody.trim() || savingEdit} className="text-xs text-cail-blue hover:underline disabled:opacity-50">
+              {savingEdit ? 'Saving...' : 'Save'}
+            </button>
+            <button onClick={() => { setEditing(false); setEditBody(annotation.body); }} className="text-xs text-gray-400 hover:underline">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-cail-dark whitespace-pre-wrap">
+          {renderBody(annotation.body, annotation.mentions, memberMap)}
+        </p>
+      )}
 
       <div className="mt-3 flex items-center gap-3 text-xs">
         <button onClick={toggleReplies} className="text-cail-blue hover:underline">
           {showReplies ? 'Hide replies' : 'Replies'}
         </button>
+        {canEdit && !editing && (
+          <button onClick={() => setEditing(true)} className="text-gray-400 hover:text-cail-blue">Edit</button>
+        )}
         {canResolve && (
           <button onClick={toggleResolve} className="text-cail-teal hover:underline">
             {annotation.resolved ? 'Unresolve' : 'Resolve'}
@@ -355,18 +458,16 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
         <div className="mt-3 ml-4 border-l-2 border-cail-blue/10 pl-3">
           {replies.length === 0 && <p className="text-xs text-gray-400">No replies yet.</p>}
           {replies.map(r => (
-            <div key={r.id} className="mb-2">
-              <div className="flex items-center gap-1">
-                <span className="w-6 h-6 rounded-full bg-cail-teal/20 text-cail-teal flex items-center justify-center text-[10px] font-display font-semibold">
-                  {initials(r)}
-                </span>
-                <span className="text-xs font-medium text-cail-dark">{displayName(r)}</span>
-                <span className="text-[10px] text-gray-400">{formatTime(r.created_at)}</span>
-              </div>
-              <p className="text-xs text-cail-dark mt-0.5 whitespace-pre-wrap">
-                {renderBody(r.body, r.mentions, memberMap)}
-              </p>
-            </div>
+            <ReplyItem
+              key={r.id}
+              reply={r}
+              textId={textId}
+              currentUserEmail={currentUserEmail}
+              role={role}
+              onRefresh={loadReplies}
+              members={members}
+              memberMap={memberMap}
+            />
           ))}
           {role !== 'viewer' && (
             <form onSubmit={submitReply} className="mt-2 flex gap-2">
@@ -395,6 +496,8 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
 }
 
 export default function AnnotationSidebar({ textId, open, onClose, role }) {
+  const { user } = useAuth();
+  const currentUserEmail = user?.email || '';
   const [annotations, setAnnotations] = useState([]);
   const [showResolved, setShowResolved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -402,7 +505,6 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
   const [newMentions, setNewMentions] = useState([]);
   const [showNewForm, setShowNewForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [members, setMembers] = useState([]);
   const [memberMap, setMemberMap] = useState({});
   const newCommentRef = useRef(null);
@@ -424,9 +526,6 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
   useEffect(() => {
     if (open) {
       fetchAnnotations();
-      api.get('/api/auth/me').then(res => {
-        if (res?.user?.email) setCurrentUserEmail(res.user.email);
-      }).catch(() => {});
       api.get(`/api/texts/${textId}/mentions/users`).then(res => {
         setMembers(res.users || []);
         const map = {};

@@ -858,7 +858,7 @@ export function createAnnotation(textId, userId, anchorType, anchorData, body, p
   const stmt = db.prepare(
     'INSERT INTO annotations (text_id, user_id, parent_id, anchor_type, anchor_data, body, mentions) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
-  const result = stmt.run(textId, userId, parentId, anchorType, anchorData ? JSON.stringify(anchorData) : null, body, JSON.stringify(mentions));
+  const result = stmt.run(textId, userId, parentId, anchorType, anchorData || null, body, JSON.stringify(mentions));
   return result.lastInsertRowid;
 }
 

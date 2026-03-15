@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import { join } from 'path';
-import { readFile, unlink } from 'fs/promises';
+import { readFile, unlink, copyFile, mkdir } from 'fs/promises';
 import sharp from 'sharp';
 import { requireAuth } from '../middleware/auth.js';
 import { verifyProjectAccess, verifyTextAccess } from '../middleware/access.js';
@@ -916,6 +916,146 @@ router.post('/texts/:id/versions/:versionId/revert', (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('POST /texts/:id/versions/:versionId/revert error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Split & Merge
+// ---------------------------------------------------------------------------
+
+// ---- POST /texts/:id/split — split a text into multiple new texts ---------
+router.post('/texts/:id/split', async (req, res) => {
+  try {
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    const { splits } = req.body || {};
+    // splits: [{ name: "Part 1", pages: [1, 2, 3] }, { name: "Part 2", pages: [4, 5] }]
+    if (!Array.isArray(splits) || splits.length < 2) {
+      return res.status(400).json({ error: 'At least 2 splits are required.' });
+    }
+    if (splits.length > 20) {
+      return res.status(400).json({ error: 'Cannot create more than 20 splits at once.' });
+    }
+
+    // Check storage quota before copying files
+    const ownerId = result.project.user_id;
+    const quota = req.user.role === 'admin' ? MAX_ADMIN_STORAGE_BYTES : MAX_STORAGE_BYTES;
+    const currentUsage = await calculateUserStorage(ownerId);
+    if (currentUsage >= quota) {
+      return res.status(413).json({ error: 'Storage quota exceeded.' });
+    }
+
+    const allPages = getPagesByText(result.text.id).filter(p => p.filename !== '__compiled__');
+    const pageByNumber = {};
+    for (const p of allPages) pageByNumber[p.page_number] = p;
+
+    const srcDir = getTextDir(result.project.user_id, result.project.id, result.text.id);
+    const newTexts = [];
+
+    for (const split of splits) {
+      if (!split.name?.trim() || !Array.isArray(split.pages) || split.pages.length === 0) {
+        return res.status(400).json({ error: 'Each split needs a name and at least one page.' });
+      }
+
+      const newTextId = createText(result.project.id, split.name.trim());
+      const destDir = getTextDir(result.project.user_id, result.project.id, newTextId);
+      await mkdir(destDir, { recursive: true });
+
+      let pageNum = 1;
+      for (const pn of split.pages) {
+        const page = pageByNumber[pn];
+        if (!page) continue;
+
+        // Copy the image file
+        const srcFile = join(srcDir, page.filename);
+        const destFile = join(destDir, page.filename);
+        try { await copyFile(srcFile, destFile); } catch (e) { console.error(`[split] Failed to copy ${srcFile}:`, e.message); continue; }
+
+        // Create the page record in new text
+        savePageOCR(newTextId, page.filename, page.ocr_text || '', pageNum);
+        pageNum++;
+      }
+
+      updateText(newTextId, { status: result.text.status });
+      newTexts.push({ id: newTextId, name: split.name.trim() });
+    }
+
+    await refreshUserStorage(result.project.user_id);
+    res.status(201).json({ texts: newTexts });
+  } catch (err) {
+    console.error('POST /texts/:id/split error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /projects/:projectId/texts/merge — merge multiple texts into one
+router.post('/projects/:projectId/texts/merge', async (req, res) => {
+  try {
+    const { project, status, error } = verifyProjectAccess(
+      Number(req.params.projectId),
+      req.user.id,
+      'editor'
+    );
+    if (error) return res.status(status).json({ error });
+
+    const { textIds, name } = req.body || {};
+    if (!Array.isArray(textIds) || textIds.length < 2) {
+      return res.status(400).json({ error: 'At least 2 texts are required to merge.' });
+    }
+    if (textIds.length > 50) {
+      return res.status(400).json({ error: 'Cannot merge more than 50 texts at once.' });
+    }
+    if (!name?.trim()) {
+      return res.status(400).json({ error: 'Merged text name is required.' });
+    }
+
+    // Check storage quota before copying files
+    const quota = req.user.role === 'admin' ? MAX_ADMIN_STORAGE_BYTES : MAX_STORAGE_BYTES;
+    const currentUsage = await calculateUserStorage(project.user_id);
+    if (currentUsage >= quota) {
+      return res.status(413).json({ error: 'Storage quota exceeded.' });
+    }
+
+    // Verify all texts belong to this project
+    const textsToMerge = [];
+    for (const tid of textIds) {
+      const t = getTextById(Number(tid));
+      if (!t || t.project_id !== project.id) {
+        return res.status(400).json({ error: `Text ${tid} not found in this project.` });
+      }
+      textsToMerge.push(t);
+    }
+
+    const newTextId = createText(project.id, name.trim());
+    const destDir = getTextDir(project.user_id, project.id, newTextId);
+    await mkdir(destDir, { recursive: true });
+
+    let pageNum = 1;
+    for (const t of textsToMerge) {
+      const pages = getPagesByText(t.id).filter(p => p.filename !== '__compiled__');
+      const srcDir = getTextDir(project.user_id, project.id, t.id);
+
+      for (const page of pages) {
+        // Prefix filename with source text id to avoid collisions
+        const newFilename = `t${t.id}_${page.filename}`;
+        const srcFile = join(srcDir, page.filename);
+        const destFile = join(destDir, newFilename);
+        try { await copyFile(srcFile, destFile); } catch (e) { console.error(`[merge] Failed to copy ${srcFile}:`, e.message); continue; }
+
+        savePageOCR(newTextId, newFilename, page.ocr_text || '', pageNum);
+        pageNum++;
+      }
+    }
+
+    updateText(newTextId, { status: 'ocrd' });
+    await refreshUserStorage(project.user_id);
+
+    const newText = getTextById(newTextId);
+    res.status(201).json(newText);
+  } catch (err) {
+    console.error('POST /projects/:projectId/texts/merge error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
