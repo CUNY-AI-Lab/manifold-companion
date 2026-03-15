@@ -232,9 +232,91 @@ function unwrapCallout() {
   parent.removeChild(node);
 }
 
+const COLOR_PALETTE = [
+  { name: 'Black', value: '#000000' }, { name: 'White', value: '#ffffff' },
+  { name: 'Gray', value: '#6b7280' }, { name: 'Red', value: '#ef4444' },
+  { name: 'Orange', value: '#f97316' }, { name: 'Amber', value: '#f59e0b' },
+  { name: 'Yellow', value: '#eab308' }, { name: 'Lime', value: '#84cc16' },
+  { name: 'Green', value: '#22c55e' }, { name: 'Teal', value: '#14b8a6' },
+  { name: 'Cyan', value: '#06b6d4' }, { name: 'Blue', value: '#3b82f6' },
+  { name: 'Indigo', value: '#6366f1' }, { name: 'Purple', value: '#a855f7' },
+  { name: 'Pink', value: '#ec4899' }, { name: 'Rose', value: '#f43f5e' },
+];
+
+function ColorPicker({ onSelect, onRemove, currentColor, label, icon }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    function handleKey(e) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onMouseDown={(e) => { e.preventDefault(); setOpen(!open); }}
+        title={label}
+        aria-label={label}
+        aria-expanded={open}
+        aria-haspopup="true"
+        className="px-2 py-1.5 rounded text-sm font-medium transition hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-cail-dark dark:hover:text-slate-200 text-gray-600 dark:text-slate-400 flex items-center gap-0.5"
+      >
+        {icon}
+        <span className="block w-3 h-0.5 rounded-full mt-0.5" style={{ backgroundColor: currentColor || '#000000' }} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg z-50 w-[148px]">
+          <div className="grid grid-cols-4 gap-1" role="grid" aria-label={label}>
+            {COLOR_PALETTE.map((color) => (
+              <button
+                key={color.value}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelect(color.value);
+                  setOpen(false);
+                }}
+                aria-label={color.name}
+                className="w-7 h-7 rounded border border-gray-200 dark:border-slate-600 hover:scale-110 transition-transform focus:ring-2 focus:ring-cail-blue focus:ring-offset-1"
+                style={{ backgroundColor: color.value }}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onRemove();
+              setOpen(false);
+            }}
+            className="w-full mt-1.5 px-2 py-1 text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 rounded transition-colors"
+          >
+            Remove {label.toLowerCase().includes('highlight') ? 'highlight' : 'color'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FormattingToolbar({ onDirty, editableRef }) {
   const wrap = (fn) => () => { fn(); onDirty(); };
   const [showFind, setShowFind] = useState(false);
+  const [textColor, setTextColor] = useState('#000000');
+  const [highlightColor, setHighlightColor] = useState('#ffff00');
   const findRef = useRef(null);
   const replaceRef = useRef(null);
   const [blockTag, setBlockTag] = useState('p');
@@ -387,6 +469,25 @@ function FormattingToolbar({ onDirty, editableRef }) {
         <TBtn onClick={wrap(unwrapCallout)} title="Remove callout box (unwrap from section/aside)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 2"/><path d="M8 12h8"/><path d="M12 8l4 4-4 4"/></svg>
         </TBtn>
+
+        <Sep />
+
+        <ColorPicker
+          label="Text color"
+          currentColor={textColor}
+          onSelect={(color) => { execCmd('foreColor', color); setTextColor(color); onDirty(); }}
+          onRemove={() => { execCmd('removeFormat'); onDirty(); }}
+          icon={<span className="font-bold text-xs">A</span>}
+        />
+        <ColorPicker
+          label="Highlight color"
+          currentColor={highlightColor}
+          onSelect={(color) => { execCmd('hiliteColor', color); setHighlightColor(color); onDirty(); }}
+          onRemove={() => { execCmd('hiliteColor', 'transparent'); onDirty(); }}
+          icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>}
+        />
+
+        <Sep />
 
         <TBtn onClick={() => setShowFind(!showFind)} title="Find & Replace (Ctrl+H)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -624,6 +725,46 @@ export default function HtmlTextDetail() {
   const [showVersions, setShowVersions] = useState(false);
   const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  function handlePaste(e) {
+    const html = e.clipboardData?.getData('text/html');
+    if (!html) return; // let plain text paste through
+    e.preventDefault();
+
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    // Remove <style> blocks
+    doc.querySelectorAll('style').forEach(el => el.remove());
+
+    // Walk all elements
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+    const toUnwrap = [];
+    let node;
+    while ((node = walker.nextNode())) {
+      // Remove color-related inline styles
+      if (node.style) {
+        node.style.removeProperty('color');
+        node.style.removeProperty('background-color');
+        node.style.removeProperty('background');
+      }
+      // Mark <font> elements for unwrapping
+      if (node.tagName === 'FONT') {
+        toUnwrap.push(node);
+      }
+    }
+
+    // Unwrap <font> elements (preserve children)
+    for (const font of toUnwrap) {
+      while (font.firstChild) {
+        font.parentNode.insertBefore(font.firstChild, font);
+      }
+      font.parentNode.removeChild(font);
+    }
+
+    const sanitized = doc.body.innerHTML;
+    document.execCommand('insertHTML', false, sanitized);
+    setDirty(true);
+  }
 
   // Editor shortcuts - active only in Review tab when user can edit
   useHotkeys({
@@ -1271,6 +1412,7 @@ export default function HtmlTextDetail() {
                     aria-multiline="true"
                     aria-label="Document editor"
                     onInput={handleEditableInput}
+                    onPaste={handlePaste}
                     onKeyDown={(e) => {
                       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                         e.preventDefault();
