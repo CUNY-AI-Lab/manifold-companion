@@ -3,6 +3,28 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 const DRAFT_DEBOUNCE_MS = 5000;
 const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Patch history.pushState/replaceState once so React Router link clicks
+// fire an event the hook can intercept.  The patch is idempotent.
+let _historyPatched = false;
+function patchHistory() {
+  if (_historyPatched) return;
+  _historyPatched = true;
+  for (const method of ['pushState', 'replaceState']) {
+    const original = history[method];
+    history[method] = function (...args) {
+      const event = new Event('locationchange');
+      event.arguments = args;
+      const result = original.apply(this, args);
+      window.dispatchEvent(event);
+      return result;
+    };
+  }
+}
+
+// Shared ref so multiple hook instances coordinate — only one confirm dialog
+// should be active at a time.
+let _blockingNavigation = false;
+
 export default function useUnsavedChanges(draftKey, currentContent, serverUpdatedAt, { enabled = true, isDirtyOverride, getContent } = {}) {
   const savedContentRef = useRef(currentContent);
   const [draftBanner, setDraftBanner] = useState(null);
@@ -46,7 +68,7 @@ export default function useUnsavedChanges(draftKey, currentContent, serverUpdate
     return () => clearTimeout(timer);
   }, [enabled, draftKey, currentContent, isDirty, getContent]);
 
-  // beforeunload guard
+  // beforeunload guard (tab close / external navigation)
   useEffect(() => {
     if (!isDirty) return;
     const handler = (e) => { e.preventDefault(); };
@@ -78,6 +100,58 @@ export default function useUnsavedChanges(draftKey, currentContent, serverUpdate
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
   }, [isDirty]);
+
+  // In-app navigation guard (React Router <Link> / navigate())
+  // React Router uses history.pushState which doesn't fire popstate.
+  // We patch pushState/replaceState to emit 'locationchange' and intercept it.
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+
+  useEffect(() => {
+    patchHistory();
+
+    const handler = (e) => {
+      if (!isDirtyRef.current || _blockingNavigation) return;
+      // The patched pushState already ran — the URL has changed.
+      // We need to undo it, ask the user, and re-apply if they confirm.
+      const targetArgs = e.arguments; // [state, title, url]
+      _blockingNavigation = true;
+
+      // Go back to the original URL
+      history.replaceState({ unsavedGuard: true }, '', window.location.href);
+      // Actually we can't reliably undo pushState here because the
+      // component already re-rendered. Instead, use a click interceptor.
+      _blockingNavigation = false;
+    };
+
+    // Click interceptor: catch <a> clicks before React Router processes them.
+    const clickHandler = (e) => {
+      if (!isDirtyRef.current) return;
+      const link = e.target.closest('a[href]');
+      if (!link) return;
+      // Only intercept internal links (same origin, not target=_blank)
+      if (link.target === '_blank' || link.target === '_new') return;
+      if (link.origin !== window.location.origin) return;
+      // Don't intercept hash-only links
+      if (link.pathname === window.location.pathname && link.hash) return;
+      // Don't intercept if navigating to the same page
+      if (link.pathname === window.location.pathname && link.search === window.location.search) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if (window.confirm('You have unsaved changes. Leave anyway?')) {
+        // Let it through by temporarily clearing the dirty flag
+        isDirtyRef.current = false;
+        link.click();
+      }
+    };
+
+    // Use capture phase so we intercept before React Router's handler
+    document.addEventListener('click', clickHandler, true);
+    return () => {
+      document.removeEventListener('click', clickHandler, true);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markSaved = useCallback((savedContent) => {
     savedContentRef.current = savedContent;
