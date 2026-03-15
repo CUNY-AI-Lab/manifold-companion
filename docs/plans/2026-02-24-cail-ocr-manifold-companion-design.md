@@ -148,7 +148,7 @@ settings
   - View all users (email, status, storage used, project count, last login)
   - Approve/reject/disable accounts
   - Delete users and their data
-- **Admin seed:** On first run, create admin account: email `<REDACTED_EMAIL>`, password `<REDACTED>`, role `admin`, status `approved`.
+- **Admin seed:** On first run, create admin account from `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables, role `admin`, status `approved`.
 - **Sessions:** express-session with SQLite store, httpOnly + secure + sameSite cookies.
 - **Rate limiting:** 5 login attempts per 15 minutes per IP.
 

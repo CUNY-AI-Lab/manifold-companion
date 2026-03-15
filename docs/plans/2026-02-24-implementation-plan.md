@@ -112,15 +112,13 @@ Run: `cd client && npm install`
 
 ```
 PORT=3000
-SESSION_SECRET=change-me-to-random-string-in-production
+SESSION_SECRET=<generate-random-secret>
 AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=<decoded from base64 key>
-AWS_SECRET_ACCESS_KEY=<decoded from base64 key>
+AWS_ACCESS_KEY_ID=<your-aws-access-key>
+AWS_SECRET_ACCESS_KEY=<your-aws-secret-key>
 BEDROCK_OCR_MODEL=us.amazon.nova-pro-v1:0
 BEDROCK_TEXT_MODEL=us.anthropic.claude-3-5-sonnet-20241022-v2:0
 ```
-
-Note: The base64 key `<REDACTED_KEY>` must be decoded to extract the access key ID and secret access key.
 
 **Step 5: Create .gitignore**
 
@@ -164,7 +162,7 @@ git commit -m "chore: scaffold monorepo with server and client workspaces"
 Create `server/db.js` with:
 - `initDatabase(dataDir)` — creates/opens DB, runs schema, seeds admin
 - Tables: users, projects, texts, pages, metadata, settings, sessions
-- Admin seed: email `<REDACTED_EMAIL>`, password hash of `<REDACTED>`, role `admin`, status `approved`
+- Admin seed: email from `ADMIN_EMAIL` env var, password hash of `ADMIN_PASSWORD` env var, role `admin`, status `approved`
 - All query functions exported (CRUD for each entity)
 
 Schema adapted from the Lalli `db.js` but restructured for multi-user with:
@@ -186,7 +184,7 @@ Key functions to export:
 
 **Step 2: Verify DB creates and seeds admin**
 
-Run a quick test: `node -e "import('./db.js').then(m => { const db = m.initDatabase('./test-data'); console.log(m.getUserByEmail('<REDACTED_EMAIL>')); })"`
+Run a quick test: `node -e "import('./db.js').then(m => { const db = m.initDatabase('./test-data'); console.log(m.getUserByEmail(process.env.ADMIN_EMAIL)); })"`
 
 **Step 3: Commit**
 
@@ -940,7 +938,7 @@ Run: `npm run dev`
 
 **Step 2: Test admin login**
 
-Login with `<REDACTED_EMAIL>` / `<REDACTED>`. Verify dashboard loads.
+Login with admin credentials from `.env`. Verify dashboard loads.
 
 **Step 3: Create a test project**
 

@@ -92,7 +92,7 @@ SESSION_SECRET=<generate-strong-random-secret>
 AWS_REGION=us-east-1
 BEDROCK_OCR_MODEL=qwen.qwen3-vl-235b-a22b
 BEDROCK_TEXT_MODEL=openai.gpt-oss-120b-1:0
-ADMIN_EMAIL=<REDACTED_EMAIL>
+ADMIN_EMAIL=<your-admin-email>
 ADMIN_PASSWORD=<strong-password>
 DATA_DIR=/STORAGE_DRIVE/manifold-companion/data
 ```

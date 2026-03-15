@@ -80,7 +80,11 @@ data/             Runtime data (SQLite DBs, uploaded files) — gitignored
 
 ## License
 
-All rights reserved. CUNY AI Lab, The Graduate Center, City University of New York.
+This work is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+
+You are free to share and adapt this software for non-commercial purposes, provided you give appropriate credit to the CUNY AI Lab and distribute any derivative works under the same license.
+
+See [LICENSE](LICENSE) for the full license text.
 
 ## Contact
 
