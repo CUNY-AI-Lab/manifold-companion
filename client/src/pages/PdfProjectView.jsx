@@ -49,6 +49,10 @@ export default function PdfProjectView() {
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   // Export modal + TOC builder
   const [showExport, setShowExport] = useState(false);
   const [tocItems, setTocItems] = useState([]);
@@ -87,8 +91,56 @@ export default function PdfProjectView() {
   }
 
   function handleTextsPageChange(newPage) {
+    setSelectedIds(new Set());
     setTextsPage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function toggleSelect(textId) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(textId)) next.delete(textId);
+      else next.add(textId);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(texts.map((t) => t.id)));
+  }
+
+  function deselectAll() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkDelete() {
+    if (!window.confirm(`Delete ${selectedIds.size} document${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setBulkLoading(true);
+    try {
+      await api.post(`/api/projects/${id}/texts/bulk-delete`, { textIds: [...selectedIds] });
+      if ([...selectedIds].includes(Number(selectedTextId))) {
+        setSelectedTextId('');
+      }
+      setSelectedIds(new Set());
+      await loadProject();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function handleBulkStatus(status) {
+    setBulkLoading(true);
+    try {
+      await api.post(`/api/projects/${id}/texts/bulk-status`, { textIds: [...selectedIds], status });
+      setSelectedIds(new Set());
+      await loadProject();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBulkLoading(false);
+    }
   }
 
   async function saveName() {
@@ -432,7 +484,7 @@ export default function PdfProjectView() {
   const canEdit = role === 'owner' || role === 'editor';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${selectedIds.size > 0 ? 'pb-28' : ''}`}>
       {/* Toast */}
       {toast && (
         <div className="fixed top-20 right-4 z-50 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm shadow-lg">
@@ -656,14 +708,35 @@ export default function PdfProjectView() {
             onDragOver={editMode ? (e) => handleDragOver(e, idx) : undefined}
             onDragEnd={editMode ? handleDragEnd : undefined}
             onDrop={editMode ? (e) => handleReorderDrop(e, idx) : undefined}
-            className={`bg-white rounded-2xl border p-5 transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+            className={`bg-white dark:bg-slate-800 rounded-2xl border p-5 transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
               editMode ? 'cursor-grab active:cursor-grabbing' : 'hover:shadow-md'
             } ${dragIdx === idx ? 'opacity-40' : ''} ${
-              dragOverIdx === idx && dragIdx !== idx
-                ? 'border-t-2 border-cail-blue border-x-gray-100 border-b-gray-100'
-                : 'border-gray-100'
+              selectedIds.has(text.id)
+                ? 'border-cail-blue ring-2 ring-cail-blue/20'
+                : dragOverIdx === idx && dragIdx !== idx
+                  ? 'border-t-2 border-cail-blue border-x-gray-100 border-b-gray-100'
+                  : 'border-gray-100 dark:border-slate-700'
             }`}
           >
+            {/* Checkbox (editor+ only, not in drag-reorder mode) */}
+            {canEdit && !editMode && (
+              <button
+                onClick={() => toggleSelect(text.id)}
+                className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  selectedIds.has(text.id)
+                    ? 'bg-cail-blue border-cail-blue'
+                    : 'border-gray-300 dark:border-slate-600 hover:border-cail-blue'
+                }`}
+                aria-label={selectedIds.has(text.id) ? 'Deselect' : 'Select'}
+              >
+                {selectedIds.has(text.id) && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            )}
+
             {/* Drag handle (edit mode only) */}
             {editMode && (
               <div className="flex items-center flex-shrink-0 text-gray-400 dark:text-slate-500">
@@ -749,6 +822,95 @@ export default function PdfProjectView() {
           </div>
         </div>
       )}
+
+      {/* Floating bulk action bar */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-40 flex justify-center px-4 pb-4 transition-all duration-300 ${
+          selectedIds.size > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-lg shadow-black/10 dark:shadow-black/40 min-w-0 max-w-2xl w-full sm:w-auto">
+          {/* Left: count + select all/none */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-sm font-semibold text-cail-dark dark:text-slate-200">
+              {selectedIds.size} selected
+            </span>
+            <span className="text-gray-300 dark:text-slate-600 select-none">|</span>
+            {selectedIds.size < texts.length ? (
+              <button
+                onClick={selectAll}
+                disabled={bulkLoading}
+                className="text-xs font-medium text-cail-blue hover:text-cail-navy disabled:opacity-50 transition-colors"
+              >
+                Select all
+              </button>
+            ) : (
+              <button
+                onClick={deselectAll}
+                disabled={bulkLoading}
+                className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-slate-300 disabled:opacity-50 transition-colors"
+              >
+                Deselect all
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Right: actions */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <select
+                disabled={bulkLoading}
+                defaultValue=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  e.target.value = '';
+                  if (val) handleBulkStatus(val);
+                }}
+                className="appearance-none text-xs font-medium px-3 py-2 pr-7 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:border-cail-blue focus:border-cail-blue outline-none transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <option value="" disabled>Set status...</option>
+                <option value="pending">Pending</option>
+                <option value="ocrd">OCR&apos;d</option>
+                <option value="reviewed">Reviewed</option>
+              </select>
+              <svg className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkLoading}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-100 dark:border-red-800 disabled:opacity-50 transition-colors"
+            >
+              {bulkLoading ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+              Delete
+            </button>
+
+            <button
+              onClick={deselectAll}
+              disabled={bulkLoading}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 disabled:opacity-50 transition-colors p-1"
+              aria-label="Clear selection"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
 
       <SharePanel projectId={Number(id)} open={showShare} onClose={() => setShowShare(false)} />
 
