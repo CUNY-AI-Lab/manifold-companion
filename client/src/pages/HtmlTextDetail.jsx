@@ -761,7 +761,7 @@ export default function HtmlTextDetail() {
       font.parentNode.removeChild(font);
     }
 
-    const sanitized = doc.body.innerHTML;
+    const sanitized = DOMPurify.sanitize(doc.body.innerHTML, SANITIZE_CONFIG);
     document.execCommand('insertHTML', false, sanitized);
     setDirty(true);
   }
@@ -799,8 +799,8 @@ export default function HtmlTextDetail() {
   useHotkeys({
     'Cmd+Shift+C': { handler: () => setShowAnnotations(s => !s), label: 'Toggle comments', section: 'Navigation' },
     'Cmd+Shift+H': { handler: () => setShowVersions(s => !s), label: 'Version history', section: 'Navigation' },
-    'Alt+ArrowLeft': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx > 0) setActiveTab(TABS[idx - 1]); }, label: 'Previous tab', section: 'Navigation' },
-    'Alt+ArrowRight': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx < TABS.length - 1) setActiveTab(TABS[idx + 1]); }, label: 'Next tab', section: 'Navigation' },
+    'Ctrl+Shift+ArrowLeft': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx > 0) setActiveTab(TABS[idx - 1]); }, label: 'Previous tab', section: 'Navigation' },
+    'Ctrl+Shift+ArrowRight': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx < TABS.length - 1) setActiveTab(TABS[idx + 1]); }, label: 'Next tab', section: 'Navigation' },
     'Escape': { handler: () => { if (showShortcuts) setShowShortcuts(false); else if (showAnnotations) setShowAnnotations(false); else if (showVersions) setShowVersions(false); }, label: 'Close panel', section: 'General' },
     '?': { handler: () => setShowShortcuts(s => !s), label: 'Keyboard shortcuts', section: 'General' },
     'Cmd+/': { handler: () => setShowShortcuts(s => !s), label: 'Keyboard shortcuts', section: 'General', allowInEditable: true },

@@ -73,29 +73,22 @@ export default function Header() {
     '/': { handler: () => { const el = document.querySelector('[data-search-input]'); if (el) el.focus(); }, label: 'Focus search', section: 'Global' },
   }, { when: !!user });
 
-  // Two-key "Go to" combos
+  // Two-key "Go to" combos — g sets up a one-time follow-up listener
   useHotkeys({
     'g': {
       handler: () => {
         clearTimeout(pendingTimerRef.current);
-        pendingKeyRef.current = 'g';
-        pendingTimerRef.current = setTimeout(() => { pendingKeyRef.current = null; }, 500);
+        function followUp(e) {
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+          window.removeEventListener('keydown', followUp);
+          clearTimeout(pendingTimerRef.current);
+          if (e.key === 'd') { e.preventDefault(); navigate('/'); }
+          else if (e.key === 's') { e.preventDefault(); navigate('/settings'); }
+        }
+        window.addEventListener('keydown', followUp);
+        pendingTimerRef.current = setTimeout(() => { window.removeEventListener('keydown', followUp); }, 500);
       },
-      label: 'Go to... (then D=Dashboard, S=Settings)',
-      section: 'Global',
-    },
-    'd': {
-      handler: () => {
-        if (pendingKeyRef.current === 'g') { pendingKeyRef.current = null; clearTimeout(pendingTimerRef.current); navigate('/'); }
-      },
-      label: 'Go to Dashboard (after G)',
-      section: 'Global',
-    },
-    's': {
-      handler: () => {
-        if (pendingKeyRef.current === 'g') { pendingKeyRef.current = null; clearTimeout(pendingTimerRef.current); navigate('/settings'); }
-      },
-      label: 'Go to Settings (after G)',
+      label: 'Go to... (G D=Dashboard, G S=Settings)',
       section: 'Global',
     },
   }, { when: !!user });

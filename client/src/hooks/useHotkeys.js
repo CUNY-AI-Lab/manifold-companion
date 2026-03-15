@@ -87,12 +87,15 @@ export default function useHotkeys(shortcuts, options = {}) {
 
   useEffect(() => {
     if (!when) return;
-    const parsed = Object.entries(shortcutsRef.current).map(([combo, config]) => ({
-      parsed: parseCombo(combo), config,
-    }));
+    // Pre-parse combos for matching, but read handlers from ref at event time
+    const comboKeys = Object.keys(shortcutsRef.current);
+    const parsedCombos = comboKeys.map(combo => ({ combo, parsed: parseCombo(combo) }));
 
     function handler(e) {
-      for (const { parsed: p, config } of parsed) {
+      const current = shortcutsRef.current;
+      for (const { combo, parsed: p } of parsedCombos) {
+        const config = current[combo];
+        if (!config) continue;
         if (matchesEvent(p, e)) {
           if (isEditableTarget(e) && !config.allowInEditable) continue;
           e.preventDefault();
