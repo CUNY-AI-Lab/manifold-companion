@@ -5,10 +5,11 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, updateUserThemePreference, getUserTokenUsage, setPasswordResetToken, getUserByResetToken, clearPasswordResetToken, BCRYPT_ROUNDS } from '../db.js';
+import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, updateUserThemePreference, getUserTokenUsage, setPasswordResetToken, getUserByResetToken, clearPasswordResetToken, BCRYPT_ROUNDS, getNotificationPreferences, updateNotificationPreferences } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateEmail, validatePassword } from '../middleware/security.js';
 import { sendPasswordResetEmail } from '../services/email.js';
+import { calculateUserStorage } from '../services/storage.js';
 
 const router = Router();
 
@@ -118,7 +119,7 @@ router.post('/logout', (req, res) => {
 });
 
 // ---- GET /me --------------------------------------------------------------
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) {
@@ -137,6 +138,7 @@ router.get('/me', (req, res) => {
     }
 
     const tokenUsage = getUserTokenUsage(user.id);
+    const storageUsed = await calculateUserStorage(user.id);
     res.json({
       id: user.id,
       email: user.email,
@@ -146,6 +148,7 @@ router.get('/me', (req, res) => {
       token_allowance: user.token_allowance,
       token_usage: tokenUsage,
       theme_preference: user.theme_preference || 'system',
+      storage_used: storageUsed,
     });
   } catch (err) {
     console.error('GET /me error:', err);
@@ -260,6 +263,47 @@ router.post('/reset-password', async (req, res) => {
     res.json({ message: 'Password has been reset. You can now log in.' });
   } catch (err) {
     console.error('POST /reset-password error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- GET /settings — return notification preferences ---------------------
+router.get('/settings', requireAuth, (req, res) => {
+  try {
+    const prefs = getNotificationPreferences(req.user.id);
+    res.json({
+      notification_preferences: {
+        email_ocr_complete: prefs.email_ocr_complete === 1,
+        email_project_shared: prefs.email_project_shared === 1,
+        email_comment_reply: prefs.email_comment_reply === 1,
+        email_comment_mention: prefs.email_comment_mention === 1,
+      },
+    });
+  } catch (err) {
+    console.error('GET /settings error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- PUT /settings — update notification preferences (partial) -----------
+router.put('/settings', requireAuth, (req, res) => {
+  try {
+    const { notification_preferences } = req.body || {};
+    if (!notification_preferences || typeof notification_preferences !== 'object') {
+      return res.status(400).json({ error: 'notification_preferences object is required.' });
+    }
+    updateNotificationPreferences(req.user.id, notification_preferences);
+    const prefs = getNotificationPreferences(req.user.id);
+    res.json({
+      notification_preferences: {
+        email_ocr_complete: prefs.email_ocr_complete === 1,
+        email_project_shared: prefs.email_project_shared === 1,
+        email_comment_reply: prefs.email_comment_reply === 1,
+        email_comment_mention: prefs.email_comment_mention === 1,
+      },
+    });
+  } catch (err) {
+    console.error('PUT /settings error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
