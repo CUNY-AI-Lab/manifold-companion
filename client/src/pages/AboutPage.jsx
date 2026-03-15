@@ -484,7 +484,13 @@ export default function AboutPage() {
           </RevealSection>
 
           <RevealSection delay={100}>
-            <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-xs text-blue-200/50">
+            <p className="mt-8 text-sm text-blue-100/60">
+              Questions or feedback?{' '}
+              <a href="mailto:ailab@gc.cuny.edu" className="text-cail-teal hover:text-white underline underline-offset-4 decoration-cail-teal/40 hover:decoration-white/60 transition-colors">
+                ailab@gc.cuny.edu
+              </a>
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-blue-200/50">
               <a href="https://cuny.manifoldapp.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">CUNY Manifold</a>
               <span>&middot;</span>
               <a href="https://gc.cuny.edu/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">The Graduate Center, CUNY</a>
