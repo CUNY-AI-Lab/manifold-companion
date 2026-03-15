@@ -176,8 +176,8 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {selected.size > 0 && (
             <>
               <span className="text-sm text-gray-500">{selected.size} selected</span>
@@ -675,7 +675,7 @@ function BackupsTab({ setToast }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="font-display font-semibold text-lg text-cail-dark">Database & File Backups</h2>
           <p className="text-sm text-gray-500 mt-1">Create and manage backups of the database and uploaded files.</p>
@@ -706,22 +706,23 @@ function BackupsTab({ setToast }) {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Filename</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Size</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Created</th>
-                <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Actions</th>
+                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Filename</th>
+                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Size</th>
+                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Created</th>
+                <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {backups.map((b) => (
                 <tr key={b.filename} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-4 text-sm text-cail-dark font-mono">{b.filename}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{formatBytes(b.size)}</td>
-                  <td className="px-6 py-4 text-sm text-gray-400">{formatDate(b.created_at)}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 sm:px-6 py-4 text-sm text-cail-dark font-mono whitespace-nowrap">{b.filename}</td>
+                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-600">{formatBytes(b.size)}</td>
+                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-400 whitespace-nowrap">{formatDate(b.created_at)}</td>
+                  <td className="px-4 sm:px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => downloadBackup(b.filename)}
@@ -741,6 +742,7 @@ function BackupsTab({ setToast }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </>
@@ -794,7 +796,7 @@ export default function AdminPanel() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-8 bg-gray-100 rounded-full p-1 w-fit">
+      <div className="flex gap-1 mb-8 bg-gray-100 rounded-full p-1 w-fit overflow-x-auto max-w-full">
         {TABS.map((t) => (
           <button
             key={t.id}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import SearchBar from '../components/SearchBar';
+import UsageBreakdown from '../components/UsageBreakdown';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -46,6 +47,7 @@ export default function Dashboard() {
   const [newDesc, setNewDesc] = useState('');
   const [newProjectType, setNewProjectType] = useState('image_to_markdown');
   const [creating, setCreating] = useState(false);
+  const [usageModal, setUsageModal] = useState(null);
 
   useEffect(() => {
     loadProjects();
@@ -307,17 +309,22 @@ export default function Dashboard() {
       {!loading && (
         <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">Storage</span>
-              <span className="text-sm text-gray-500">
-                {formatBytes(usedStorage)} / {formatBytes(totalStorage)}
-              </span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all ${storagePercent > 80 ? 'bg-red-500' : 'bg-cail-teal'}`}
-                style={{ width: `${storagePercent}%` }}
-              />
+            <div
+              onClick={() => setUsageModal('storage')}
+              className="cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-600 group-hover:text-cail-teal transition-colors">Storage</span>
+                <span className="text-sm text-gray-500">
+                  {formatBytes(usedStorage)} / {formatBytes(totalStorage)}
+                </span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all ${storagePercent > 80 ? 'bg-red-500' : 'bg-cail-teal'}`}
+                  style={{ width: `${storagePercent}%` }}
+                />
+              </div>
             </div>
             <a
               href={`mailto:ailab@gc.cuny.edu?subject=${encodeURIComponent('Manifold Companion — Storage Increase Request')}&body=${encodeURIComponent(`Hi CUNY AI Lab,\n\nI'd like to request additional storage for my Manifold Companion account.\n\nAccount email: ${user?.email || ''}\nCurrent usage: ${formatBytes(usedStorage)} / ${formatBytes(totalStorage)}\n\nRequested storage amount: \nReason: \nProject(s) this is for: \n\nThank you!`)}`}
@@ -327,17 +334,22 @@ export default function Dashboard() {
             </a>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">Token Usage</span>
-              <span className="text-sm text-gray-500">
-                {formatTokens(tokenUsage)} / {formatTokens(tokenAllowance)}
-              </span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all ${tokenAllowance > 0 && (tokenUsage / tokenAllowance) > 0.8 ? 'bg-red-500' : 'bg-cail-blue'}`}
-                style={{ width: `${tokenAllowance > 0 ? Math.min((tokenUsage / tokenAllowance) * 100, 100) : 0}%` }}
-              />
+            <div
+              onClick={() => setUsageModal('tokens')}
+              className="cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-600 group-hover:text-cail-blue transition-colors">Token Usage</span>
+                <span className="text-sm text-gray-500">
+                  {formatTokens(tokenUsage)} / {formatTokens(tokenAllowance)}
+                </span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all ${tokenAllowance > 0 && (tokenUsage / tokenAllowance) > 0.8 ? 'bg-red-500' : 'bg-cail-blue'}`}
+                  style={{ width: `${tokenAllowance > 0 ? Math.min((tokenUsage / tokenAllowance) * 100, 100) : 0}%` }}
+                />
+              </div>
             </div>
             <a
               href={`mailto:ailab@gc.cuny.edu?subject=${encodeURIComponent('Manifold Companion — Token Increase Request')}&body=${encodeURIComponent(`Hi CUNY AI Lab,\n\nI'd like to request additional tokens for my Manifold Companion account.\n\nAccount email: ${user?.email || ''}\nCurrent usage: ${formatTokens(tokenUsage)} / ${formatTokens(tokenAllowance)}\n\nRequested token amount: \nReason: \nExpected use (e.g., OCR pages, translations): \n\nThank you!`)}`}
@@ -348,6 +360,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {usageModal && <UsageBreakdown type={usageModal} onClose={() => setUsageModal(null)} />}
     </div>
   );
 }

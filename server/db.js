@@ -221,6 +221,8 @@ function runMigrations() {
     'ALTER TABLE users ADD COLUMN token_allowance INTEGER NOT NULL DEFAULT 5000000',
     'ALTER TABLE users ADD COLUMN token_usage_reset_at TEXT',
     "ALTER TABLE annotations ADD COLUMN mentions TEXT DEFAULT '[]'",
+    'ALTER TABLE users ADD COLUMN password_reset_token TEXT',
+    'ALTER TABLE users ADD COLUMN password_reset_expires_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -292,6 +294,18 @@ export function updateUserPassword(id, passwordHash) {
   return db.prepare(
     'UPDATE users SET password_hash = ? WHERE id = ?'
   ).run(passwordHash, id);
+}
+
+export function setPasswordResetToken(email, token, expiresAt) {
+  return db.prepare('UPDATE users SET password_reset_token = ?, password_reset_expires_at = ? WHERE email = ?').run(token, expiresAt, email);
+}
+
+export function getUserByResetToken(token) {
+  return db.prepare('SELECT * FROM users WHERE password_reset_token = ? AND password_reset_expires_at > datetime(\'now\')').get(token);
+}
+
+export function clearPasswordResetToken(userId) {
+  return db.prepare('UPDATE users SET password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = ?').run(userId);
 }
 
 export function getAllUsers() {
@@ -1033,6 +1047,29 @@ export function getNotificationPreferences(userId) {
     prefs = db.prepare('SELECT * FROM notification_preferences WHERE user_id = ?').get(userId);
   }
   return prefs;
+}
+
+export function getUserTokenBreakdown(userId) {
+  const user = db.prepare('SELECT token_usage_reset_at FROM users WHERE id = ?').get(userId);
+  const resetAt = user?.token_usage_reset_at || '1970-01-01';
+
+  const byProject = db.prepare(`
+    SELECT a.project_id, p.name AS project_name,
+      SUM(a.tokens_in + a.tokens_out) AS tokens, COUNT(*) AS calls
+    FROM api_usage_logs a
+    LEFT JOIN projects p ON p.id = a.project_id
+    WHERE a.user_id = ? AND a.created_at > ?
+    GROUP BY a.project_id ORDER BY tokens DESC
+  `).all(userId, resetAt);
+
+  const byEndpoint = db.prepare(`
+    SELECT endpoint, SUM(tokens_in + tokens_out) AS tokens, COUNT(*) AS calls
+    FROM api_usage_logs
+    WHERE user_id = ? AND created_at > ?
+    GROUP BY endpoint ORDER BY tokens DESC
+  `).all(userId, resetAt);
+
+  return { byProject, byEndpoint };
 }
 
 export function updateNotificationPreferences(userId, updates) {

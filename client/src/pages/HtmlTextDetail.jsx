@@ -9,6 +9,7 @@ import { api, BASE } from '../api/client';
 import { convertPdfToHtmlWithBedrock } from '../lib/pdfBedrockPipeline';
 import VersionHistory from '../components/VersionHistory';
 import AnnotationSidebar from '../components/AnnotationSidebar';
+import KeyboardShortcuts from '../components/KeyboardShortcuts';
 
 const MATHML_TAGS = [
   'math', 'maction', 'maligngroup', 'malignmark', 'menclose', 'merror', 'mfenced', 'mfrac',
@@ -619,6 +620,7 @@ export default function HtmlTextDetail() {
   const [role, setRole] = useState('viewer');
   const [showVersions, setShowVersions] = useState(false);
   const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Details tab state
   const [summary, setSummary] = useState('');
@@ -763,6 +765,19 @@ export default function HtmlTextDetail() {
     loadPdfPreview();
     return () => { active = false; };
   }, [id, sourcePdfName]);
+
+  // Global ? shortcut for keyboard shortcuts overlay
+  useEffect(() => {
+    function handleShortcutKey(e) {
+      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+      }
+    }
+    window.addEventListener('keydown', handleShortcutKey);
+    return () => window.removeEventListener('keydown', handleShortcutKey);
+  }, []);
 
   function normalizeImageSrcs(html) {
     return html.replace(
@@ -1038,6 +1053,9 @@ export default function HtmlTextDetail() {
                 {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Save HTML'}
               </button>
             )}
+            <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Keyboard shortcuts (?)">
+              ?
+            </button>
             <button
               onClick={() => setShowVersions(true)}
               className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
@@ -1051,7 +1069,7 @@ export default function HtmlTextDetail() {
               Comments
             </button>
           </div>
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6">
           {/* Source PDF pane */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <div className="flex items-center justify-between gap-4 mb-4">
@@ -1092,14 +1110,14 @@ export default function HtmlTextDetail() {
                 )}
               </div>
             </div>
-            <div className="min-h-[75vh] max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50">
+            <div className="min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50">
               {!sourcePdfName && (
-                <div className="min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
+                <div className="min-h-[40vh] lg:min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
                   Source PDF unavailable.
                 </div>
               )}
               {sourcePdfName && pdfLoading && (
-                <div className="min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
+                <div className="min-h-[40vh] lg:min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
                   Rendering PDF preview...
                 </div>
               )}
@@ -1162,7 +1180,7 @@ export default function HtmlTextDetail() {
                     saveHtml();
                   }
                 }}
-                className="w-full min-h-[75vh] max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-none"
+                className="w-full min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-none"
                 spellCheck={false}
               />
             ) : (
@@ -1180,7 +1198,7 @@ export default function HtmlTextDetail() {
                         saveHtml();
                       }
                     }}
-                    className="pdf-preview-pane min-h-[75vh] max-h-[75vh] overflow-auto bg-white p-6 focus:outline-none"
+                    className="pdf-preview-pane min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto bg-white p-4 sm:p-6 focus:outline-none"
                     dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
                   />
                   <ImageResizer editableRef={editableRef} onDirty={() => setDirty(true)} />
@@ -1254,6 +1272,23 @@ export default function HtmlTextDetail() {
 
       <VersionHistory textId={text?.id} contentType="html" open={showVersions} onClose={() => setShowVersions(false)} onRevert={() => loadText()} />
       <AnnotationSidebar textId={text?.id} open={showAnnotations} onClose={() => setShowAnnotations(false)} role={role} />
+      {showShortcuts && (
+        <KeyboardShortcuts
+          onClose={() => setShowShortcuts(false)}
+          shortcuts={{
+            'HTML Editor': [
+              { keys: ['\u2318S', 'Ctrl+S'], desc: 'Save HTML' },
+              { keys: ['\u2318B'], desc: 'Bold' },
+              { keys: ['\u2318I'], desc: 'Italic' },
+              { keys: ['\u2318U'], desc: 'Underline' },
+            ],
+            'General': [
+              { keys: ['Esc'], desc: 'Close modal / sidebar' },
+              { keys: ['?'], desc: 'Show keyboard shortcuts' },
+            ],
+          }}
+        />
+      )}
     </div>
   );
 }

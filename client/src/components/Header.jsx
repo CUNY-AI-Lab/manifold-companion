@@ -102,6 +102,9 @@ export default function Header() {
         {/* Mobile menu */}
         {menuOpen && (
           <div className="md:hidden border-t border-gray-100 py-3 space-y-1">
+            <div className="px-4 pb-2">
+              <SearchBar compact={false} />
+            </div>
             {navLinks.map((link) => (
               <Link
                 key={link.to}

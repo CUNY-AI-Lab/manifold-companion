@@ -573,7 +573,7 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md bg-cail-cream h-full shadow-xl flex flex-col animate-slide-in-right">
+      <div className="relative w-full sm:max-w-md bg-cail-cream h-full shadow-xl flex flex-col animate-slide-in-right">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-cail-blue/10">
           <h2 className="text-lg font-display font-semibold text-cail-navy">Annotations</h2>

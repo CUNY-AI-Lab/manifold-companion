@@ -428,8 +428,8 @@ export default function AboutPage() {
           </RevealSection>
 
           <RevealSection delay={100}>
-            <div className="mt-10 overflow-hidden rounded-2xl border border-gray-100">
-              <table className="w-full text-sm">
+            <div className="mt-10 overflow-hidden rounded-2xl border border-gray-100 overflow-x-auto">
+              <table className="w-full text-sm min-w-[400px]">
                 <thead>
                   <tr className="bg-gray-50 text-left">
                     <th className="px-5 py-3 font-display font-semibold text-cail-dark text-xs uppercase tracking-wider">Category</th>
@@ -505,7 +505,7 @@ export default function AboutPage() {
                 ailab@gc.cuny.edu
               </a>
             </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-blue-200/50">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs text-blue-200/50">
               <a href="https://cuny.manifoldapp.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">CUNY Manifold</a>
               <span>&middot;</span>
               <a href="https://gc.cuny.edu/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">The Graduate Center, CUNY</a>

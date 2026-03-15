@@ -3,10 +3,12 @@
 // ---------------------------------------------------------------------------
 
 import { Router } from 'express';
+import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, getUserTokenUsage, BCRYPT_ROUNDS } from '../db.js';
+import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, getUserTokenUsage, setPasswordResetToken, getUserByResetToken, clearPasswordResetToken, BCRYPT_ROUNDS } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateEmail, validatePassword } from '../middleware/security.js';
+import { sendPasswordResetEmail } from '../services/email.js';
 
 const router = Router();
 
@@ -195,6 +197,52 @@ router.put('/profile', requireAuth, (req, res) => {
     res.json({ display_name: trimmed || null });
   } catch (err) {
     console.error('PUT /profile error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /forgot-password ------------------------------------------------
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email is required.' });
+
+    // Always return success to prevent email enumeration
+    const user = getUserByEmail(email.toLowerCase().trim());
+    if (user && user.status === 'approved') {
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 3600000).toISOString(); // 1 hour
+      setPasswordResetToken(email.toLowerCase().trim(), token, expiresAt);
+
+      const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+      const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+      await sendPasswordResetEmail(user.email, resetUrl);
+    }
+
+    res.json({ message: 'If an account exists with that email, a reset link has been sent.' });
+  } catch (err) {
+    console.error('POST /forgot-password error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /reset-password -------------------------------------------------
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) return res.status(400).json({ error: 'Token and password are required.' });
+    if (!validatePassword(password)) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+
+    const user = getUserByResetToken(token);
+    if (!user) return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
+
+    const newHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    updateUserPassword(user.id, newHash);
+    clearPasswordResetToken(user.id);
+
+    res.json({ message: 'Password has been reset. You can now log in.' });
+  } catch (err) {
+    console.error('POST /reset-password error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

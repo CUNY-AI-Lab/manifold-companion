@@ -18,8 +18,11 @@ import {
   reorderTexts,
   getSharedProjectsByUser,
   getUserTokenUsage,
+  getUserTokenBreakdown,
 } from '../db.js';
-import { deleteProjectFiles } from '../services/storage.js';
+import { deleteProjectFiles, getUserDir } from '../services/storage.js';
+import { readdir, stat } from 'fs/promises';
+import { join } from 'path';
 
 const router = Router();
 const ALLOWED_PROJECT_TYPES = new Set(['image_to_markdown', 'pdf_to_html']);
@@ -96,6 +99,42 @@ router.post('/', (req, res) => {
     res.status(201).json(project);
   } catch (err) {
     console.error('POST /api/projects error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- GET /usage — user's own usage breakdown ------------------------------
+router.get('/usage', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const projects = getProjectsByUser(userId);
+    const userDir = getUserDir(userId);
+
+    // Per-project storage
+    const storage = [];
+    for (const p of projects) {
+      const projDir = join(userDir, String(p.id));
+      let bytes = 0;
+      try {
+        const items = await readdir(projDir, { withFileTypes: true, recursive: true });
+        for (const item of items) {
+          if (!item.isFile()) continue;
+          try {
+            const parentPath = item.parentPath || item.path;
+            const info = await stat(join(parentPath, item.name));
+            bytes += info.size;
+          } catch {}
+        }
+      } catch {}
+      if (bytes > 0) storage.push({ id: p.id, name: p.name, bytes });
+    }
+
+    // Token breakdown
+    const { byProject, byEndpoint } = getUserTokenBreakdown(userId);
+
+    res.json({ storage, tokensByProject: byProject, tokensByEndpoint: byEndpoint });
+  } catch (err) {
+    console.error('GET /usage error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

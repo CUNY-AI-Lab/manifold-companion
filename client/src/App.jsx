@@ -4,6 +4,8 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import Dashboard from './pages/Dashboard';
 import ProjectRoute from './pages/ProjectRoute';
 import TextRoute from './pages/TextRoute';
@@ -33,6 +35,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/projects/:id" element={<ProtectedRoute><ProjectRoute /></ProtectedRoute>} />
           <Route path="/texts/:id" element={<ProtectedRoute><TextRoute /></ProtectedRoute>} />

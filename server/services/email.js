@@ -91,6 +91,16 @@ export async function sendCommentReplyEmail(to, replierName, commentSnippet, tex
   );
 }
 
+export async function sendPasswordResetEmail(to, resetUrl) {
+  await sendEmail(
+    to,
+    'Reset your password',
+    `<p>We received a request to reset your password. Click the link below to choose a new one:</p>
+     <p><a href="${esc(resetUrl)}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">Reset Password</a></p>
+     <p style="font-size: 13px; color: #6b7280; margin-top: 16px;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>`
+  );
+}
+
 export async function sendMentionEmail(to, mentionerName, commentSnippet, textName) {
   const snippet = commentSnippet.length > 100 ? commentSnippet.slice(0, 100) + '...' : commentSnippet;
   await sendEmail(

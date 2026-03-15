@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 import { api, BASE } from '../api/client';
 import VersionHistory from '../components/VersionHistory';
 import AnnotationSidebar from '../components/AnnotationSidebar';
+import KeyboardShortcuts from '../components/KeyboardShortcuts';
 
 /**
  * Resize a canvas-based image to ensure it stays under maxBytes (approx).
@@ -400,6 +401,7 @@ export default function TextDetail() {
   const [role, setRole] = useState('viewer');
   const [showVersions, setShowVersions] = useState(false);
   const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // OCR Settings modal state
   const [showOcrSettings, setShowOcrSettings] = useState(false);
@@ -657,6 +659,11 @@ export default function TextDetail() {
     if (activeTab !== 'Review') return;
 
     function handleKey(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        savePageReview();
+        return;
+      }
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
       if (e.key === 'ArrowLeft' && reviewPage > 0) setReviewPage((p) => p - 1);
       if (e.key === 'ArrowRight' && reviewPage < visiblePages.length - 1) setReviewPage((p) => p + 1);
@@ -665,6 +672,19 @@ export default function TextDetail() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [activeTab, reviewPage, visiblePages.length]);
+
+  // Global ? shortcut for keyboard shortcuts overlay
+  useEffect(() => {
+    function handleShortcutKey(e) {
+      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+      }
+    }
+    window.addEventListener('keydown', handleShortcutKey);
+    return () => window.removeEventListener('keydown', handleShortcutKey);
+  }, []);
 
   // OCR via SSE — with confirmation dialog (Task 1)
   function runOCR() {
@@ -1209,7 +1229,7 @@ export default function TextDetail() {
           ) : (
             <>
               {/* Top bar */}
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setReviewPage((p) => Math.max(0, p - 1))}
@@ -1234,6 +1254,9 @@ export default function TextDetail() {
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Keyboard shortcuts (?)">
+                    ?
+                  </button>
                   <button onClick={() => setShowVersions(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
                     History
                   </button>
@@ -1251,7 +1274,7 @@ export default function TextDetail() {
               </div>
 
               {/* 3-column layout: sidebar | image | editor */}
-              <div className="flex gap-4" style={{ height: '65vh' }}>
+              <div className="flex flex-col md:flex-row gap-4" style={{ minHeight: '50vh' }}>
                 {/* Page sidebar */}
                 <div className="w-40 flex-shrink-0 bg-white rounded-2xl border border-gray-100 overflow-y-auto hidden md:block">
                   {visiblePages.map((page, idx) => (
@@ -1279,7 +1302,7 @@ export default function TextDetail() {
                 </div>
 
                 {/* Image */}
-                <div className="flex-1 bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col min-w-0">
+                <div className="flex-1 bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col min-w-0 max-h-[40vh] md:max-h-none md:h-[65vh]">
                   <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-gray-100">
                     <button
                       onClick={() => { setReviewZoom((z) => { const n = Math.max(1, z - 0.25); if (n <= 1) setReviewPan({ x: 0, y: 0 }); return n; }); }}
@@ -1342,7 +1365,7 @@ export default function TextDetail() {
                 </div>
 
                 {/* Text editor with toolbar */}
-                <div className="flex-1 flex flex-col min-w-0">
+                <div className="flex-1 flex flex-col min-w-0 md:h-[65vh]">
                   {/* Markdown toolbar */}
                   <div className="flex items-center gap-1 bg-white rounded-t-2xl border border-gray-100 border-b-0 p-1.5">
                     <button onClick={() => insertReviewMarkdown('**', '**')} className="px-3 py-1 rounded text-sm font-bold text-gray-600 hover:bg-gray-100 transition-colors" title="Bold">B</button>
@@ -1740,6 +1763,7 @@ export default function TextDetail() {
 
       <VersionHistory textId={text?.id} contentType="compiled" open={showVersions} onClose={() => setShowVersions(false)} onRevert={() => loadText()} />
       <AnnotationSidebar textId={text?.id} open={showAnnotations} onClose={() => setShowAnnotations(false)} role={role} />
+      {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 }
