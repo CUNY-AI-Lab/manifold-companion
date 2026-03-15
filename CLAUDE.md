@@ -351,6 +351,17 @@ Fixes applied (2026-02-24):
 - **Annotation body cap**: Comments/replies limited to 10,000 characters (`annotations.js`)
 - **Split/merge quota**: Both endpoints check storage quota before file copies; splits capped at 20, merges at 50 (`texts.js`)
 
+Fixes applied (2026-03-15):
+
+- **Paste XSS prevention**: Pasted HTML in the contenteditable editor is sanitized through `DOMPurify.sanitize()` before insertion via `insertHTML` (`HtmlTextDetail.jsx`)
+- **Replace All XSS prevention**: Replacement text in find-and-replace is HTML-entity-escaped before innerHTML injection (`HtmlTextDetail.jsx`)
+- **Link URL scheme validation**: `Cmd+K` and toolbar link insertion only allow `http://` and `https://` URLs, blocking `javascript:` scheme XSS (`HtmlTextDetail.jsx`)
+- **Email subject header injection**: All dynamic email subject lines are sanitized via `sanitizeSubject()` which strips `\r\n` characters (`email.js`)
+- **Token quota on pdf-cleanup**: `checkTokenQuota` middleware added to the `POST /texts/:id/pdf-cleanup` route (`llm.js`)
+- **Stale closure fix in useHotkeys**: Keyboard shortcut handlers are read from ref at event time instead of being captured at effect setup, preventing stale state references (`useHotkeys.js`)
+- **Two-key combo safety**: `G then D/S` navigation uses a one-time follow-up listener instead of unconditional `preventDefault` on standalone keys (`Header.jsx`)
+- **Tab navigation modifier**: Changed from `Alt+Arrow` (conflicts with browser back/forward) to `Ctrl+Shift+Arrow` (`TextDetail.jsx`, `HtmlTextDetail.jsx`)
+
 ### AWS GuardDuty
 
 The AWS account (`757395169441`) has GuardDuty enabled with SNS alerts to `smorello@gradcenter.cuny.edu`. First-time Bedrock calls from a new IP/user-agent will trigger `Impact:IAMUser/AnomalousBehavior` alerts — these are false positives for legitimate first use from the CUNY network (ASN 31822). Archive these findings in the GuardDuty console; they stop recurring once the behavior is profiled.
