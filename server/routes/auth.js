@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, getUserTokenUsage, setPasswordResetToken, getUserByResetToken, clearPasswordResetToken, BCRYPT_ROUNDS } from '../db.js';
+import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, updateUserThemePreference, getUserTokenUsage, setPasswordResetToken, getUserByResetToken, clearPasswordResetToken, BCRYPT_ROUNDS } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateEmail, validatePassword } from '../middleware/security.js';
 import { sendPasswordResetEmail } from '../services/email.js';
@@ -145,6 +145,7 @@ router.get('/me', (req, res) => {
       status: user.status,
       token_allowance: user.token_allowance,
       token_usage: tokenUsage,
+      theme_preference: user.theme_preference || 'system',
     });
   } catch (err) {
     console.error('GET /me error:', err);
@@ -185,16 +186,32 @@ router.post('/change-password', requireAuth, async (req, res) => {
   }
 });
 
-// ---- PUT /profile — update display name for authenticated user ----------
+// ---- PUT /profile — update display name and/or theme for authenticated user
 router.put('/profile', requireAuth, (req, res) => {
   try {
-    const { display_name } = req.body || {};
-    if (display_name === undefined) {
-      return res.status(400).json({ error: 'display_name is required.' });
+    const { display_name, theme_preference } = req.body || {};
+    if (display_name === undefined && theme_preference === undefined) {
+      return res.status(400).json({ error: 'display_name or theme_preference is required.' });
     }
-    const trimmed = String(display_name || '').trim().slice(0, 100);
-    updateUserDisplayName(req.user.id, trimmed || null);
-    res.json({ display_name: trimmed || null });
+
+    const result = {};
+
+    if (display_name !== undefined) {
+      const trimmed = String(display_name || '').trim().slice(0, 100);
+      updateUserDisplayName(req.user.id, trimmed || null);
+      result.display_name = trimmed || null;
+    }
+
+    if (theme_preference !== undefined) {
+      const VALID_THEMES = ['system', 'light', 'dark'];
+      if (!VALID_THEMES.includes(theme_preference)) {
+        return res.status(400).json({ error: "theme_preference must be 'system', 'light', or 'dark'." });
+      }
+      updateUserThemePreference(req.user.id, theme_preference);
+      result.theme_preference = theme_preference;
+    }
+
+    res.json(result);
   } catch (err) {
     console.error('PUT /profile error:', err);
     res.status(500).json({ error: 'Internal server error.' });
