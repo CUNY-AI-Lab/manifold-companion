@@ -231,6 +231,7 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **Tab deep linking**: Both `TextDetail.jsx` and `HtmlTextDetail.jsx` read `?tab=` and `?annotations=1` query params on mount to set the initial active tab and auto-open the annotations sidebar (used by search results and notification links).
 - **Admin panel** (`AdminPanel.jsx`): Three-tab layout — Users (inline name editing, bulk approval, token allowance controls, usage reset), Usage (period selector, summary cards, per-endpoint/user/project breakdowns), Backups (create/download/delete database+file backups). Backup download uses `BASE` prefix for subpath compatibility.
 - **Registration**: `RegisterPage.jsx` includes optional display name field. `AuthContext` exposes `updateProfile()` for name changes.
+- **About page**: `AboutPage.jsx` at `/about` — editorial-style full page with scroll-triggered reveal animations, hero with diagonal slice, workflow step-by-step guides (timeline layout), collaboration features, and a quick-reference table. Replaced the old inline About modal in Header.
 
 ### Tailwind Theme (client/tailwind.config.js)
 

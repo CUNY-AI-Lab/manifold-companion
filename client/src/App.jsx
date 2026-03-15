@@ -9,6 +9,7 @@ import ProjectRoute from './pages/ProjectRoute';
 import TextRoute from './pages/TextRoute';
 import AdminPanel from './pages/AdminPanel';
 import SearchPage from './pages/SearchPage';
+import AboutPage from './pages/AboutPage';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/projects/:id" element={<ProtectedRoute><ProjectRoute /></ProtectedRoute>} />
           <Route path="/texts/:id" element={<ProtectedRoute><TextRoute /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+          <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
         </Routes>
       </main>
