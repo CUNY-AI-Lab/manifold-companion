@@ -36,7 +36,7 @@ function daysRemaining(expiresAt) {
 const PAGE_LIMIT = 12;
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [projects, setProjects] = useState([]);
@@ -62,6 +62,7 @@ export default function Dashboard() {
   const [newProjectType, setNewProjectType] = useState('image_to_markdown');
   const [creating, setCreating] = useState(false);
   const [usageModal, setUsageModal] = useState(null);
+  const [showWelcome, setShowWelcome] = useState(user?.onboarded === 0);
 
   // Sync page state to URL
   useEffect(() => {
@@ -103,6 +104,11 @@ export default function Dashboard() {
 
   function handleSharedPageChange(newPage) {
     setSharedPage(newPage);
+  }
+
+  async function dismissWelcome() {
+    setShowWelcome(false);
+    try { await updateProfile({ onboarded: true }); } catch { /* ignore */ }
   }
 
   async function handleCreate(e) {
@@ -156,6 +162,31 @@ export default function Dashboard() {
       <div className="mb-6">
         <SearchBar compact={false} />
       </div>
+
+      {/* Welcome banner for new users */}
+      {showWelcome && (
+        <div className="mb-6 relative overflow-hidden rounded-2xl bg-gradient-to-r from-cail-blue/10 to-cail-teal/10 dark:from-cail-blue/20 dark:to-cail-teal/20 border border-cail-blue/20 dark:border-cail-blue/30 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-1">
+                Welcome to Manifold Companion!
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-slate-400">
+                Your account is ready. Create a project to get started with document processing.
+              </p>
+            </div>
+            <button
+              onClick={dismissWelcome}
+              className="shrink-0 p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors"
+              aria-label="Dismiss welcome banner"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 90-day expiry notice for regular users */}
       {!isAdmin && (
@@ -240,18 +271,44 @@ export default function Dashboard() {
       )}
 
       {/* Empty state */}
-      {!loading && projects.length === 0 && (
-        <div className="text-center py-16">
-          <button
-            onClick={() => setShowForm(true)}
-            className="mx-auto w-16 h-16 rounded-2xl bg-cail-blue/10 flex items-center justify-center mb-4 hover:bg-cail-blue/20 transition-colors cursor-pointer"
-          >
-            <svg className="w-8 h-8 text-cail-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-          </button>
-          <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-1">No projects yet</h3>
-          <p className="text-sm text-gray-500 dark:text-slate-400">Create your first project to get started with OCR.</p>
+      {!loading && projects.length === 0 && shared.length === 0 && (
+        <div className="py-12">
+          <h3 className="font-display font-semibold text-xl text-center text-cail-dark dark:text-slate-200 mb-2">Get Started</h3>
+          <p className="text-sm text-center text-gray-500 dark:text-slate-400 mb-8">Choose a workflow to create your first project.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            {/* Image to Markdown */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+              <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h4 className="font-display font-semibold text-cail-dark dark:text-slate-200 mb-2">Image to Markdown</h4>
+              <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">Upload scanned pages or photos. OCR extracts text as Markdown for editing and Manifold export.</p>
+              <button
+                onClick={() => { setNewProjectType('image_to_markdown'); setShowForm(true); }}
+                className="w-full px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm font-medium hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors border border-amber-200 dark:border-amber-800"
+              >
+                Create Project
+              </button>
+            </div>
+            {/* PDF to HTML */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+              <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h4 className="font-display font-semibold text-cail-dark dark:text-slate-200 mb-2">PDF to HTML</h4>
+              <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">Upload a PDF document. AI parses each page into structured, editable HTML.</p>
+              <button
+                onClick={() => { setNewProjectType('pdf_to_html'); setShowForm(true); }}
+                className="w-full px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border border-blue-200 dark:border-blue-800"
+              >
+                Create Project
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
