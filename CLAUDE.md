@@ -15,6 +15,10 @@ The app is an Express backend serving a React SPA, with SQLite for persistence, 
 
 When adding or modifying UI components, always invoke the `frontend-design` skill to ensure visual consistency and high design quality. This applies to all client-side changes that affect what the user sees.
 
+## Attribution
+
+Never add "Built by Claude", "Co-Authored-By: Claude", "Generated with Claude Code", or any AI attribution to code, commits, PRs, UI, or documentation. This project is authored by the CUNY AI Lab team.
+
 ## Dev Commands
 
 ```bash
