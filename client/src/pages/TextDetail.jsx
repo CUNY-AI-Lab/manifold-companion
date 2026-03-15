@@ -983,7 +983,12 @@ export default function TextDetail() {
           {TABS.map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => {
+                if (hasUnsaved && activeTab === 'Review' && tab !== 'Review') {
+                  if (!window.confirm('You have unsaved changes. Switch tabs anyway?')) return;
+                }
+                setActiveTab(tab);
+              }}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-cail-blue text-cail-blue'
