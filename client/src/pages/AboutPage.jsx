@@ -469,9 +469,6 @@ export default function AboutPage() {
         <div className="relative max-w-5xl mx-auto px-6 sm:px-8 py-16 sm:py-20 text-center">
           <RevealSection>
             <h2 className="font-display font-bold text-2xl sm:text-3xl">Ready to digitize?</h2>
-            <p className="mt-3 text-blue-100/70 max-w-md mx-auto">
-              Create a project, upload your pages, and let the AI do the heavy lifting.
-            </p>
             <Link
               to="/"
               className="inline-flex items-center gap-2 mt-8 px-8 py-3.5 rounded-full bg-white text-cail-navy font-display font-semibold text-sm hover:bg-cail-teal hover:text-white transition-all duration-300 shadow-lg shadow-black/20"
