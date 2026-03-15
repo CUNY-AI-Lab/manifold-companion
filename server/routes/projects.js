@@ -35,15 +35,59 @@ router.use(requireAuth);
 // ---- GET / — list user's projects + shared projects ----------------------
 router.get('/', (req, res) => {
   try {
-    const projects = getProjectsByUser(req.user.id);
+    // Parse and validate pagination params
+    let page = parseInt(req.query.page, 10);
+    let limit = parseInt(req.query.limit, 10);
+    let sharedPage = parseInt(req.query.sharedPage, 10);
+    let sharedLimit = parseInt(req.query.sharedLimit, 10);
 
-    // Enrich each project with its text count and page count
+    const paginate = !isNaN(page) || !isNaN(limit) || !isNaN(sharedPage) || !isNaN(sharedLimit);
+
+    if (paginate) {
+      if (isNaN(page) || page < 1) page = 1;
+      if (isNaN(limit) || limit < 1 || limit > 100) limit = 12;
+      if (isNaN(sharedPage) || sharedPage < 1) sharedPage = 1;
+      if (isNaN(sharedLimit) || sharedLimit < 1 || sharedLimit > 100) sharedLimit = 12;
+
+      const offset = (page - 1) * limit;
+      const sharedOffset = (sharedPage - 1) * sharedLimit;
+
+      const { rows: projectRows, total } = getProjectsByUser(req.user.id, limit, offset);
+      const { rows: sharedRows, total: totalShared } = getSharedProjectsByUser(req.user.id, sharedLimit, sharedOffset);
+
+      const enriched = projectRows.map((p) => {
+        const texts = getTextsByProject(p.id);
+        return { ...p, text_count: texts.length, page_count: getPageCountByProject(p.id) };
+      });
+
+      const shared = sharedRows.map((p) => {
+        const texts = getTextsByProject(p.id);
+        return { ...p, text_count: texts.length, page_count: getPageCountByProject(p.id) };
+      });
+
+      const tokenUsage = getUserTokenUsage(req.user.id);
+      return res.json({
+        projects: enriched,
+        shared,
+        total,
+        totalShared,
+        page,
+        pageSize: limit,
+        sharedPage,
+        sharedPageSize: sharedLimit,
+        storage_used_bytes: req.user.storage_used_bytes || 0,
+        token_usage: tokenUsage,
+        token_allowance: req.user.token_allowance,
+      });
+    }
+
+    // Non-paginated (backward compatible)
+    const projects = getProjectsByUser(req.user.id);
     const enriched = projects.map((p) => {
       const texts = getTextsByProject(p.id);
       return { ...p, text_count: texts.length, page_count: getPageCountByProject(p.id) };
     });
 
-    // Get projects shared with this user
     const sharedRaw = getSharedProjectsByUser(req.user.id);
     const shared = sharedRaw.map((p) => {
       const texts = getTextsByProject(p.id);
@@ -145,6 +189,21 @@ router.get('/:id', (req, res) => {
     const result = verifyProjectAccess(Number(req.params.id), req.user.id, 'viewer');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
+    let page = parseInt(req.query.page, 10);
+    let limit = parseInt(req.query.limit, 10);
+    const paginate = !isNaN(page) || !isNaN(limit);
+
+    if (paginate) {
+      if (isNaN(page) || page < 1) page = 1;
+      if (isNaN(limit) || limit < 1 || limit > 100) limit = 20;
+      const offset = (page - 1) * limit;
+
+      const { rows, total: totalTexts } = getTextsByProject(result.project.id, limit, offset);
+      const texts = rows.map((t) => ({ ...t, page_count: getPageCountByText(t.id) }));
+      return res.json({ ...result.project, texts, totalTexts, page, pageSize: limit, role: result.role });
+    }
+
+    // Non-paginated (backward compatible)
     const texts = getTextsByProject(result.project.id).map((t) => ({
       ...t,
       page_count: getPageCountByText(t.id),

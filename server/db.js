@@ -363,7 +363,12 @@ export function createProject(userId, name, description, language, projectType =
   return result.lastInsertRowid;
 }
 
-export function getProjectsByUser(userId) {
+export function getProjectsByUser(userId, limit, offset) {
+  if (limit !== undefined && offset !== undefined) {
+    const rows = db.prepare('SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?').all(userId, limit, offset);
+    const { total } = db.prepare('SELECT COUNT(*) AS total FROM projects WHERE user_id = ?').get(userId);
+    return { rows, total };
+  }
   return db.prepare('SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
 }
 
@@ -427,7 +432,12 @@ export function createText(projectId, name) {
   return result.lastInsertRowid;
 }
 
-export function getTextsByProject(projectId) {
+export function getTextsByProject(projectId, limit, offset) {
+  if (limit !== undefined && offset !== undefined) {
+    const rows = db.prepare('SELECT * FROM texts WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?').all(projectId, limit, offset);
+    const { total } = db.prepare('SELECT COUNT(*) AS total FROM texts WHERE project_id = ?').get(projectId);
+    return { rows, total };
+  }
   return db.prepare('SELECT * FROM texts WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC').all(projectId);
 }
 
@@ -810,7 +820,25 @@ export function getProjectShareById(shareId) {
   return db.prepare('SELECT * FROM project_shares WHERE id = ?').get(shareId);
 }
 
-export function getSharedProjectsByUser(userId) {
+export function getSharedProjectsByUser(userId, limit, offset) {
+  if (limit !== undefined && offset !== undefined) {
+    const rows = db.prepare(`
+      SELECT p.*, ps.role AS share_role, u.email AS owner_email, u.display_name AS owner_display_name
+      FROM projects p
+      JOIN project_shares ps ON ps.project_id = p.id
+      JOIN users u ON u.id = p.user_id
+      WHERE ps.user_id = ?
+      ORDER BY p.updated_at DESC
+      LIMIT ? OFFSET ?
+    `).all(userId, limit, offset);
+    const { total } = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM projects p
+      JOIN project_shares ps ON ps.project_id = p.id
+      WHERE ps.user_id = ?
+    `).get(userId);
+    return { rows, total };
+  }
   return db.prepare(`
     SELECT p.*, ps.role AS share_role, u.email AS owner_email, u.display_name AS owner_display_name
     FROM projects p
