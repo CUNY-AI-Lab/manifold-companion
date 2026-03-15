@@ -181,6 +181,24 @@ export default function AboutPage() {
             </p>
           </RevealSection>
 
+          <RevealSection delay={80}>
+            <div className="mt-8 flex items-start gap-3 bg-white rounded-2xl border border-cail-blue/10 p-5 max-w-2xl">
+              <span className="text-cail-blue mt-0.5 shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                </svg>
+              </span>
+              <div className="text-sm text-gray-500 leading-relaxed">
+                <strong className="text-cail-dark">Transparency &amp; privacy.</strong>{' '}
+                The Image-to-Markdown pipeline (OCR, summaries, translations) uses{' '}
+                <strong className="text-gray-600">AWS Bedrock</strong>. The PDF-to-HTML pipeline uses{' '}
+                <strong className="text-gray-600">Google Gemini via OpenRouter</strong>.
+                Both providers operate under <strong className="text-gray-600">zero data retention</strong> policies
+                — your documents are processed and immediately discarded, never used for model training.
+              </div>
+            </div>
+          </RevealSection>
+
           <RevealSection delay={150}>
             <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <FeaturePill icon="&#9998;">
