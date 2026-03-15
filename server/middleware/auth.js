@@ -34,6 +34,7 @@ export async function requireAuth(req, res, next) {
       role: user.role,
       status: user.status,
       storage_used_bytes: user.storage_used_bytes,
+      token_allowance: user.token_allowance,
       last_login_at: user.last_login_at,
       created_at: user.created_at,
     };

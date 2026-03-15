@@ -43,12 +43,13 @@ router.get('/users', (req, res) => {
   try {
     const users = getAllUsers();
 
-    // Enrich each user with project count
+    // Enrich each user with project count and token usage
     const enriched = users.map((user) => {
       const projects = getProjectsByUser(user.id);
       return {
         ...user,
         project_count: projects.length,
+        token_usage: getUserTokenUsage(user.id),
       };
     });
 

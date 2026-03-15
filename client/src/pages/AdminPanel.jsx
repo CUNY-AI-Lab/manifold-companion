@@ -325,7 +325,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Status</th>
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Role</th>
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Storage</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Token Allowance</th>
+                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Tokens</th>
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Projects</th>
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Last Login</th>
                 <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Actions</th>
@@ -400,10 +400,13 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                     ) : (
                       <button
                         onClick={() => { setEditingAllowance(user.id); setAllowanceValue(String(user.token_allowance)); }}
-                        className="text-sm text-gray-600 hover:text-cail-blue transition-colors"
-                        title="Click to edit"
+                        className="text-left hover:text-cail-blue transition-colors"
+                        title="Click to edit allowance"
                       >
-                        {formatTokens(user.token_allowance)}
+                        <span className={`text-sm font-medium ${user.token_allowance > 0 && (user.token_usage / user.token_allowance) > 0.8 ? 'text-red-600' : 'text-gray-600'}`}>
+                          {formatTokens(user.token_usage)}
+                        </span>
+                        <span className="text-sm text-gray-400"> / {formatTokens(user.token_allowance)}</span>
                       </button>
                     )}
                   </td>

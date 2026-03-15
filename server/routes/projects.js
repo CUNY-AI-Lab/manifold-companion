@@ -17,6 +17,7 @@ import {
   getPageCountByText,
   reorderTexts,
   getSharedProjectsByUser,
+  getUserTokenUsage,
 } from '../db.js';
 import { deleteProjectFiles } from '../services/storage.js';
 
@@ -46,7 +47,14 @@ router.get('/', (req, res) => {
       return { ...p, text_count: texts.length, page_count: getPageCountByProject(p.id) };
     });
 
-    res.json({ projects: enriched, shared, storage_used_bytes: req.user.storage_used_bytes || 0 });
+    const tokenUsage = getUserTokenUsage(req.user.id);
+    res.json({
+      projects: enriched,
+      shared,
+      storage_used_bytes: req.user.storage_used_bytes || 0,
+      token_usage: tokenUsage,
+      token_allowance: req.user.token_allowance,
+    });
   } catch (err) {
     console.error('GET /api/projects error:', err);
     res.status(500).json({ error: 'Internal server error.' });

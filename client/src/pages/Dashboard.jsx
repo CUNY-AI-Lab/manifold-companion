@@ -16,6 +16,13 @@ function formatBytes(bytes) {
   return `${val.toFixed(1)} ${units[i]}`;
 }
 
+function formatTokens(tokens) {
+  if (!tokens) return '0';
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
+  return String(tokens);
+}
+
 function daysRemaining(expiresAt) {
   if (!expiresAt) return null;
   const diff = new Date(expiresAt) - new Date();
@@ -28,6 +35,8 @@ export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [shared, setShared] = useState([]);
   const [storageUsed, setStorageUsed] = useState(0);
+  const [tokenUsage, setTokenUsage] = useState(0);
+  const [tokenAllowance, setTokenAllowance] = useState(5_000_000);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -48,6 +57,8 @@ export default function Dashboard() {
       setProjects(data.projects || []);
       setShared(data.shared || []);
       setStorageUsed(data.storage_used_bytes || 0);
+      setTokenUsage(data.token_usage || 0);
+      setTokenAllowance(data.token_allowance || 5_000_000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -100,22 +111,6 @@ export default function Dashboard() {
         >
           {showForm ? 'Cancel' : 'New Project'}
         </button>
-      </div>
-
-      {/* Storage bar */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-600">Storage Usage</span>
-          <span className="text-sm text-gray-500">
-            {formatBytes(usedStorage)} / {formatBytes(totalStorage)}
-          </span>
-        </div>
-        <div className="w-full bg-gray-100 rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all ${storagePercent > 80 ? 'bg-red-500' : 'bg-cail-teal'}`}
-            style={{ width: `${storagePercent}%` }}
-          />
-        </div>
       </div>
 
       {/* Search */}
@@ -307,6 +302,51 @@ export default function Dashboard() {
             ))}
           </div>
         </>
+      )}
+      {/* Usage bars */}
+      {!loading && (
+        <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">Storage</span>
+              <span className="text-sm text-gray-500">
+                {formatBytes(usedStorage)} / {formatBytes(totalStorage)}
+              </span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all ${storagePercent > 80 ? 'bg-red-500' : 'bg-cail-teal'}`}
+                style={{ width: `${storagePercent}%` }}
+              />
+            </div>
+            <a
+              href={`mailto:ailab@gc.cuny.edu?subject=${encodeURIComponent('Manifold Companion — Storage Increase Request')}&body=${encodeURIComponent(`Hi CUNY AI Lab,\n\nI'd like to request additional storage for my Manifold Companion account.\n\nAccount email: ${user?.email || ''}\nCurrent usage: ${formatBytes(usedStorage)} / ${formatBytes(totalStorage)}\n\nRequested storage amount: \nReason: \nProject(s) this is for: \n\nThank you!`)}`}
+              className="inline-block mt-2 text-xs text-cail-blue hover:text-cail-navy font-medium transition-colors"
+            >
+              Request more storage
+            </a>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">Token Usage</span>
+              <span className="text-sm text-gray-500">
+                {formatTokens(tokenUsage)} / {formatTokens(tokenAllowance)}
+              </span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all ${tokenAllowance > 0 && (tokenUsage / tokenAllowance) > 0.8 ? 'bg-red-500' : 'bg-cail-blue'}`}
+                style={{ width: `${tokenAllowance > 0 ? Math.min((tokenUsage / tokenAllowance) * 100, 100) : 0}%` }}
+              />
+            </div>
+            <a
+              href={`mailto:ailab@gc.cuny.edu?subject=${encodeURIComponent('Manifold Companion — Token Increase Request')}&body=${encodeURIComponent(`Hi CUNY AI Lab,\n\nI'd like to request additional tokens for my Manifold Companion account.\n\nAccount email: ${user?.email || ''}\nCurrent usage: ${formatTokens(tokenUsage)} / ${formatTokens(tokenAllowance)}\n\nRequested token amount: \nReason: \nExpected use (e.g., OCR pages, translations): \n\nThank you!`)}`}
+              className="inline-block mt-2 text-xs text-cail-blue hover:text-cail-navy font-medium transition-colors"
+            >
+              Request more tokens
+            </a>
+          </div>
+        </div>
       )}
     </div>
   );
