@@ -246,6 +246,10 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **Keyboard shortcuts**: `KeyboardShortcuts.jsx` portal modal shows available shortcuts by section. Triggered by pressing `?` in editors or clicking the `?` toolbar button. Both `TextDetail.jsx` and `HtmlTextDetail.jsx` integrate it with Ctrl+S/Cmd+S save.
 - **Mobile responsiveness**: Dashboard uses `grid-cols-1 sm:grid-cols-2` for usage bars. Admin panel has `overflow-x-auto` tables and responsive flex layouts. Editors use `flex-col md:flex-row` for Review tab. Notification dropdown and annotation sidebar are full-width on mobile.
 - **`.env.example`**: Template file for environment setup, documenting all required and optional variables.
+- **404 page**: `NotFoundPage.jsx` shows path and "Back to Dashboard" link. Catch-all `<Route path="*">` in `App.jsx` inside `ProtectedRoute`.
+- **Loading skeletons**: `Skeleton.jsx` provides `Box`, `Circle`, `Card`, `TextRow`, `TableRow` composites with `animate-pulse`. Replaces spinners in Dashboard, ProjectView, PdfProjectView, AdminPanel.
+- **Auto-save drafts**: `useUnsavedChanges` hook (`client/src/hooks/useUnsavedChanges.js`) provides debounced localStorage drafts (5s), `beforeunload` tab-close guard, `popstate` back-button interception, and draft recovery banner. Integrated in both `TextDetail.jsx` (per-page drafts) and `HtmlTextDetail.jsx` (HTML content drafts). Drafts expire after 7 days.
+- **Full-page drag-and-drop**: Both `ProjectView.jsx` and `PdfProjectView.jsx` show a translucent overlay when files are dragged anywhere over the page. ProjectView accepts images/PDFs; PdfProjectView accepts PDFs only and validates text selection.
 
 ### Tailwind Theme (client/tailwind.config.js)
 
