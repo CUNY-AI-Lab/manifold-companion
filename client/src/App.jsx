@@ -13,6 +13,7 @@ import AdminPanel from './pages/AdminPanel';
 import SearchPage from './pages/SearchPage';
 import AboutPage from './pages/AboutPage';
 import NotificationsPage from './pages/NotificationsPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
+          <Route path="*" element={<ProtectedRoute><NotFoundPage /></ProtectedRoute>} />
         </Routes>
       </main>
       {user && <Footer />}
