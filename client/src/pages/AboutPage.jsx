@@ -463,7 +463,7 @@ export default function AboutPage() {
                   </tr>
                   <tr>
                     <td className="px-5 py-3 text-gray-600 font-medium">Export format</td>
-                    <td className="px-5 py-3 text-gray-500">ZIP archive with structured HTML + images, ready for Manifold ingestion</td>
+                    <td className="px-5 py-3 text-gray-500">ZIP archive with Markdown or HTML + images, ready for Manifold ingestion</td>
                   </tr>
                 </tbody>
               </table>
