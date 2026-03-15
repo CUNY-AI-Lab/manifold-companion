@@ -5,6 +5,35 @@ import { BASE } from '../api/client';
 import SearchBar from './SearchBar';
 import NotificationBell from './NotificationBell';
 
+const THEME_CYCLE = ['system', 'light', 'dark'];
+
+function ThemeIcon({ pref }) {
+  if (pref === 'light') {
+    return (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="4" strokeWidth="2" />
+        <path strokeLinecap="round" strokeWidth="2" d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+      </svg>
+    );
+  }
+  if (pref === 'dark') {
+    return (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" />
+      </svg>
+    );
+  }
+  // system / monitor
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" strokeWidth="2" />
+      <path strokeLinecap="round" strokeWidth="2" d="M8 21h8M12 17v4" />
+    </svg>
+  );
+}
+
+const THEME_LABEL = { system: 'System', light: 'Light', dark: 'Dark' };
+
 function ManifoldLogo({ className = '' }) {
   return (
     <svg viewBox="0 0 34 35" width="38" height="38" xmlns="http://www.w3.org/2000/svg" className={className}>
@@ -22,9 +51,17 @@ function ManifoldLogo({ className = '' }) {
 export { ManifoldLogo };
 
 export default function Header() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateTheme } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const currentThemePref = user?.theme_preference || localStorage.getItem('mc-theme') || 'system';
+
+  function cycleTheme() {
+    const idx = THEME_CYCLE.indexOf(currentThemePref);
+    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+    updateTheme(next);
+  }
 
   const navLinks = [
     { to: '/', label: 'Dashboard' },
@@ -67,9 +104,21 @@ export default function Header() {
             ))}
           </nav>
 
-          {/* Right: Search + Notifications + User + Logout (desktop) */}
+          {/* Right: Search + Theme toggle + Notifications + User + Logout (desktop) */}
           <div className="hidden md:flex items-center gap-4">
             <SearchBar compact />
+            <div className="relative group">
+              <button
+                onClick={cycleTheme}
+                className="p-2 rounded-full text-gray-500 hover:text-cail-dark hover:bg-gray-100 transition-colors"
+                aria-label={`Theme: ${THEME_LABEL[currentThemePref]}. Click to cycle.`}
+              >
+                <ThemeIcon pref={currentThemePref} />
+              </button>
+              <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded text-xs font-medium text-white bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                {THEME_LABEL[currentThemePref]}
+              </span>
+            </div>
             <NotificationBell />
             <span className="text-sm text-gray-500">{user?.display_name || user?.email}</span>
             <button
@@ -121,6 +170,14 @@ export default function Header() {
             ))}
             <div className="border-t border-gray-100 pt-3 mt-3 px-4">
               <p className="text-sm text-gray-500 mb-2">{user?.display_name || user?.email}</p>
+              <button
+                onClick={cycleTheme}
+                className="w-full flex items-center gap-2 px-4 py-2 mb-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                aria-label={`Theme: ${THEME_LABEL[currentThemePref]}. Click to cycle.`}
+              >
+                <ThemeIcon pref={currentThemePref} />
+                <span>Theme: {THEME_LABEL[currentThemePref]}</span>
+              </button>
               <button
                 onClick={() => { logout(); setMenuOpen(false); }}
                 className="w-full px-4 py-2 rounded-full text-sm font-medium text-white bg-cail-blue hover:bg-cail-navy transition-colors"
