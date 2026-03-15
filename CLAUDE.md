@@ -78,6 +78,7 @@ Applied in order:
 - **`middleware/rateLimits.js`**: `aiLimiter` (50 req/hour for OCR, summary, translation), `pdfVisionLimiter` (1200 req/hour for PDF page parsing), `uploadLimiter` (30 req/15 min) — all keyed by `req.session.userId` with IP fallback
 - **`middleware/csrf.js`**: `csrfCheck` rejects state-changing requests without matching Origin/Referer header
 - **`middleware/security.js`**: `sanitizeFilename()` (URL-decodes then strips traversal/null bytes/special chars), `validateEmail()`, `validatePassword()` (≥8 chars)
+- **`middleware/tokenQuota.js`**: `checkTokenQuota` — rejects requests with 429 when user's token usage exceeds their `token_allowance`. Applied to all AI routes (OCR, summary, translation, PDF parsing).
 - **`middleware/upload.js`**: Multer factories for image uploads and source PDF uploads, image allowlist (jpg/jpeg/png/tiff/bmp/webp), PDF allowlist, `validateImageMagicBytes()` and `validatePdfMagicBytes()` for binary signature verification post-upload
 
 ### Validation Constants
@@ -88,15 +89,16 @@ Applied in order:
 
 ### Auth Model
 
-Session-based cookie auth with session regeneration on login (prevents fixation). Users register as `status: 'pending'` and cannot log in until admin sets them to `'approved'`. Three statuses: `pending`, `approved`, `disabled`. Two roles: `user`, `admin`. The `/me` endpoint destroys sessions for non-approved accounts.
+Session-based cookie auth with session regeneration on login (prevents fixation). Users register as `status: 'pending'` (with optional display name) and cannot log in until admin sets them to `'approved'`. Three statuses: `pending`, `approved`, `disabled`. Two roles: `user`, `admin`. The `/me` endpoint destroys sessions for non-approved accounts and returns `display_name`, `token_allowance`, and current `token_usage`. Users can update their own display name via `PUT /api/auth/profile`.
 
 All route modules except auth apply `requireAuth` at the router level. Admin routes apply `requireAdmin`.
 
 ### Route Structure
 
 ```
-/api/auth                          → server/routes/auth.js         (login, register, logout, me, change-password)
-/api/admin                         → server/routes/admin.js        (user management)
+/api/auth                          → server/routes/auth.js         (login, register, logout, me, profile, change-password)
+/api/admin                         → server/routes/admin.js        (user mgmt, bulk approval, usage stats, backups)
+/api/users                         → server/routes/users.js        (user search for share autocomplete)
 /api/projects                      → server/routes/projects.js     (CRUD + project type on create)
 /api/projects/:projectId/shares    → server/routes/shares.js       (project sharing CRUD — owner only)
 /api                               → server/routes/texts.js        (texts, pages, upload, HTML, search, versions)
@@ -119,7 +121,7 @@ Role hierarchy: `owner > editor > viewer`. The `getUserProjectRole()` DB functio
 
 ### Database (server/db.js)
 
-Nine tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `project_shares`, `text_versions`, `annotations`. Key conventions:
+Ten tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `project_shares`, `text_versions`, `annotations`, `api_usage_logs`. Key conventions:
 
 - **`__compiled__` sentinel**: A page with `filename = '__compiled__'` stores user-edited full text. Must be filtered out from display queries (`pages.filter(p => p.filename !== '__compiled__')`). Referenced across `db.js`, `texts.js`, `ocr.js`, `llm.js`, `export.js`, and `TextDetail.jsx`.
 - **Project type**: `projects.project_type` is `image_to_markdown` or `pdf_to_html`; it is set at creation and used by the client routers to choose the correct UI.
@@ -131,6 +133,9 @@ Nine tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `pro
 - **Project shares**: `project_shares` table tracks `(project_id, user_id, role)` with UNIQUE constraint. Roles: `viewer`, `editor`. Cascade deletes on project or user removal.
 - **Version history**: `text_versions` table stores content snapshots with `content_type` (`compiled`, `html`, `page`), user attribution, and timestamp. Auto-pruned to 50 versions per text+type. Versions are created automatically when saving text content (before overwrite).
 - **Annotations**: `annotations` table supports threaded comments with `parent_id` for replies, `anchor_type` (`range`, `point`, `global`), and `anchor_data` (JSON with CSS selectors or paragraph offsets). Supports resolve/unresolve workflow with `resolved_by` and `resolved_at`.
+- **Display names**: `users.display_name` (nullable TEXT). Shown in annotations, shares, version history. Falls back to email when null.
+- **Token allowances**: `users.token_allowance` (default 5,000,000) and `users.token_usage_reset_at` (timestamp). Quota is enforced by `checkTokenQuota` middleware on all AI routes.
+- **API usage logs**: `api_usage_logs` table records every AI API call with `user_id`, `project_id`, `text_id`, `endpoint`, `model`, `tokens_in`, `tokens_out`, and `created_at`. Indexed on `(user_id, created_at)` and `(project_id)`. Token usage is calculated as `SUM(tokens_in + tokens_out)` since `token_usage_reset_at`.
 
 ### OCR Pipeline (server/routes/ocr.js + server/services/bedrock.js)
 
@@ -143,6 +148,8 @@ Nine tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `pro
 7. Error messages in SSE are scrubbed — Bedrock errors are not sent to client
 
 Model format dispatch in `bedrock.js` is based on model ID prefix: `qwen.*` and `openai.*` use OpenAI-compatible format; `amazon.nova*` uses Nova format; `anthropic.claude*` uses Anthropic Bedrock format.
+
+**AI service return values**: All AI functions return `{ text, usage }` objects (not raw strings). `usage` contains `{ tokensIn, tokensOut }`. Callers in `ocr.js` and `llm.js` destructure these and pass usage data to `logApiUsage()`. The `extractUsage()` function in `bedrock.js` normalizes token counts across model families.
 
 ### PDF to HTML Pipeline (OpenRouter)
 
@@ -185,6 +192,8 @@ data/{userId}/{projectId}/{textId}/{filename}
 
 50 MB quota per user, enforced at upload via `calculateUserStorage()` (real disk measurement, not Content-Length header). `image_to_markdown` texts store page images; `pdf_to_html` texts store the original uploaded PDF under the same per-text directory. Project deletion and the 90-day cleanup remove both image assets and source PDFs. Export only serves files matching the text workflow; the app does not expose raw directory listings.
 
+**Backups**: Admin can create backups via `POST /api/admin/backups`. Uses `database.backup()` (better-sqlite3 hot backup) for both `manifold.db` and `sessions.db`, then `execFileSync('tar', [...])` for data directory archiving. Backups are stored in `data/backups/` with timestamped filenames. `sanitizeFilename()` prevents path traversal on download/delete endpoints.
+
 ### Client Architecture
 
 - **Global state**: Only `AuthContext` (user session). No Redux/Zustand. All page data is local `useState` with fetch-on-mount.
@@ -200,9 +209,11 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **PDF project text actions**: `PdfProjectView.jsx` supports create, replace upload, open editor, and delete for PDF-to-HTML texts.
 - **Search**: `SearchBar.jsx` provides debounced search with a 3-result dropdown and "See all" link to `/search` page. `SearchPage.jsx` shows full results grouped by project.
 - **Collaboration UI**: `SharePanel.jsx` (portal modal) for owners to add/remove/update shares by email. `ProjectView.jsx` and `PdfProjectView.jsx` show role-based UI (hide edit/delete for viewers, share button for owners).
-- **Version history**: `VersionHistory.jsx` (portal modal) shows version list with preview and revert. Accessible via "History" button in the Review tab of both editors.
+- **Version history**: `VersionHistory.jsx` (portal modal) shows version list with GitHub-style diff view (Myers algorithm, HTML-aware line splitting) and revert. Accessible via "History" button in the Review tab of both editors.
 - **Annotations**: `AnnotationSidebar.jsx` (slide-out panel) for threaded comments with replies, resolve/unresolve, and delete. Accessible via "Comments" button in the Review tab.
 - **Tab deep linking**: Both `TextDetail.jsx` and `HtmlTextDetail.jsx` read a `?tab=` query param on mount to set the initial active tab (used by search results to open directly to Review).
+- **Admin panel** (`AdminPanel.jsx`): Three-tab layout — Users (inline name editing, bulk approval, token allowance controls, usage reset), Usage (period selector, summary cards, per-endpoint/user/project breakdowns), Backups (create/download/delete database+file backups). Backup download uses `BASE` prefix for subpath compatibility.
+- **Registration**: `RegisterPage.jsx` includes optional display name field. `AuthContext` exposes `updateProfile()` for name changes.
 
 ### Tailwind Theme (client/tailwind.config.js)
 

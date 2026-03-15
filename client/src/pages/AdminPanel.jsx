@@ -53,6 +53,8 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
   const [selected, setSelected] = useState(new Set());
   const [editingAllowance, setEditingAllowance] = useState(null);
   const [allowanceValue, setAllowanceValue] = useState('');
+  const [editingName, setEditingName] = useState(null);
+  const [nameValue, setNameValue] = useState('');
 
   const pendingUsers = users.filter((u) => u.status === 'pending');
   const totalStorage = users.reduce((acc, u) => acc + (u.storage_used_bytes || 0), 0);
@@ -133,6 +135,18 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
       next.has(userId) ? next.delete(userId) : next.add(userId);
       return next;
     });
+  }
+
+  async function saveName(userId) {
+    try {
+      await api.put(`/api/admin/users/${userId}/name`, { name: nameValue.trim() });
+      setEditingName(null);
+      setToast('Display name updated.');
+      setTimeout(() => setToast(''), 3000);
+      onRefresh();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function saveAllowance(userId) {
@@ -329,10 +343,39 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                     />
                   </td>
                   <td className="px-4 py-4">
-                    <div>
-                      {user.display_name && <p className="text-sm font-medium text-cail-dark">{user.display_name}</p>}
-                      <p className={`text-sm ${user.display_name ? 'text-gray-400' : 'text-cail-dark'}`}>{user.email}</p>
-                    </div>
+                    {editingName === user.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={nameValue}
+                          onChange={(e) => setNameValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') saveName(user.id); if (e.key === 'Escape') setEditingName(null); }}
+                          placeholder="Display name"
+                          className="w-40 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-cail-blue"
+                          autoFocus
+                        />
+                        <button onClick={() => saveName(user.id)} className="text-xs text-cail-blue hover:underline">Save</button>
+                        <button onClick={() => setEditingName(null)} className="text-xs text-gray-400 hover:underline">Cancel</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEditingName(user.id); setNameValue(user.display_name || ''); }}
+                        className="text-left group"
+                        title="Click to edit name"
+                      >
+                        {user.display_name ? (
+                          <>
+                            <p className="text-sm font-medium text-cail-dark group-hover:text-cail-blue transition-colors">{user.display_name}</p>
+                            <p className="text-sm text-gray-400">{user.email}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-cail-dark">{user.email}</p>
+                            <p className="text-xs text-gray-300 group-hover:text-cail-blue transition-colors">+ add name</p>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-4">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_STYLES[user.status] || 'bg-gray-50 text-gray-600'}`}>

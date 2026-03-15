@@ -96,7 +96,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh 
             <span className="text-xs text-gray-400 ml-2">{formatTime(annotation.created_at)}</span>
           </div>
         </div>
-        {annotation.resolved && (
+        {!!annotation.resolved && (
           <span className="text-xs bg-cail-teal/10 text-cail-teal px-2 py-0.5 rounded-full font-medium">Resolved</span>
         )}
       </div>
