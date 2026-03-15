@@ -231,15 +231,15 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
       <div className="absolute inset-0 bg-black/40" />
 
       {/* Panel */}
-      <div className="relative w-full max-w-2xl bg-white shadow-2xl rounded-l-2xl flex flex-col animate-slide-in">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-800 shadow-2xl rounded-l-2xl flex flex-col animate-slide-in">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700">
           <h2 className="text-lg font-display font-semibold text-cail-navy">
             Version History
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-cail-dark transition-colors text-xl leading-none"
+            className="text-gray-400 dark:text-slate-500 hover:text-cail-dark dark:hover:text-slate-200 transition-colors text-xl leading-none"
             aria-label="Close"
           >
             &times;
@@ -259,7 +259,7 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
           )}
 
           {!loading && !error && versions.length === 0 && (
-            <p className="text-gray-500 text-sm py-12 text-center">
+            <p className="text-gray-500 dark:text-slate-400 text-sm py-12 text-center">
               No saved versions yet.
             </p>
           )}
@@ -267,14 +267,14 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
           {!loading && versions.length > 0 && (
             <ul className="space-y-3">
               {versions.map((v, idx) => (
-                <li key={v.id} className="border border-gray-200 rounded-2xl overflow-hidden">
+                <li key={v.id} className="border border-gray-200 dark:border-slate-700 rounded-2xl overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-cail-dark truncate">
+                      <p className="text-sm font-medium text-cail-dark dark:text-slate-200 truncate">
                         {formatTimestamp(v.created_at)}
                       </p>
                       {(v.user_display_name || v.user_email) && (
-                        <p className="text-xs text-gray-500 truncate">{v.user_display_name || v.user_email}</p>
+                        <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{v.user_display_name || v.user_email}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2 ml-3 shrink-0">
@@ -295,13 +295,13 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
                   </div>
 
                   {diffId === v.id && (
-                    <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+                    <div className="border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 px-4 py-3">
                       {diffLoading ? (
                         <div className="flex items-center justify-center py-4">
                           <div className="w-4 h-4 border-2 border-cail-blue border-t-transparent rounded-full animate-spin" />
                         </div>
                       ) : (
-                        <div className="text-xs font-mono max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                        <div className="text-xs font-mono max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800">
                           {diffLines.map((d, i) => (
                             <div
                               key={i}

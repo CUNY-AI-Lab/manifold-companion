@@ -25,12 +25,12 @@ function BarRow({ label, value, formattedValue, max, color, suffix }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm text-gray-700 truncate mr-3">{label}</span>
-        <span className="text-xs text-gray-500 shrink-0">
+        <span className="text-sm text-gray-700 dark:text-slate-300 truncate mr-3">{label}</span>
+        <span className="text-xs text-gray-500 dark:text-slate-400 shrink-0">
           {formattedValue}{suffix ? ` (${suffix})` : ''}
         </span>
       </div>
-      <div className="w-full bg-gray-100 rounded-full h-1.5">
+      <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-1.5">
         <div
           className={`h-1.5 rounded-full transition-all duration-500 ${color}`}
           style={{ width: `${Math.max((value / max) * 100, 2)}%` }}
@@ -71,15 +71,15 @@ export default function UsageBreakdown({ type, onClose }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col animate-in fade-in duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
           <div>
-            <h2 className="font-display font-semibold text-lg text-cail-dark">
+            <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">
               {type === 'storage' ? 'Storage Breakdown' : 'Token Usage Breakdown'}
             </h2>
             {!loading && data && (
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
                 {type === 'storage'
                   ? `${formatBytes(totalStorageBytes)} total across ${data.storage.length} project${data.storage.length !== 1 ? 's' : ''}`
                   : `${formatTokens(totalTokens)} tokens used`
@@ -89,7 +89,7 @@ export default function UsageBreakdown({ type, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

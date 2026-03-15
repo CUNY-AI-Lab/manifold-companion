@@ -553,7 +553,7 @@ export default function ProjectView() {
   if (!project) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           Project not found.
         </div>
       </div>
@@ -584,14 +584,14 @@ export default function ProjectView() {
       </Link>
 
       {error && (
-        <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-6 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           {error}
           <button onClick={() => setError('')} className="ml-2 font-medium hover:underline">Dismiss</button>
         </div>
       )}
 
       {/* Project header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex-1">
             {editingName && role === 'owner' ? (
@@ -601,11 +601,11 @@ export default function ProjectView() {
                   value={nameValue}
                   onChange={(e) => setNameValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && saveName()}
-                  className="font-display font-semibold text-xl text-cail-dark px-2 py-1 rounded-lg border border-gray-200 focus:border-cail-blue outline-none"
+                  className="font-display font-semibold text-xl text-cail-dark px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none"
                   autoFocus
                 />
                 <button onClick={saveName} className="text-sm text-cail-blue hover:text-cail-navy font-medium">Save</button>
-                <button onClick={() => { setEditingName(false); setNameValue(project.name); }} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+                <button onClick={() => { setEditingName(false); setNameValue(project.name); }} className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">Cancel</button>
               </div>
             ) : (
               <div className="flex items-center gap-3">
@@ -636,7 +636,7 @@ export default function ProjectView() {
                 onClick={() => setShowAddSection((v) => !v)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   showAddSection
-                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:hover:bg-slate-600'
                     : 'bg-cail-blue text-white hover:bg-cail-navy'
                 }`}
               >
@@ -649,7 +649,7 @@ export default function ProjectView() {
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   editMode
                     ? 'bg-cail-navy text-white hover:bg-cail-dark'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:hover:bg-slate-600'
                 }`}
               >
                 {editMode ? 'Done' : 'Edit'}
@@ -664,7 +664,7 @@ export default function ProjectView() {
             {role === 'owner' && (
               <button
                 onClick={() => setShowShare(true)}
-                className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
               >
                 Share
               </button>
@@ -685,7 +685,7 @@ export default function ProjectView() {
       {showAddSection && canEdit && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Add text */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
           <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Add Text</h2>
           <form onSubmit={createText} className="flex gap-2">
             <input
@@ -693,7 +693,7 @@ export default function ProjectView() {
               value={newTextName}
               onChange={(e) => setNewTextName(e.target.value)}
               placeholder="Text name (e.g., Chapter 1)"
-              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
             />
             <button
               type="submit"
@@ -706,7 +706,7 @@ export default function ProjectView() {
         </div>
 
         {/* Upload zone */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
           <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Upload Images</h2>
 
           {texts.length > 0 ? (
@@ -714,7 +714,7 @@ export default function ProjectView() {
               <select
                 value={selectedTextForUpload || ''}
                 onChange={(e) => setSelectedTextForUpload(Number(e.target.value) || null)}
-                className="w-full mb-3 text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none"
+                className="w-full mb-3 text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none"
               >
                 <option value="">Select a text...</option>
                 {texts.map((t) => (
@@ -729,13 +729,13 @@ export default function ProjectView() {
                 onDrop={(e) => { setUploadSuccess(''); handleDrop(e); }}
                 onClick={() => { if (selectedTextForUpload) { setUploadSuccess(''); fileInputRef.current?.click(); } }}
                 className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
-                  dragOver ? 'border-cail-blue bg-cail-blue/5' : uploadSuccess ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-cail-blue/50'
+                  dragOver ? 'border-cail-blue bg-cail-blue/5' : uploadSuccess ? 'border-green-300 bg-green-50' : 'border-gray-200 dark:border-slate-700 hover:border-cail-blue/50'
                 } ${!selectedTextForUpload ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {uploading ? (
                   <div>
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cail-blue mx-auto mb-2"></div>
-                    <p className="text-sm text-gray-500">{uploadProgress}</p>
+                    <p className="text-sm text-gray-500 dark:text-slate-400">{uploadProgress}</p>
                   </div>
                 ) : uploadSuccess ? (
                   <div>
@@ -750,7 +750,7 @@ export default function ProjectView() {
                     <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 dark:text-slate-400">
                       Drop images or PDFs here, or click to browse
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
@@ -770,7 +770,7 @@ export default function ProjectView() {
               />
             </>
           ) : (
-            <p className="text-sm text-gray-400">Create a text first, then upload images to it.</p>
+            <p className="text-sm text-gray-400 dark:text-slate-500">Create a text first, then upload images to it.</p>
           )}
         </div>
       </div>
@@ -779,13 +779,13 @@ export default function ProjectView() {
       {/* Texts list */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-display font-semibold text-lg text-cail-dark">
+          <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">
             Texts ({texts.length})
           </h2>
           {canEdit && texts.length >= 2 && (
             <button
               onClick={() => setShowMerge(true)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors flex items-center gap-1"
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -796,8 +796,8 @@ export default function ProjectView() {
         </div>
 
         {texts.length === 0 && (
-          <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
-            <p className="text-sm text-gray-500">No texts yet. Add one above to get started.</p>
+          <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
+            <p className="text-sm text-gray-500 dark:text-slate-400">No texts yet. Add one above to get started.</p>
           </div>
         )}
 
@@ -819,7 +819,7 @@ export default function ProjectView() {
           >
             {/* Drag handle (edit mode only) */}
             {editMode && (
-              <div className="flex items-center flex-shrink-0 text-gray-400">
+              <div className="flex items-center flex-shrink-0 text-gray-400 dark:text-slate-500">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <circle cx="9" cy="6" r="1.5" />
                   <circle cx="15" cy="6" r="1.5" />
@@ -842,13 +842,13 @@ export default function ProjectView() {
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                   text.status === 'ocrd' ? 'bg-green-50 text-green-700' :
                   text.status === 'processing' ? 'bg-yellow-50 text-yellow-700' :
-                  'bg-gray-50 text-gray-600'
+                  'bg-gray-50 dark:bg-slate-900 text-gray-600'
                 }`}>
                   {text.status === 'ocrd' ? 'OCR Complete' :
                    text.status === 'processing' ? 'Processing' :
                    'Pending'}
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-gray-400 dark:text-slate-500">
                   {text.page_count || 0} page{(text.page_count || 0) !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -864,7 +864,7 @@ export default function ProjectView() {
               {canEdit && (
                 <button
                   onClick={() => openSplit(text.id)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+                  className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   Split
                 </button>
@@ -888,7 +888,7 @@ export default function ProjectView() {
             <svg className="w-16 h-16 mx-auto text-cail-blue mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            <p className="font-display font-semibold text-lg text-cail-dark">Drop images here</p>
+            <p className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Drop images here</p>
             <p className="text-sm text-gray-500 mt-1">JPEG, PNG, TIFF, BMP, WebP, or PDF files</p>
           </div>
         </div>
@@ -919,8 +919,8 @@ export default function ProjectView() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-xl text-cail-dark">Export to Manifold</h2>
-              <button onClick={() => setShowExport(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-display font-semibold text-xl text-cail-dark dark:text-slate-200">Export to Manifold</h2>
+              <button onClick={() => setShowExport(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -934,7 +934,7 @@ export default function ProjectView() {
                 {tocItems.map((item, idx) => (
                   <div
                     key={item.id}
-                    className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-gray-50 dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                     style={{ marginLeft: item.depth * 24 + 'px' }}
                   >
                     {/* Icon: folder for section, doc for text */}
@@ -1022,12 +1022,12 @@ export default function ProjectView() {
                   onChange={(e) => setNewSectionLabel(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && tocAddSection()}
                   placeholder="Section heading..."
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                 />
                 <button
                   onClick={tocAddSection}
                   disabled={!newSectionLabel.trim()}
-                  className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
                 >
                   + Section
                 </button>
@@ -1049,7 +1049,7 @@ export default function ProjectView() {
                     type={f.type || 'text'}
                     value={exportMeta[f.key]}
                     onChange={(e) => setExportMeta((m) => ({ ...m, [f.key]: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                   />
                 </div>
               ))}
@@ -1059,7 +1059,7 @@ export default function ProjectView() {
                   value={exportMeta.description}
                   onChange={(e) => setExportMeta((m) => ({ ...m, description: e.target.value }))}
                   rows={2}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm resize-none"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm resize-none"
                 />
               </div>
             </div>
@@ -1067,7 +1067,7 @@ export default function ProjectView() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowExport(false)}
-                className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancel
               </button>

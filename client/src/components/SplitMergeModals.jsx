@@ -119,14 +119,14 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
+        <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div>
-            <h2 className="font-display font-semibold text-lg text-cail-dark">Split Text</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{realPages.length} pages — assign each to a group</p>
+            <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Split Text</h2>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{realPages.length} pages — assign each to a group</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -142,7 +142,7 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
                 <input
                   value={group.name}
                   onChange={e => updateGroupName(idx, e.target.value)}
-                  className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-cail-blue"
+                  className="flex-1 text-sm border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-cail-blue"
                   placeholder="Group name"
                 />
                 <span className="text-xs text-gray-400 w-16 text-right">{group.pages.size} pg</span>
@@ -162,14 +162,14 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
           </div>
 
           {/* Page grid — click a page to cycle through groups */}
-          <div className="border border-gray-100 rounded-xl p-3">
-            <p className="text-xs text-gray-400 mb-2">Click a page to assign it to the selected group. Click again to cycle.</p>
+          <div className="border border-gray-100 dark:border-slate-700 rounded-xl p-3">
+            <p className="text-xs text-gray-400 dark:text-slate-500 mb-2">Click a page to assign it to the selected group. Click again to cycle.</p>
             <div className="flex flex-wrap gap-1.5">
               {realPages.map(page => {
                 const gIdx = getPageGroup(page.page_number);
                 const colorClass = gIdx >= 0
                   ? GROUP_COLORS[gIdx % GROUP_COLORS.length]
-                  : 'bg-gray-50 border-gray-200 text-gray-500';
+                  : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400';
 
                 return (
                   <button
@@ -194,8 +194,8 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3 rounded-b-2xl">
-          <button onClick={onClose} className="px-4 py-2 rounded-full text-sm text-gray-500 hover:text-cail-dark">Cancel</button>
+        <div className="sticky bottom-0 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-end gap-3 rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 rounded-full text-sm text-gray-500 dark:text-slate-400 hover:text-cail-dark dark:hover:text-slate-200">Cancel</button>
           <button
             onClick={handleSplit}
             disabled={submitting}
@@ -268,14 +268,14 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
+        <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div>
-            <h2 className="font-display font-semibold text-lg text-cail-dark">Merge Texts</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Combine multiple texts into one</p>
+            <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Merge Texts</h2>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Combine multiple texts into one</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -285,18 +285,18 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
         <div className="px-6 py-4 space-y-4">
           {/* Name input */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Merged text name</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Merged text name</label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="e.g. Combined Document"
-              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-cail-blue"
+              className="w-full text-sm border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-cail-blue"
             />
           </div>
 
           {/* Text selection */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-2">Select texts to merge (click to select)</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">Select texts to merge (click to select)</label>
             <div className="space-y-1.5 max-h-48 overflow-y-auto">
               {texts.map(t => {
                 const isSelected = selected.includes(t.id);
@@ -306,8 +306,8 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
                     onClick={() => toggleText(t.id)}
                     className={`w-full text-left px-3 py-2 rounded-xl text-sm flex items-center gap-2 transition-all ${
                       isSelected
-                        ? 'bg-cail-blue/10 border border-cail-blue/30 text-cail-dark'
-                        : 'bg-gray-50 border border-transparent text-gray-600 hover:bg-gray-100'
+                        ? 'bg-cail-blue/10 border border-cail-blue/30 text-cail-dark dark:text-slate-200'
+                        : 'bg-gray-50 dark:bg-slate-900 border border-transparent text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700'
                     }`}
                   >
                     <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
@@ -320,7 +320,7 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
                       )}
                     </span>
                     <span className="truncate">{t.name}</span>
-                    <span className="text-xs text-gray-400 ml-auto shrink-0">{t.page_count || 0} pg</span>
+                    <span className="text-xs text-gray-400 dark:text-slate-500 ml-auto shrink-0">{t.page_count || 0} pg</span>
                   </button>
                 );
               })}
@@ -333,9 +333,9 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
               <label className="block text-xs font-medium text-gray-500 mb-2">Merge order (drag to reorder)</label>
               <div className="space-y-1">
                 {selected.map((tid, idx) => (
-                  <div key={tid} className="flex items-center gap-2 bg-cail-cream rounded-lg px-3 py-1.5">
+                  <div key={tid} className="flex items-center gap-2 bg-cail-cream dark:bg-slate-900 rounded-lg px-3 py-1.5">
                     <span className="text-xs font-medium text-cail-blue w-5">{idx + 1}.</span>
-                    <span className="text-sm text-cail-dark flex-1 truncate">{textMap[tid]?.name}</span>
+                    <span className="text-sm text-cail-dark dark:text-slate-200 flex-1 truncate">{textMap[tid]?.name}</span>
                     <div className="flex gap-0.5">
                       <button
                         onClick={() => moveUp(idx)}
@@ -366,8 +366,8 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3 rounded-b-2xl">
-          <button onClick={onClose} className="px-4 py-2 rounded-full text-sm text-gray-500 hover:text-cail-dark">Cancel</button>
+        <div className="sticky bottom-0 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-end gap-3 rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 rounded-full text-sm text-gray-500 dark:text-slate-400 hover:text-cail-dark dark:hover:text-slate-200">Cancel</button>
           <button
             onClick={handleMerge}
             disabled={submitting || selected.length < 2}

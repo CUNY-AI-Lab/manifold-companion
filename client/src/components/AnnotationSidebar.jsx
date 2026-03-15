@@ -138,7 +138,7 @@ function MentionTextarea({ value, onChange, onMention, members, placeholder, row
         className={className}
       />
       {showDropdown && filtered.length > 0 && (
-        <div className="absolute z-50 bottom-full mb-1 left-0 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+        <div className="absolute z-50 bottom-full mb-1 left-0 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg max-h-40 overflow-y-auto">
           {filtered.map(m => (
             <button
               key={m.id}
@@ -234,7 +234,7 @@ function MentionInput({ value, onChange, onMention, members, placeholder, classN
         className={className}
       />
       {showDropdown && filtered.length > 0 && (
-        <div className="absolute z-50 bottom-full mb-1 left-0 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-32 overflow-y-auto">
+        <div className="absolute z-50 bottom-full mb-1 left-0 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg max-h-32 overflow-y-auto">
           {filtered.map(m => (
             <button
               key={m.id}
@@ -293,7 +293,7 @@ function ReplyItem({ reply, textId, currentUserEmail, role, onRefresh, members, 
             value={editBody}
             onChange={e => setEditBody(e.target.value)}
             rows={2}
-            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-cail-blue resize-none"
+            className="w-full text-xs border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-cail-blue resize-none"
           />
           <div className="flex gap-1 mt-1">
             <button onClick={handleSaveEdit} disabled={!editBody.trim() || saving} className="text-[10px] text-cail-blue hover:underline disabled:opacity-50">Save</button>
@@ -400,7 +400,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
   }
 
   return (
-    <div className={`rounded-2xl border p-4 mb-3 ${annotation.resolved ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-cail-blue/20'}`}>
+    <div className={`rounded-2xl border p-4 mb-3 ${annotation.resolved ? 'bg-gray-50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 opacity-70' : 'bg-white dark:bg-slate-800 border-cail-blue/20'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="w-8 h-8 rounded-full bg-cail-navy text-white flex items-center justify-center text-xs font-display font-semibold">
@@ -477,7 +477,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
                 onMention={(id) => setReplyMentions(prev => [...prev, id])}
                 members={members}
                 placeholder="Reply... (@ to mention)"
-                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-cail-blue"
+                className="w-full text-xs border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-cail-blue"
                 inputRef={replyRef}
               />
               <button
@@ -573,16 +573,16 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full sm:max-w-md bg-cail-cream h-full shadow-xl flex flex-col animate-slide-in-right">
+      <div className="relative w-full sm:max-w-md bg-cail-cream dark:bg-slate-900 h-full shadow-xl flex flex-col animate-slide-in-right">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-cail-blue/10">
-          <h2 className="text-lg font-display font-semibold text-cail-navy">Annotations</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-cail-dark text-xl leading-none">&times;</button>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-cail-blue/10 dark:border-slate-700">
+          <h2 className="text-lg font-display font-semibold text-cail-navy dark:text-slate-200">Annotations</h2>
+          <button onClick={onClose} className="text-gray-400 dark:text-slate-500 hover:text-cail-dark dark:hover:text-slate-200 text-xl leading-none">&times;</button>
         </div>
 
         {/* Controls */}
-        <div className="px-5 py-3 flex items-center justify-between border-b border-cail-blue/10">
-          <label className="flex items-center gap-2 text-sm text-cail-dark cursor-pointer">
+        <div className="px-5 py-3 flex items-center justify-between border-b border-cail-blue/10 dark:border-slate-700">
+          <label className="flex items-center gap-2 text-sm text-cail-dark dark:text-slate-200 cursor-pointer">
             <input
               type="checkbox"
               checked={showResolved}
@@ -603,7 +603,7 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
 
         {/* New comment form */}
         {showNewForm && (
-          <form onSubmit={submitNew} className="px-5 py-3 border-b border-cail-blue/10">
+          <form onSubmit={submitNew} className="px-5 py-3 border-b border-cail-blue/10 dark:border-slate-700">
             <MentionTextarea
               value={newBody}
               onChange={setNewBody}
@@ -611,7 +611,7 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
               members={members}
               placeholder="Write a comment... (@ to mention)"
               rows={3}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-cail-blue resize-none"
+              className="w-full border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-cail-blue resize-none"
               inputRef={newCommentRef}
             />
             <div className="flex justify-end gap-2 mt-2">

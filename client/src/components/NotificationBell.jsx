@@ -147,14 +147,14 @@ export default function NotificationBell() {
       {/* Bell button */}
       <button
         onClick={handleOpen}
-        className="relative p-2 rounded-full text-gray-500 hover:text-cail-dark hover:bg-gray-100 transition-colors"
+        className="relative p-2 rounded-full text-gray-500 dark:text-slate-400 hover:text-cail-dark dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
         aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ''}`}
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 ring-2 ring-white">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 ring-2 ring-white dark:ring-slate-800">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
@@ -162,10 +162,10 @@ export default function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl shadow-xl border border-gray-200/80 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200/80 dark:border-slate-700/80 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-150">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="font-display font-semibold text-sm text-cail-dark">Notifications</h3>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
+            <h3 className="font-display font-semibold text-sm text-cail-dark dark:text-slate-200">Notifications</h3>
             <div className="flex items-center gap-2">
               {unread > 0 && (
                 <button
@@ -177,7 +177,7 @@ export default function NotificationBell() {
               )}
               <button
                 onClick={prefsOpen ? () => setPrefsOpen(false) : openPrefs}
-                className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
                 title="Email preferences"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -190,15 +190,15 @@ export default function NotificationBell() {
 
           {/* Preferences panel */}
           {prefsOpen && prefs && (
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Email notifications</p>
+            <div className="px-4 py-3 bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700">
+              <p className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wide mb-2">Email notifications</p>
               <div className="space-y-2">
                 {Object.entries(PREF_LABELS).map(([key, label]) => (
                   <label key={key} className="flex items-center justify-between cursor-pointer group">
-                    <span className="text-sm text-gray-700 group-hover:text-cail-dark">{label}</span>
+                    <span className="text-sm text-gray-700 dark:text-slate-300 group-hover:text-cail-dark dark:group-hover:text-slate-200">{label}</span>
                     <button
                       onClick={() => togglePref(key)}
-                      className={`relative w-9 h-5 rounded-full transition-colors ${prefs[key] === 1 ? 'bg-cail-blue' : 'bg-gray-300'}`}
+                      className={`relative w-9 h-5 rounded-full transition-colors ${prefs[key] === 1 ? 'bg-cail-blue' : 'bg-gray-300 dark:bg-slate-600'}`}
                     >
                       <span
                         className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${prefs[key] === 1 ? 'translate-x-4' : 'translate-x-0'}`}
@@ -211,9 +211,9 @@ export default function NotificationBell() {
           )}
 
           {/* Notification list */}
-          <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+          <div className="max-h-80 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-700">
             {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-gray-400">
+              <div className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">
                 No notifications yet
               </div>
             ) : (
@@ -221,7 +221,7 @@ export default function NotificationBell() {
                 <button
                   key={notif.id}
                   onClick={() => handleClick(notif)}
-                  className={`w-full text-left px-4 py-3 flex gap-3 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-cail-blue/[0.03]' : ''}`}
+                  className={`w-full text-left px-4 py-3 flex gap-3 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors ${!notif.read ? 'bg-cail-blue/[0.03]' : ''}`}
                 >
                   <div className="mt-0.5 shrink-0">
                     {TYPE_ICONS[notif.type] || (
@@ -231,11 +231,11 @@ export default function NotificationBell() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm leading-snug ${!notif.read ? 'font-medium text-cail-dark' : 'text-gray-700'}`}>
+                    <p className={`text-sm leading-snug ${!notif.read ? 'font-medium text-cail-dark dark:text-slate-200' : 'text-gray-700 dark:text-slate-300'}`}>
                       {notif.title}
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5 truncate">{notif.body}</p>
-                    <p className="text-[11px] text-gray-300 mt-1">{timeAgo(notif.created_at)}</p>
+                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 truncate">{notif.body}</p>
+                    <p className="text-[11px] text-gray-300 dark:text-slate-600 mt-1">{timeAgo(notif.created_at)}</p>
                   </div>
                   {!notif.read && (
                     <span className="mt-1.5 w-2 h-2 rounded-full bg-cail-blue shrink-0" />
@@ -249,7 +249,7 @@ export default function NotificationBell() {
           <Link
             to="/notifications"
             onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-center text-xs font-medium text-cail-blue hover:text-cail-navy hover:bg-gray-50 border-t border-gray-100 transition-colors"
+            className="block px-4 py-2.5 text-center text-xs font-medium text-cail-blue hover:text-cail-navy hover:bg-gray-50 dark:hover:bg-slate-700 border-t border-gray-100 dark:border-slate-700 transition-colors"
           >
             See all notifications
           </Link>

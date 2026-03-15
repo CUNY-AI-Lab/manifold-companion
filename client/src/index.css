@@ -8,6 +8,24 @@ body {
   color: #0F172A;
 }
 
+/* Dark mode: inherit text color into KaTeX */
+.dark .katex { color: inherit; }
+
+/* Dark mode body overrides */
+.dark body,
+html.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

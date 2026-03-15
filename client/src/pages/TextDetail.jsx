@@ -935,7 +935,7 @@ export default function TextDetail() {
   if (!text) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           Text not found.
         </div>
       </div>
@@ -954,7 +954,7 @@ export default function TextDetail() {
       {/* Back link */}
       <Link
         to={`/projects/${text.project_id}`}
-        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-cail-dark mb-4 group"
+        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-cail-dark dark:hover:text-slate-200 mb-4 group"
       >
         <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -963,7 +963,7 @@ export default function TextDetail() {
       </Link>
 
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           {error}
           <button onClick={() => setError('')} className="ml-2 font-medium hover:underline">Dismiss</button>
         </div>
@@ -971,14 +971,14 @@ export default function TextDetail() {
 
       {/* Title */}
       <div className="flex items-center gap-3 mb-4">
-        <h1 className="font-display font-semibold text-2xl text-cail-dark">{text.name}</h1>
+        <h1 className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{text.name}</h1>
         {role === 'viewer' && (
-          <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-medium">Read-only</span>
+          <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 text-xs font-medium">Read-only</span>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-gray-200 dark:border-slate-700 mb-6">
         <nav className="flex gap-1 -mb-px overflow-x-auto">
           {TABS.map((tab) => (
             <button
@@ -992,7 +992,7 @@ export default function TextDetail() {
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-cail-blue text-cail-blue'
-                  : 'border-transparent text-gray-500 hover:text-cail-dark hover:border-gray-300'
+                  : 'border-transparent text-gray-500 hover:text-cail-dark dark:hover:text-slate-200 hover:border-gray-300 dark:border-slate-600'
               }`}
             >
               {tab}
@@ -1018,7 +1018,7 @@ export default function TextDetail() {
                 </button>
                 <button
                   onClick={openOcrSettings}
-                  className="px-4 py-2.5 rounded-full bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors"
+                  className="px-4 py-2.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
                 >
                   OCR Settings
                 </button>
@@ -1030,7 +1030,7 @@ export default function TextDetail() {
                 className={`px-4 py-2.5 rounded-full text-sm font-medium transition-colors ${
                   reorderMode
                     ? 'bg-cail-blue text-white hover:bg-cail-navy'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
                 }`}
               >
                 {reorderMode ? 'Done Reordering' : 'Reorder'}
@@ -1041,14 +1041,14 @@ export default function TextDetail() {
                 onClick={() => setShowUploadZone((v) => !v)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   showUploadZone
-                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
                     : 'bg-cail-blue/10 text-cail-blue hover:bg-cail-blue/20'
                 }`}
               >
                 {showUploadZone ? 'Cancel' : '+ Add Pages'}
               </button>
             )}
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-500 dark:text-slate-400">
               {visiblePages.length} page{visiblePages.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -1060,13 +1060,13 @@ export default function TextDetail() {
             onDrop={(e) => { setUploadSuccess(''); handleDrop(e); }}
             onClick={() => { if (!uploading) { setUploadSuccess(''); fileInputRef.current?.click(); } }}
             className={`mb-6 border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
-              dragOver ? 'border-cail-blue bg-cail-blue/5' : uploadSuccess ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-cail-blue/50'
+              dragOver ? 'border-cail-blue bg-cail-blue/5' : uploadSuccess ? 'border-green-300 bg-green-50' : 'border-gray-200 dark:border-slate-700 hover:border-cail-blue/50'
             }`}
           >
             {uploading ? (
               <div className="flex items-center justify-center gap-3">
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-cail-blue"></div>
-                <p className="text-sm text-gray-500">{uploadProgress}</p>
+                <p className="text-sm text-gray-500 dark:text-slate-400">{uploadProgress}</p>
               </div>
             ) : uploadSuccess ? (
               <div className="flex items-center justify-center gap-2">
@@ -1078,10 +1078,10 @@ export default function TextDetail() {
               </div>
             ) : (
               <div className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-slate-400">
                   Drop images or PDFs here, or click to browse
                 </p>
               </div>
@@ -1098,14 +1098,14 @@ export default function TextDetail() {
 
           {/* OCR Progress */}
           {ocrRunning && ocrProgress.total > 0 && (
-            <div className="mb-6 bg-white rounded-2xl border border-gray-100 p-4">
+            <div className="mb-6 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-600">OCR Progress</span>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm font-medium text-gray-600 dark:text-slate-400">OCR Progress</span>
+                <span className="text-sm text-gray-500 dark:text-slate-400">
                   {ocrProgress.page}/{ocrProgress.total}
                 </span>
               </div>
-              <div className="w-full bg-gray-100 rounded-full h-2">
+              <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="h-2 rounded-full bg-cail-teal transition-all"
                   style={{ width: `${(ocrProgress.page / ocrProgress.total) * 100}%` }}
@@ -1116,8 +1116,8 @@ export default function TextDetail() {
 
           {/* Thumbnail grid */}
           {visiblePages.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
-              <p className="text-sm text-gray-500">No pages uploaded yet. Use the drop zone above to add images.</p>
+            <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
+              <p className="text-sm text-gray-500 dark:text-slate-400">No pages uploaded yet. Use the drop zone above to add images.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -1166,7 +1166,7 @@ export default function TextDetail() {
                     </button>
                   )}
                   <div
-                    className={`aspect-[3/4] bg-gray-50 ${reorderMode ? '' : 'cursor-pointer'}`}
+                    className={`aspect-[3/4] bg-gray-50 dark:bg-slate-900 ${reorderMode ? '' : 'cursor-pointer'}`}
                     onClick={reorderMode ? undefined : () => setLightboxPage(idx)}
                   >
                     <img
@@ -1177,7 +1177,7 @@ export default function TextDetail() {
                     />
                   </div>
                   <div className="p-2 flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Page {idx + 1}</span>
+                    <span className="text-xs text-gray-500 dark:text-slate-400">Page {idx + 1}</span>
                     {page.ocr_text ? (
                       <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1207,26 +1207,26 @@ export default function TextDetail() {
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 copySuccess
                   ? 'bg-green-100 text-green-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
               }`}
             >
               {copySuccess ? 'Copied!' : 'Copy to Clipboard'}
             </button>
-            <span className="text-sm text-gray-400">
+            <span className="text-sm text-gray-400 dark:text-slate-500">
               Read-only view. Edit individual pages in the Review tab.
             </span>
           </div>
 
           {fullText ? (
             <div
-              className="bg-white rounded-2xl border border-gray-100 p-6 prose prose-sm max-w-none min-h-[400px]"
+              className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 prose prose-sm dark:prose-invert max-w-none min-h-[400px]"
               dangerouslySetInnerHTML={{
                 __html: renderSanitizedMarkdown(fullText)
               }}
             />
           ) : (
-            <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
-              <p className="text-sm text-gray-500">No OCR text yet. Run OCR on the Pages tab first.</p>
+            <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
+              <p className="text-sm text-gray-500 dark:text-slate-400">No OCR text yet. Run OCR on the Pages tab first.</p>
             </div>
           )}
         </div>
@@ -1238,8 +1238,8 @@ export default function TextDetail() {
       {activeTab === 'Review' && (
         <div>
           {visiblePages.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
-              <p className="text-sm text-gray-500">No pages to review.</p>
+            <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
+              <p className="text-sm text-gray-500 dark:text-slate-400">No pages to review.</p>
             </div>
           ) : (
             <>
@@ -1249,7 +1249,7 @@ export default function TextDetail() {
                   <button
                     onClick={() => setReviewPage((p) => Math.max(0, p - 1))}
                     disabled={reviewPage === 0}
-                    className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                    className="p-2 rounded-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 dark:bg-slate-900 disabled:opacity-30 transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -1261,7 +1261,7 @@ export default function TextDetail() {
                   <button
                     onClick={() => setReviewPage((p) => Math.min(visiblePages.length - 1, p + 1))}
                     disabled={reviewPage >= visiblePages.length - 1}
-                    className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                    className="p-2 rounded-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 dark:bg-slate-900 disabled:opacity-30 transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -1269,13 +1269,13 @@ export default function TextDetail() {
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Keyboard shortcuts (?)">
+                  <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Keyboard shortcuts (?)">
                     ?
                   </button>
-                  <button onClick={() => setShowVersions(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                  <button onClick={() => setShowVersions(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
                     History
                   </button>
-                  <button onClick={() => setShowAnnotations(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                  <button onClick={() => setShowAnnotations(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
                     Comments
                   </button>
                   <button
@@ -1291,7 +1291,7 @@ export default function TextDetail() {
               {/* 3-column layout: sidebar | image | editor */}
               <div className="flex flex-col md:flex-row gap-4" style={{ minHeight: '50vh' }}>
                 {/* Page sidebar */}
-                <div className="w-40 flex-shrink-0 bg-white rounded-2xl border border-gray-100 overflow-y-auto hidden md:block">
+                <div className="w-40 flex-shrink-0 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-y-auto hidden md:block">
                   {visiblePages.map((page, idx) => (
                     <button
                       key={page.id || idx}
@@ -1299,7 +1299,7 @@ export default function TextDetail() {
                       className={`w-full text-left px-3 py-2 text-sm transition-colors border-l-2 ${
                         idx === reviewPage
                           ? 'bg-cail-blue/10 border-cail-blue text-cail-blue font-medium'
-                          : 'border-transparent text-gray-600 hover:bg-gray-50'
+                          : 'border-transparent text-gray-600 hover:bg-gray-50 dark:hover:bg-slate-800'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1317,22 +1317,22 @@ export default function TextDetail() {
                 </div>
 
                 {/* Image */}
-                <div className="flex-1 bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col min-w-0 max-h-[40vh] md:max-h-none md:h-[65vh]">
-                  <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-gray-100">
+                <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden flex flex-col min-w-0 max-h-[40vh] md:max-h-none md:h-[65vh]">
+                  <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-gray-100 dark:border-slate-700">
                     <button
                       onClick={() => { setReviewZoom((z) => { const n = Math.max(1, z - 0.25); if (n <= 1) setReviewPan({ x: 0, y: 0 }); return n; }); }}
                       disabled={reviewZoom <= 1}
-                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-30"
                       title="Zoom out"
                     >-</button>
                     <button
                       onClick={() => { setReviewZoom(1); setReviewPan({ x: 0, y: 0 }); }}
-                      className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:bg-gray-100 tabular-nums"
+                      className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 tabular-nums"
                       title="Reset zoom"
                     >{Math.round(reviewZoom * 100)}%</button>
                     <button
                       onClick={() => setReviewZoom((z) => Math.min(5, z + 0.25))}
-                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700"
                       title="Zoom in"
                     >+</button>
                   </div>
@@ -1393,7 +1393,7 @@ export default function TextDetail() {
                         >
                           Restore
                         </button>
-                        <button onClick={dismissDraft} className="text-sm text-gray-500 hover:text-gray-700">
+                        <button onClick={dismissDraft} className="text-sm text-gray-500 hover:text-gray-700 dark:text-slate-300">
                           Dismiss
                         </button>
                       </div>
@@ -1401,20 +1401,20 @@ export default function TextDetail() {
                   )}
                   {/* Markdown toolbar */}
                   <div className="flex items-center gap-1 bg-white rounded-t-2xl border border-gray-100 border-b-0 p-1.5">
-                    <button onClick={() => insertReviewMarkdown('**', '**')} className="px-3 py-1 rounded text-sm font-bold text-gray-600 hover:bg-gray-100 transition-colors" title="Bold">B</button>
-                    <button onClick={() => insertReviewMarkdown('*', '*')} className="px-3 py-1 rounded text-sm italic text-gray-600 hover:bg-gray-100 transition-colors" title="Italic">I</button>
-                    <button onClick={() => insertReviewMarkdown('# ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors" title="Heading 1">H1</button>
-                    <button onClick={() => insertReviewMarkdown('## ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors" title="Heading 2">H2</button>
-                    <button onClick={() => insertReviewMarkdown('### ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors" title="Heading 3">H3</button>
-                    <button onClick={() => insertReviewMarkdown('\n\n---\n\n')} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100 transition-colors" title="Separator">--</button>
-                    <button onClick={() => insertReviewMarkdown('> ')} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100 transition-colors" title="Blockquote">&ldquo;</button>
+                    <button onClick={() => insertReviewMarkdown('**', '**')} className="px-3 py-1 rounded text-sm font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Bold">B</button>
+                    <button onClick={() => insertReviewMarkdown('*', '*')} className="px-3 py-1 rounded text-sm italic text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Italic">I</button>
+                    <button onClick={() => insertReviewMarkdown('# ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 1">H1</button>
+                    <button onClick={() => insertReviewMarkdown('## ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 2">H2</button>
+                    <button onClick={() => insertReviewMarkdown('### ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 3">H3</button>
+                    <button onClick={() => insertReviewMarkdown('\n\n---\n\n')} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Separator">--</button>
+                    <button onClick={() => insertReviewMarkdown('> ')} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Blockquote">&ldquo;</button>
                   </div>
                   <textarea
                     ref={reviewTextareaRef}
                     value={pageText}
                     onChange={(e) => setPageText(e.target.value)}
                     readOnly={role === 'viewer'}
-                    className={`w-full flex-1 px-4 py-3 rounded-b-2xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none ${role === 'viewer' ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
+                    className={`w-full flex-1 px-4 py-3 rounded-b-2xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none ${role === 'viewer' ? 'bg-gray-50 dark:bg-slate-900 cursor-not-allowed' : 'bg-white'}`}
                     placeholder="OCR text for this page..."
                   />
                 </div>
@@ -1431,11 +1431,11 @@ export default function TextDetail() {
         <div>
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Target Language</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Target Language</label>
               <select
                 value={targetLang}
                 onChange={(e) => setTargetLang(e.target.value)}
-                className="text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none"
+                className="text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none"
               >
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>{l.label}</option>
@@ -1459,7 +1459,7 @@ export default function TextDetail() {
             <button
               onClick={() => setTranslationSideBySide(!translationSideBySide)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ml-auto ${
-                translationSideBySide ? 'bg-cail-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                translationSideBySide ? 'bg-cail-blue text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
               }`}
             >
               {translationSideBySide ? 'Single View' : 'Side by Side'}
@@ -1472,7 +1472,7 @@ export default function TextDetail() {
               <div>
                 <h3 className="text-sm font-medium text-gray-500 mb-2">Original Text</h3>
                 <div
-                  className="bg-white rounded-2xl border border-gray-100 p-4 prose prose-sm max-w-none h-[500px] overflow-y-auto"
+                  className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4 prose prose-sm dark:prose-invert max-w-none h-[500px] overflow-y-auto"
                   dangerouslySetInnerHTML={{
                     __html: renderSanitizedMarkdown(fullText)
                   }}
@@ -1484,7 +1484,7 @@ export default function TextDetail() {
                 <textarea
                   value={translation}
                   onChange={(e) => setTranslation(e.target.value)}
-                  className="w-full h-[500px] px-4 py-3 rounded-2xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none bg-white"
+                  className="w-full h-[500px] px-4 py-3 rounded-2xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none bg-white dark:bg-slate-800"
                   placeholder="Translation will appear here..."
                 />
               </div>
@@ -1493,7 +1493,7 @@ export default function TextDetail() {
             <textarea
               value={translation}
               onChange={(e) => setTranslation(e.target.value)}
-              className="w-full min-h-[500px] px-4 py-3 rounded-2xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-y bg-white"
+              className="w-full min-h-[500px] px-4 py-3 rounded-2xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-y bg-white dark:bg-slate-800"
               placeholder="Translation will appear here..."
             />
           )}
@@ -1506,13 +1506,13 @@ export default function TextDetail() {
       {activeTab === 'Details' && (
         <div className="space-y-8">
           {/* Summary section */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
             <h3 className="font-display font-semibold text-lg text-cail-dark mb-4">Summary</h3>
             <textarea
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               rows={4}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm resize-y"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm resize-y"
               placeholder="Summary of this text..."
             />
             <div className="flex items-center gap-3 mt-3">
@@ -1534,9 +1534,9 @@ export default function TextDetail() {
           </div>
 
           {/* Dublin Core Metadata */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display font-semibold text-lg text-cail-dark">Dublin Core Metadata</h3>
+              <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Dublin Core Metadata</h3>
               <button
                 onClick={saveMetadata}
                 disabled={savingMetadata}
@@ -1555,7 +1555,7 @@ export default function TextDetail() {
                     type="text"
                     value={metadata[field.key] || ''}
                     onChange={(e) => setMetadata((m) => ({ ...m, [field.key]: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                   />
                 </div>
               ))}
@@ -1689,8 +1689,8 @@ export default function TextDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-xl text-cail-dark">OCR Settings</h2>
-              <button onClick={() => setShowOcrSettings(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-display font-semibold text-xl text-cail-dark dark:text-slate-200">OCR Settings</h2>
+              <button onClick={() => setShowOcrSettings(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -1708,7 +1708,7 @@ export default function TextDetail() {
                       setOcrSettings((s) => ({ ...s, prompt: preset.prompt }));
                     }
                   }}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none"
                 >
                   {OCR_PRESETS.map((p) => (
                     <option key={p.key} value={p.key}>{p.label}</option>
@@ -1722,7 +1722,7 @@ export default function TextDetail() {
                   value={ocrSettings.prompt}
                   onChange={(e) => setOcrSettings((s) => ({ ...s, prompt: e.target.value }))}
                   rows={8}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-y"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-y"
                   placeholder="Leave empty to use default prompt..."
                 />
               </div>
@@ -1733,7 +1733,7 @@ export default function TextDetail() {
                   type="text"
                   value={ocrSettings.model}
                   onChange={(e) => setOcrSettings((s) => ({ ...s, model: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                   placeholder="Leave empty to use default model"
                 />
               </div>
@@ -1759,7 +1759,7 @@ export default function TextDetail() {
                     type="number"
                     value={ocrSettings.max_tokens}
                     onChange={(e) => setOcrSettings((s) => ({ ...s, max_tokens: parseInt(e.target.value, 10) || 8192 }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                     min={256}
                     max={32768}
                   />
@@ -1770,14 +1770,14 @@ export default function TextDetail() {
             <div className="flex items-center justify-between mt-6">
               <button
                 onClick={resetOcrSettings}
-                className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Reset to Default
               </button>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowOcrSettings(false)}
-                  className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                  className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   Cancel
                 </button>

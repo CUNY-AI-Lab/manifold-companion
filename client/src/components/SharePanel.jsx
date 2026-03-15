@@ -80,14 +80,14 @@ export default function SharePanel({ projectId, open, onClose }) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-8"
+        className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-display font-bold text-cail-navy">Share Project</h2>
+          <h2 className="text-xl font-display font-bold text-cail-navy dark:text-slate-200">Share Project</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+            className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 text-2xl leading-none"
             aria-label="Close"
           >
             &times;
@@ -95,7 +95,7 @@ export default function SharePanel({ projectId, open, onClose }) {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-xl text-sm">
             {error}
           </div>
         )}
@@ -126,19 +126,19 @@ export default function SharePanel({ projectId, open, onClose }) {
                 }}
                 onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
               />
               {showSuggestions && suggestions.length > 0 && (
-                <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                <ul className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                   {suggestions.map((u) => (
                     <li key={u.id}>
                       <button
                         type="button"
                         onClick={() => { setEmail(u.email); setShowSuggestions(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors"
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
                       >
-                        <p className="text-sm font-medium text-cail-dark truncate">{u.display_name || u.email}</p>
-                        {u.display_name && <p className="text-xs text-gray-400 truncate">{u.email}</p>}
+                        <p className="text-sm font-medium text-cail-dark dark:text-slate-200 truncate">{u.display_name || u.email}</p>
+                        {u.display_name && <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{u.email}</p>}
                       </button>
                     </li>
                   ))}
@@ -148,7 +148,7 @@ export default function SharePanel({ projectId, open, onClose }) {
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
+              className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-xl text-sm bg-white dark:bg-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
             >
               <option value="viewer">Viewer</option>
               <option value="editor">Editor</option>
@@ -168,26 +168,26 @@ export default function SharePanel({ projectId, open, onClose }) {
             <div className="w-6 h-6 border-2 border-cail-blue border-t-transparent rounded-full animate-spin" />
           </div>
         ) : shares.length === 0 ? (
-          <p className="text-center text-gray-400 text-sm py-6">No shares yet</p>
+          <p className="text-center text-gray-400 dark:text-slate-500 text-sm py-6">No shares yet</p>
         ) : (
           <ul className="space-y-2">
             {shares.map((share) => (
               <li
                 key={share.id}
-                className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-2xl"
+                className="flex items-center justify-between gap-3 p-3 bg-gray-50 dark:bg-slate-900 rounded-2xl"
               >
                 <div className="min-w-0 flex-1">
-                  <span className="text-sm text-cail-dark truncate block">
+                  <span className="text-sm text-cail-dark dark:text-slate-200 truncate block">
                     {share.display_name || share.email}
                   </span>
                   {share.display_name && (
-                    <span className="text-xs text-gray-400 truncate block">{share.email}</span>
+                    <span className="text-xs text-gray-400 dark:text-slate-500 truncate block">{share.email}</span>
                   )}
                 </div>
                 <select
                   value={share.role}
                   onChange={(e) => handleUpdateRole(share.id, e.target.value)}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
+                  className="px-2 py-1 text-xs border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
                 >
                   <option value="viewer">Viewer</option>
                   <option value="editor">Editor</option>

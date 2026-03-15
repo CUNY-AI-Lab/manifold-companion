@@ -103,8 +103,8 @@ export default function Dashboard() {
       {/* Hero area */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-display font-semibold text-2xl text-cail-dark">Your Projects</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">Your Projects</h1>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
             Manage your OCR projects and texts
           </p>
         </div>
@@ -123,29 +123,29 @@ export default function Dashboard() {
 
       {/* 90-day expiry notice for regular users */}
       {!isAdmin && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 mb-6 flex items-start gap-3">
           <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-sm text-amber-800">
+          <p className="text-sm text-amber-800 dark:text-amber-300">
             Projects are automatically deleted 90 days after creation. Please export your work before the expiry date shown on each project.
           </p>
         </div>
       )}
 
       {error && (
-        <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-6 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           {error}
         </div>
       )}
 
       {/* New project form */}
       {showForm && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6 shadow-sm">
-          <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Create New Project</h2>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 mb-6 shadow-sm">
+          <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-4">Create New Project</h2>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
-              <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                 Project Name
               </label>
               <input
@@ -154,26 +154,26 @@ export default function Dashboard() {
                 required
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
                 placeholder="My OCR Project"
               />
             </div>
             <div>
-              <label htmlFor="project-type" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="project-type" className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                 Project Type
               </label>
               <select
                 id="project-type"
                 value={newProjectType}
                 onChange={(e) => setNewProjectType(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm bg-white"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm bg-white"
               >
                 <option value="image_to_markdown">Image to Markdown</option>
                 <option value="pdf_to_html">PDF to HTML</option>
               </select>
             </div>
             <div>
-              <label htmlFor="project-desc" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="project-desc" className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                 Description (optional)
               </label>
               <textarea
@@ -181,7 +181,7 @@ export default function Dashboard() {
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
                 rows={2}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm resize-none"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm resize-none"
                 placeholder="Brief description of this project"
               />
             </div>
@@ -214,8 +214,8 @@ export default function Dashboard() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
           </button>
-          <h3 className="font-display font-semibold text-lg text-cail-dark mb-1">No projects yet</h3>
-          <p className="text-sm text-gray-500">Create your first project to get started with OCR.</p>
+          <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-1">No projects yet</h3>
+          <p className="text-sm text-gray-500 dark:text-slate-400">Create your first project to get started with OCR.</p>
         </div>
       )}
 
@@ -228,13 +228,13 @@ export default function Dashboard() {
               <Link
                 key={project.id}
                 to={`/projects/${project.id}`}
-                className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
               >
-                <h3 className="font-display font-semibold text-lg text-cail-dark group-hover:text-cail-blue transition-colors mb-2">
+                <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors mb-2">
                   {project.name}
                 </h3>
                 {project.description && (
-                  <p className="text-sm text-gray-500 mb-4 line-clamp-2">{project.description}</p>
+                  <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 line-clamp-2">{project.description}</p>
                 )}
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -247,7 +247,7 @@ export default function Dashboard() {
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cail-blue/10 text-cail-blue">
                     {project.text_count || 0} text{(project.text_count || 0) !== 1 ? 's' : ''}
                   </span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">
                     {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
                   </span>
                   {days !== null && (
@@ -265,25 +265,25 @@ export default function Dashboard() {
       {shared.length > 0 && (
         <>
           <div className="mt-12 mb-6">
-            <h2 className="font-display font-semibold text-xl text-cail-dark">Shared with You</h2>
-            <p className="text-sm text-gray-500 mt-1">Projects other users have shared with you</p>
+            <h2 className="font-display font-semibold text-xl text-cail-dark dark:text-slate-200">Shared with You</h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Projects other users have shared with you</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {shared.map((project) => (
               <Link
                 key={project.id}
                 to={`/projects/${project.id}`}
-                className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
               >
-                <h3 className="font-display font-semibold text-lg text-cail-dark group-hover:text-cail-blue transition-colors mb-1">
+                <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors mb-1">
                   {project.name}
                 </h3>
-                <p className="text-xs text-gray-400 mb-3">{project.owner_email}</p>
+                <p className="text-xs text-gray-400 dark:text-slate-500 mb-3">{project.owner_email}</p>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     project.share_role === 'editor'
                       ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-600'
+                      : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
                   }`}>
                     {project.share_role === 'editor' ? 'Editor' : 'Viewer'}
                   </span>
@@ -297,7 +297,7 @@ export default function Dashboard() {
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cail-blue/10 text-cail-blue">
                     {project.text_count || 0} text{(project.text_count || 0) !== 1 ? 's' : ''}
                   </span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">
                     {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
                   </span>
                 </div>
@@ -309,18 +309,18 @@ export default function Dashboard() {
       {/* Usage bars */}
       {!loading && (
         <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4">
             <div
               onClick={() => setUsageModal('storage')}
               className="cursor-pointer group"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-600 group-hover:text-cail-teal transition-colors">Storage</span>
+                <span className="text-sm font-medium text-gray-600 dark:text-slate-400 group-hover:text-cail-teal transition-colors">Storage</span>
                 <span className="text-sm text-gray-500">
                   {formatBytes(usedStorage)} / {formatBytes(totalStorage)}
                 </span>
               </div>
-              <div className="w-full bg-gray-100 rounded-full h-2">
+              <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full transition-all ${storagePercent > 80 ? 'bg-red-500' : 'bg-cail-teal'}`}
                   style={{ width: `${storagePercent}%` }}
@@ -334,18 +334,18 @@ export default function Dashboard() {
               Request more storage
             </a>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4">
             <div
               onClick={() => setUsageModal('tokens')}
               className="cursor-pointer group"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-600 group-hover:text-cail-blue transition-colors">Token Usage</span>
+                <span className="text-sm font-medium text-gray-600 dark:text-slate-400 group-hover:text-cail-blue transition-colors">Token Usage</span>
                 <span className="text-sm text-gray-500">
                   {formatTokens(tokenUsage)} / {formatTokens(tokenAllowance)}
                 </span>
               </div>
-              <div className="w-full bg-gray-100 rounded-full h-2">
+              <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full transition-all ${tokenAllowance > 0 && (tokenUsage / tokenAllowance) > 0.8 ? 'bg-red-500' : 'bg-cail-blue'}`}
                   style={{ width: `${tokenAllowance > 0 ? Math.min((tokenUsage / tokenAllowance) * 100, 100) : 0}%` }}

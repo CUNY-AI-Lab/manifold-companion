@@ -181,7 +181,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {selected.size > 0 && (
             <>
-              <span className="text-sm text-gray-500">{selected.size} selected</span>
+              <span className="text-sm text-gray-500 dark:text-slate-400">{selected.size} selected</span>
               <button
                 onClick={handleBulkApprove}
                 className="px-4 py-1.5 rounded-full bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
@@ -190,7 +190,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
               </button>
               <button
                 onClick={() => setSelected(new Set())}
-                className="px-3 py-1.5 rounded-full text-sm text-gray-500 hover:bg-gray-100 transition-colors"
+                className="px-3 py-1.5 rounded-full text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Clear
               </button>
@@ -215,7 +215,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
 
       {/* Create user form */}
       {showCreateForm && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6 shadow-sm">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 mb-6 shadow-sm">
           <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Create New User</h2>
           <form onSubmit={handleCreateUser} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -226,7 +226,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   maxLength={100}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
                   placeholder="Optional"
                 />
               </div>
@@ -237,7 +237,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                   required
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
                   placeholder="user@example.com"
                 />
               </div>
@@ -249,7 +249,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                   minLength={8}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
                   placeholder="Min 8 characters"
                 />
               </div>
@@ -259,7 +259,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                   <select
                     value={newRole}
                     onChange={(e) => setNewRole(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                   >
                     <option value="user">User</option>
                     <option value="admin">Admin</option>
@@ -270,7 +270,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                   <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                   >
                     <option value="approved">Approved</option>
                     <option value="pending">Pending</option>
@@ -291,26 +291,26 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
           <p className="text-sm text-gray-500 mb-1">Total Users</p>
-          <p className="font-display font-semibold text-2xl text-cail-dark">{users.length}</p>
+          <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{users.length}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
           <p className="text-sm text-gray-500 mb-1">Pending Approvals</p>
           <p className="font-display font-semibold text-2xl text-yellow-600">{pendingUsers.length}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
           <p className="text-sm text-gray-500 mb-1">Total Storage Used</p>
-          <p className="font-display font-semibold text-2xl text-cail-dark">{formatBytes(totalStorage)}</p>
+          <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{formatBytes(totalStorage)}</p>
         </div>
       </div>
 
       {/* Users table */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
+              <tr className="border-b border-gray-100 bg-gray-50/50 dark:bg-slate-800/50">
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3 w-10">
                   <input
                     type="checkbox"
@@ -319,7 +319,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                       if (selected.size === users.length) setSelected(new Set());
                       else setSelected(new Set(users.map((u) => u.id)));
                     }}
-                    className="rounded border-gray-300"
+                    className="rounded border-gray-300 dark:border-slate-600"
                   />
                 </th>
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">User</th>
@@ -334,13 +334,13 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {users.map((user) => (
-                <tr key={user.id} className={`hover:bg-gray-50/50 transition-colors ${selected.has(user.id) ? 'bg-cail-blue/5' : ''}`}>
+                <tr key={user.id} className={`hover:bg-gray-50/50 dark:hover:bg-slate-700/50 dark:bg-slate-800/50 transition-colors ${selected.has(user.id) ? 'bg-cail-blue/5' : ''}`}>
                   <td className="px-4 py-4">
                     <input
                       type="checkbox"
                       checked={selected.has(user.id)}
                       onChange={() => toggleSelect(user.id)}
-                      className="rounded border-gray-300"
+                      className="rounded border-gray-300 dark:border-slate-600"
                     />
                   </td>
                   <td className="px-4 py-4">
@@ -352,7 +352,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                           onChange={(e) => setNameValue(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') saveName(user.id); if (e.key === 'Escape') setEditingName(null); }}
                           placeholder="Display name"
-                          className="w-40 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-cail-blue"
+                          className="w-40 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-cail-blue"
                           autoFocus
                         />
                         <button onClick={() => saveName(user.id)} className="text-xs text-cail-blue hover:underline">Save</button>
@@ -367,24 +367,24 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                         {user.display_name ? (
                           <>
                             <p className="text-sm font-medium text-cail-dark group-hover:text-cail-blue transition-colors">{user.display_name}</p>
-                            <p className="text-sm text-gray-400">{user.email}</p>
+                            <p className="text-sm text-gray-400 dark:text-slate-500">{user.email}</p>
                           </>
                         ) : (
                           <>
-                            <p className="text-sm text-cail-dark">{user.email}</p>
-                            <p className="text-xs text-gray-300 group-hover:text-cail-blue transition-colors">+ add name</p>
+                            <p className="text-sm text-cail-dark dark:text-slate-200">{user.email}</p>
+                            <p className="text-xs text-gray-300 dark:text-slate-600 group-hover:text-cail-blue transition-colors">+ add name</p>
                           </>
                         )}
                       </button>
                     )}
                   </td>
                   <td className="px-4 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_STYLES[user.status] || 'bg-gray-50 text-gray-600'}`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_STYLES[user.status] || 'bg-gray-50 dark:bg-slate-900 text-gray-600'}`}>
                       {user.status}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600">{user.role}</td>
-                  <td className="px-4 py-4 text-sm text-gray-600">{formatBytes(user.storage_used_bytes)}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600 dark:text-slate-400">{user.role}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600 dark:text-slate-400">{formatBytes(user.storage_used_bytes)}</td>
                   <td className="px-4 py-4">
                     {editingAllowance === user.id ? (
                       <div className="flex items-center gap-1">
@@ -392,7 +392,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                           type="number"
                           value={allowanceValue}
                           onChange={(e) => setAllowanceValue(e.target.value)}
-                          className="w-24 px-2 py-1 text-xs border border-gray-300 rounded-lg"
+                          className="w-24 px-2 py-1 text-xs border border-gray-300 dark:border-slate-600 rounded-lg"
                           min="0"
                         />
                         <button onClick={() => saveAllowance(user.id)} className="text-xs text-cail-blue hover:underline">Save</button>
@@ -407,12 +407,12 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                         <span className={`text-sm font-medium ${user.token_allowance > 0 && (user.token_usage / user.token_allowance) > 0.8 ? 'text-red-600' : 'text-gray-600'}`}>
                           {formatTokens(user.token_usage)}
                         </span>
-                        <span className="text-sm text-gray-400"> / {formatTokens(user.token_allowance)}</span>
+                        <span className="text-sm text-gray-400 dark:text-slate-500"> / {formatTokens(user.token_allowance)}</span>
                       </button>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600">{user.project_count || 0}</td>
-                  <td className="px-4 py-4 text-sm text-gray-400">{formatDate(user.last_login_at)}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600 dark:text-slate-400">{user.project_count || 0}</td>
+                  <td className="px-4 py-4 text-sm text-gray-400 dark:text-slate-500">{formatDate(user.last_login_at)}</td>
                   <td className="px-4 py-4">
                     <div className="flex items-center justify-end gap-1 flex-wrap">
                       {user.status === 'pending' && (
@@ -437,7 +437,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
         </div>
         {users.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-sm text-gray-500">No users found.</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">No users found.</p>
           </div>
         )}
       </div>
@@ -451,7 +451,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
               Are you sure you want to delete <strong>{confirmDelete.display_name || confirmDelete.email}</strong>? This will remove all their projects and data.
             </p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
               <button onClick={() => deleteUser(confirmDelete.id)} className="px-4 py-2 rounded-full bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">Delete User</button>
             </div>
           </div>
@@ -501,13 +501,13 @@ function UsageTab() {
     <>
       {/* Period selector */}
       <div className="flex items-center gap-2 mb-6">
-        <span className="text-sm text-gray-500">Period:</span>
+        <span className="text-sm text-gray-500 dark:text-slate-400">Period:</span>
         {[7, 30, 90].map((d) => (
           <button
             key={d}
             onClick={() => setDays(d)}
             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-              days === d ? 'bg-cail-blue text-white' : 'text-gray-500 hover:bg-gray-100'
+              days === d ? 'bg-cail-blue text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700'
             }`}
           >
             {d}d
@@ -517,29 +517,29 @@ function UsageTab() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
           <p className="text-sm text-gray-500 mb-1">API Calls ({days}d)</p>
-          <p className="font-display font-semibold text-2xl text-cail-dark">{stats.totals?.total_calls?.toLocaleString() || 0}</p>
+          <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{stats.totals?.total_calls?.toLocaleString() || 0}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
           <p className="text-sm text-gray-500 mb-1">Tokens Consumed ({days}d)</p>
-          <p className="font-display font-semibold text-2xl text-cail-dark">{formatTokens(stats.totals?.total_tokens)}</p>
+          <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{formatTokens(stats.totals?.total_tokens)}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
           <p className="text-sm text-gray-500 mb-1">Active Users ({days}d)</p>
-          <p className="font-display font-semibold text-2xl text-cail-dark">{stats.byUser?.length || 0}</p>
+          <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{stats.byUser?.length || 0}</p>
         </div>
       </div>
 
       {/* Endpoint breakdown */}
       {stats.byEndpoint?.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 mb-6">
           <h3 className="font-display font-semibold text-sm text-cail-dark mb-4">By Endpoint</h3>
           <div className="space-y-2">
             {stats.byEndpoint.map((ep) => (
               <div key={ep.endpoint} className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">{ep.endpoint}</span>
-                <div className="flex items-center gap-4 text-sm text-gray-500">
+                <span className="text-sm text-gray-600 dark:text-slate-400">{ep.endpoint}</span>
+                <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-slate-400">
                   <span>{ep.calls} calls</span>
                   <span>{formatTokens(ep.tokens_in + ep.tokens_out)} tokens</span>
                 </div>
@@ -551,12 +551,12 @@ function UsageTab() {
 
       {/* Per-user usage */}
       {stats.byUser?.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-6">
-          <h3 className="font-display font-semibold text-sm text-cail-dark px-6 py-4 border-b border-gray-100">Per-User Usage</h3>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden mb-6">
+          <h3 className="font-display font-semibold text-sm text-cail-dark px-6 py-4 border-b border-gray-100 dark:border-slate-700">Per-User Usage</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
+                <tr className="border-b border-gray-100 bg-gray-50/50 dark:bg-slate-800/50">
                   <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">User</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Calls</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Tokens Used</th>
@@ -570,18 +570,18 @@ function UsageTab() {
                   const pct = u.token_allowance > 0 ? Math.round((u.current_usage / u.token_allowance) * 100) : 0;
                   const pctColor = pct > 90 ? 'text-red-600' : pct > 50 ? 'text-yellow-600' : 'text-green-600';
                   return (
-                    <tr key={u.user_id} className="hover:bg-gray-50/50">
+                    <tr key={u.user_id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50 dark:bg-slate-800/50">
                       <td className="px-6 py-3">
-                        <p className="text-sm text-cail-dark">{u.display_name || u.email}</p>
-                        {u.display_name && <p className="text-xs text-gray-400">{u.email}</p>}
+                        <p className="text-sm text-cail-dark dark:text-slate-200">{u.display_name || u.email}</p>
+                        {u.display_name && <p className="text-xs text-gray-400 dark:text-slate-500">{u.email}</p>}
                       </td>
-                      <td className="px-6 py-3 text-sm text-gray-600">{u.calls}</td>
-                      <td className="px-6 py-3 text-sm text-gray-600">{formatTokens(u.current_usage)}</td>
-                      <td className="px-6 py-3 text-sm text-gray-600">{formatTokens(u.token_allowance)}</td>
+                      <td className="px-6 py-3 text-sm text-gray-600 dark:text-slate-400">{u.calls}</td>
+                      <td className="px-6 py-3 text-sm text-gray-600 dark:text-slate-400">{formatTokens(u.current_usage)}</td>
+                      <td className="px-6 py-3 text-sm text-gray-600 dark:text-slate-400">{formatTokens(u.token_allowance)}</td>
                       <td className="px-6 py-3">
                         <span className={`text-sm font-medium ${pctColor}`}>{pct}%</span>
                       </td>
-                      <td className="px-6 py-3 text-sm text-gray-600">{formatBytes(u.storage_used_bytes)}</td>
+                      <td className="px-6 py-3 text-sm text-gray-600 dark:text-slate-400">{formatBytes(u.storage_used_bytes)}</td>
                     </tr>
                   );
                 })}
@@ -593,16 +593,16 @@ function UsageTab() {
 
       {/* Most active projects */}
       {stats.byProject?.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
           <h3 className="font-display font-semibold text-sm text-cail-dark mb-4">Most Active Projects</h3>
           <div className="space-y-2">
             {stats.byProject.map((p) => (
               <div key={p.project_id} className="flex items-center justify-between">
                 <div>
-                  <span className="text-sm text-cail-dark">{p.project_name}</span>
+                  <span className="text-sm text-cail-dark dark:text-slate-200">{p.project_name}</span>
                   <span className="text-xs text-gray-400 ml-2">({p.owner_email})</span>
                 </div>
-                <div className="flex items-center gap-4 text-sm text-gray-500">
+                <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-slate-400">
                   <span>{p.calls} calls</span>
                   <span>{formatTokens(p.total_tokens)} tokens</span>
                 </div>
@@ -678,7 +678,7 @@ function BackupsTab({ setToast }) {
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="font-display font-semibold text-lg text-cail-dark">Database & File Backups</h2>
+          <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Database & File Backups</h2>
           <p className="text-sm text-gray-500 mt-1">Create and manage backups of the database and uploaded files.</p>
         </div>
         <button
@@ -702,15 +702,15 @@ function BackupsTab({ setToast }) {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cail-blue"></div>
         </div>
       ) : backups.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-12 text-center">
           <p className="text-gray-500 text-sm">No backups yet. Create your first backup above.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
+              <tr className="border-b border-gray-100 bg-gray-50/50 dark:bg-slate-800/50">
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Filename</th>
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Size</th>
                 <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Created</th>
@@ -719,9 +719,9 @@ function BackupsTab({ setToast }) {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {backups.map((b) => (
-                <tr key={b.filename} className="hover:bg-gray-50/50">
+                <tr key={b.filename} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50 dark:bg-slate-800/50">
                   <td className="px-4 sm:px-6 py-4 text-sm text-cail-dark font-mono whitespace-nowrap">{b.filename}</td>
-                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-600">{formatBytes(b.size)}</td>
+                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-600 dark:text-slate-400">{formatBytes(b.size)}</td>
                   <td className="px-4 sm:px-6 py-4 text-sm text-gray-400 whitespace-nowrap">{formatDate(b.created_at)}</td>
                   <td className="px-4 sm:px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
@@ -786,7 +786,7 @@ export default function AdminPanel() {
       )}
 
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display font-semibold text-2xl text-cail-dark">Admin Panel</h1>
+        <h1 className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">Admin Panel</h1>
       </div>
 
       {error && (
@@ -797,7 +797,7 @@ export default function AdminPanel() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-8 bg-gray-100 rounded-full p-1 w-fit overflow-x-auto max-w-full">
+      <div className="flex gap-1 mb-8 bg-gray-100 dark:bg-slate-700 rounded-full p-1 w-fit overflow-x-auto max-w-full">
         {TABS.map((t) => (
           <button
             key={t.id}

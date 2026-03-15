@@ -72,7 +72,7 @@ export default function Header() {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <header className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-gray-200/80">
+    <header className="fixed top-0 w-full z-50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border-b border-gray-200/80 dark:border-slate-700/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Left: Logo + Title */}
@@ -82,7 +82,7 @@ export default function Header() {
               alt="CUNY AI Lab"
               className="h-8 w-auto"
             />
-            <span className="font-display font-semibold text-cail-dark text-sm hidden lg:block">
+            <span className="font-display font-semibold text-cail-dark dark:text-slate-200 text-sm hidden lg:block">
               Manifold Companion
             </span>
           </Link>
@@ -96,7 +96,7 @@ export default function Header() {
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   isActive(link.to)
                     ? 'bg-cail-blue/10 text-cail-blue'
-                    : 'text-gray-600 hover:text-cail-dark hover:bg-gray-100'
+                    : 'text-gray-600 dark:text-slate-400 hover:text-cail-dark dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700'
                 }`}
               >
                 {link.label}
@@ -110,17 +110,17 @@ export default function Header() {
             <div className="relative group">
               <button
                 onClick={cycleTheme}
-                className="p-2 rounded-full text-gray-500 hover:text-cail-dark hover:bg-gray-100 transition-colors"
+                className="p-2 rounded-full text-gray-500 dark:text-slate-400 hover:text-cail-dark dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 aria-label={`Theme: ${THEME_LABEL[currentThemePref]}. Click to cycle.`}
               >
                 <ThemeIcon pref={currentThemePref} />
               </button>
-              <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded text-xs font-medium text-white bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded text-xs font-medium text-white bg-gray-800 dark:bg-slate-600 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 {THEME_LABEL[currentThemePref]}
               </span>
             </div>
             <NotificationBell />
-            <span className="text-sm text-gray-500">{user?.display_name || user?.email}</span>
+            <span className="text-sm text-gray-500 dark:text-slate-400">{user?.display_name || user?.email}</span>
             <button
               onClick={logout}
               className="px-4 py-1.5 rounded-full text-sm font-medium text-white bg-cail-blue hover:bg-cail-navy transition-colors"
@@ -134,7 +134,7 @@ export default function Header() {
             <NotificationBell />
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+              className="p-2 rounded-lg text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700"
               aria-label="Toggle menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -150,7 +150,7 @@ export default function Header() {
 
         {/* Mobile menu */}
         {menuOpen && (
-          <div className="md:hidden border-t border-gray-100 py-3 space-y-1">
+          <div className="md:hidden border-t border-gray-100 dark:border-slate-700 py-3 space-y-1">
             <div className="px-4 pb-2">
               <SearchBar compact={false} />
             </div>
@@ -162,17 +162,17 @@ export default function Header() {
                 className={`block px-4 py-2 rounded-lg text-sm font-medium ${
                   isActive(link.to)
                     ? 'bg-cail-blue/10 text-cail-blue'
-                    : 'text-gray-600 hover:bg-gray-50'
+                    : 'text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'
                 }`}
               >
                 {link.label}
               </Link>
             ))}
-            <div className="border-t border-gray-100 pt-3 mt-3 px-4">
-              <p className="text-sm text-gray-500 mb-2">{user?.display_name || user?.email}</p>
+            <div className="border-t border-gray-100 dark:border-slate-700 pt-3 mt-3 px-4">
+              <p className="text-sm text-gray-500 dark:text-slate-400 mb-2">{user?.display_name || user?.email}</p>
               <button
                 onClick={cycleTheme}
-                className="w-full flex items-center gap-2 px-4 py-2 mb-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-2 mb-2 rounded-full text-sm font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 aria-label={`Theme: ${THEME_LABEL[currentThemePref]}. Click to cycle.`}
               >
                 <ThemeIcon pref={currentThemePref} />

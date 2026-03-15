@@ -177,7 +177,7 @@ function TBtn({ onClick, title, children, active, className: extra }) {
       type="button"
       onMouseDown={(e) => { e.preventDefault(); onClick(); }}
       title={title}
-      className={`px-2 py-1.5 rounded text-sm font-medium transition hover:bg-gray-100 hover:text-cail-dark ${
+      className={`px-2 py-1.5 rounded text-sm font-medium transition hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-cail-dark dark:hover:text-slate-200 ${
         active ? 'bg-cail-blue/10 text-cail-blue' : 'text-gray-600'
       } ${extra || ''}`}
     >
@@ -286,7 +286,7 @@ function FormattingToolbar({ onDirty, editableRef }) {
   }
 
   return (
-    <div className="border-b border-gray-200 bg-gray-50/80 rounded-t-xl">
+    <div className="border-b border-gray-200 dark:border-slate-700 bg-gray-50/80 rounded-t-xl">
       <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5">
         {/* Block type */}
         <select
@@ -294,7 +294,7 @@ function FormattingToolbar({ onDirty, editableRef }) {
           onMouseDown={(e) => e.stopPropagation()}
           onChange={(e) => { const v = e.target.value; if (v) { formatBlock(v); setBlockTag(v); onDirty(); } }}
           value={blockTag}
-          className="px-2 py-1 rounded border border-gray-200 text-xs text-gray-700 bg-white hover:border-gray-300 focus:border-cail-blue outline-none cursor-pointer"
+          className="px-2 py-1 rounded border border-gray-200 dark:border-slate-700 text-xs text-gray-700 bg-white hover:border-gray-300 dark:border-slate-600 focus:border-cail-blue outline-none cursor-pointer"
           title="Block type"
         >
           <option value="p">Paragraph</option>
@@ -392,25 +392,25 @@ function FormattingToolbar({ onDirty, editableRef }) {
       </div>
 
       {showFind && (
-        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-100 bg-gray-50/50">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-100 dark:border-slate-700 bg-gray-50/50">
           <input
             ref={findRef}
             type="text"
             placeholder="Find..."
-            className="px-2 py-1 text-xs border border-gray-200 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
+            className="px-2 py-1 text-xs border border-gray-200 dark:border-slate-700 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
             onKeyDown={(e) => { if (e.key === 'Enter') doFind(); }}
           />
-          <button onClick={doFind} className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">Find</button>
+          <button onClick={doFind} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600">Find</button>
           <input
             ref={replaceRef}
             type="text"
             placeholder="Replace..."
-            className="px-2 py-1 text-xs border border-gray-200 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
+            className="px-2 py-1 text-xs border border-gray-200 dark:border-slate-700 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
             onKeyDown={(e) => { if (e.key === 'Enter') doReplace(); }}
           />
-          <button onClick={doReplace} className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">Replace</button>
-          <button onClick={doReplaceAll} className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">All</button>
-          <button onClick={() => setShowFind(false)} className="px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600">x</button>
+          <button onClick={doReplace} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600">Replace</button>
+          <button onClick={doReplaceAll} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600">All</button>
+          <button onClick={() => setShowFind(false)} className="px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">x</button>
         </div>
       )}
     </div>
@@ -986,7 +986,7 @@ export default function HtmlTextDetail() {
         </div>
       )}
 
-      <Link to={`/projects/${text.project_id}`} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-cail-dark mb-4 group">
+      <Link to={`/projects/${text.project_id}`} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-cail-dark dark:hover:text-slate-200 mb-4 group">
         <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
         Back to Project
       </Link>
@@ -1001,7 +1001,7 @@ export default function HtmlTextDetail() {
       )}
 
       {/* Tab bar */}
-      <div className="border-b border-gray-200 mb-4">
+      <div className="border-b border-gray-200 dark:border-slate-700 mb-4">
         <nav className="flex gap-1 -mb-px overflow-x-auto">
           {TABS.map((tab) => (
             <button
@@ -1016,7 +1016,7 @@ export default function HtmlTextDetail() {
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-cail-blue text-cail-blue'
-                  : 'border-transparent text-gray-500 hover:text-cail-dark hover:border-gray-300'
+                  : 'border-transparent text-gray-500 hover:text-cail-dark dark:hover:text-slate-200 hover:border-gray-300 dark:border-slate-600'
               }`}
             >
               {tab}
@@ -1040,7 +1040,7 @@ export default function HtmlTextDetail() {
                 >
                   Restore
                 </button>
-                <button onClick={dismissDraft} className="text-sm text-gray-500 hover:text-gray-700">
+                <button onClick={dismissDraft} className="text-sm text-gray-500 hover:text-gray-700 dark:text-slate-300">
                   Dismiss
                 </button>
               </div>
@@ -1048,7 +1048,7 @@ export default function HtmlTextDetail() {
           )}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             {role === 'viewer' && (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400">
                 Read-only
               </span>
             )}
@@ -1057,7 +1057,7 @@ export default function HtmlTextDetail() {
                 href={`${BASE}/api/texts/${id}/source-pdf/${encodeURIComponent(sourcePdfName)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200"
+                className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600"
               >
                 View Source PDF
               </a>
@@ -1071,7 +1071,7 @@ export default function HtmlTextDetail() {
               <button
                 onClick={reprocessPdf}
                 disabled={reprocessing}
-                className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+                className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50"
               >
                 {reprocessing ? 'Reprocessing...' : 'Reprocess PDF'}
               </button>
@@ -1079,7 +1079,7 @@ export default function HtmlTextDetail() {
             <button
               onClick={downloadHtml}
               disabled={downloading}
-              className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+              className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50"
             >
               {downloading ? 'Packaging...' : 'Download'}
             </button>
@@ -1096,47 +1096,47 @@ export default function HtmlTextDetail() {
                 {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Save HTML'}
               </button>
             )}
-            <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Keyboard shortcuts (?)">
+            <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Keyboard shortcuts (?)">
               ?
             </button>
             <button
               onClick={() => setShowVersions(true)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
             >
               History
             </button>
             <button
               onClick={() => setShowAnnotations(true)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
             >
               Comments
             </button>
           </div>
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6">
           {/* Source PDF pane */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
             <div className="flex items-center justify-between gap-4 mb-4">
-              <h2 className="font-display font-semibold text-lg text-cail-dark">Source PDF</h2>
+              <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Source PDF</h2>
               <div className="flex items-center gap-2">
                 {sourcePdfName && (
                   <>
                     <button
                       onClick={() => setPdfZoom((z) => Math.max(0.5, z - 0.25))}
-                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700"
                       title="Zoom out"
                     >
                       -
                     </button>
                     <button
                       onClick={() => setPdfZoom(1)}
-                      className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:bg-gray-100 tabular-nums"
+                      className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 tabular-nums"
                       title="Reset zoom"
                     >
                       {Math.round(pdfZoom * 100)}%
                     </button>
                     <button
                       onClick={() => setPdfZoom((z) => Math.min(3, z + 0.25))}
-                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100"
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700"
                       title="Zoom in"
                     >
                       +
@@ -1153,14 +1153,14 @@ export default function HtmlTextDetail() {
                 )}
               </div>
             </div>
-            <div className="min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50">
+            <div className="min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900">
               {!sourcePdfName && (
-                <div className="min-h-[40vh] lg:min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
+                <div className="min-h-[40vh] lg:min-h-[75vh] flex items-center justify-center text-sm text-gray-500 dark:text-slate-400">
                   Source PDF unavailable.
                 </div>
               )}
               {sourcePdfName && pdfLoading && (
-                <div className="min-h-[40vh] lg:min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
+                <div className="min-h-[40vh] lg:min-h-[75vh] flex items-center justify-center text-sm text-gray-500 dark:text-slate-400">
                   Rendering PDF preview...
                 </div>
               )}
@@ -1168,7 +1168,7 @@ export default function HtmlTextDetail() {
                 <div className="p-4" style={{ minWidth: pdfZoom > 1 ? `${pdfZoom * 100}%` : undefined }}>
                   <div className="space-y-4">
                     {pdfPages.map((page) => (
-                      <figure key={page.pageNumber} className="bg-white rounded-lg shadow-sm border border-gray-200">
+                      <figure key={page.pageNumber} className="bg-white rounded-lg shadow-sm border border-gray-200 dark:border-slate-700">
                         <div className="px-3 py-2 text-xs font-medium tracking-wide text-gray-500 uppercase border-b border-gray-100 sticky top-0 bg-white z-10">
                           Page {page.pageNumber}
                         </div>
@@ -1186,12 +1186,12 @@ export default function HtmlTextDetail() {
           </div>
 
           {/* Editor pane */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
             <div className="flex items-center justify-between gap-4 mb-4">
-              <h2 className="font-display font-semibold text-lg text-cail-dark">
+              <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">
                 {sourceMode ? 'HTML Source' : 'Document'}
               </h2>
-              <div className="inline-flex rounded-full bg-gray-100 p-0.5">
+              <div className="inline-flex rounded-full bg-gray-100 dark:bg-slate-700 p-0.5">
                 <button
                   onClick={() => { if (sourceMode) switchToVisual(); }}
                   className={`px-3 py-1 rounded-full text-sm font-medium transition ${
@@ -1223,11 +1223,11 @@ export default function HtmlTextDetail() {
                     saveHtml();
                   }
                 }}
-                className="w-full min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-none"
+                className="w-full min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 font-mono text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-none"
                 spellCheck={false}
               />
             ) : (
-              <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
                 {role !== 'viewer' && <FormattingToolbar onDirty={() => setDirty(true)} editableRef={editableRef} />}
                 <div className="relative">
                   <div
@@ -1257,13 +1257,13 @@ export default function HtmlTextDetail() {
       {activeTab === 'Details' && (
         <div className="space-y-8">
           {/* Summary */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
             <h3 className="font-display font-semibold text-lg text-cail-dark mb-4">Summary</h3>
             <textarea
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               rows={4}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-y"
+              className="w-full rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 text-sm leading-relaxed focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none resize-y"
               placeholder="Add a summary for this document..."
             />
             <div className="flex items-center gap-3 mt-3">
@@ -1285,9 +1285,9 @@ export default function HtmlTextDetail() {
           </div>
 
           {/* Dublin Core Metadata */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display font-semibold text-lg text-cail-dark">Dublin Core Metadata</h3>
+              <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Dublin Core Metadata</h3>
               <button
                 onClick={saveMetadata}
                 disabled={savingMetadata}
@@ -1304,7 +1304,7 @@ export default function HtmlTextDetail() {
                     type="text"
                     value={metadata[field.key] || ''}
                     onChange={(e) => setMetadata((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 text-sm focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none"
                   />
                 </div>
               ))}

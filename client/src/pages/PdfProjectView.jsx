@@ -401,7 +401,7 @@ export default function PdfProjectView() {
   if (!project) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           Project not found.
         </div>
       </div>
@@ -422,11 +422,11 @@ export default function PdfProjectView() {
 
       {/* Global upload progress overlay — visible regardless of panel state */}
       {uploading && (
-        <div className="fixed top-20 right-4 z-50 px-5 py-4 rounded-xl bg-white border border-cail-blue/30 shadow-lg max-w-sm">
+        <div className="fixed top-20 right-4 z-50 px-5 py-4 rounded-xl bg-white dark:bg-slate-800 border border-cail-blue/30 shadow-lg max-w-sm">
           <div className="flex items-center gap-3">
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-cail-blue flex-shrink-0"></div>
             <div>
-              <p className="text-sm font-medium text-cail-dark">Processing PDF...</p>
+              <p className="text-sm font-medium text-cail-dark dark:text-slate-200">Processing PDF...</p>
               {uploadProgress && <p className="text-xs text-gray-500 mt-0.5">{uploadProgress}</p>}
             </div>
           </div>
@@ -454,14 +454,14 @@ export default function PdfProjectView() {
       </Link>
 
       {error && (
-        <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-6 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           {error}
           <button onClick={() => setError('')} className="ml-2 font-medium hover:underline">Dismiss</button>
         </div>
       )}
 
       {/* Project header */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex-1">
             <div className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 mb-3">
@@ -474,11 +474,11 @@ export default function PdfProjectView() {
                   value={nameValue}
                   onChange={(e) => setNameValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && saveName()}
-                  className="font-display font-semibold text-xl text-cail-dark px-2 py-1 rounded-lg border border-gray-200 focus:border-cail-blue outline-none"
+                  className="font-display font-semibold text-xl text-cail-dark px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none"
                   autoFocus
                 />
                 <button onClick={saveName} className="text-sm text-cail-blue hover:text-cail-navy font-medium">Save</button>
-                <button onClick={() => { setEditingName(false); setNameValue(project.name); }} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+                <button onClick={() => { setEditingName(false); setNameValue(project.name); }} className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">Cancel</button>
               </div>
             ) : (
               <div className="flex items-center gap-3">
@@ -491,7 +491,7 @@ export default function PdfProjectView() {
                 </h1>
                 {role !== 'owner' && (
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    role === 'editor' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                    role === 'editor' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
                   }`}>
                     {role === 'editor' ? 'Editor' : 'Viewer'}
                   </span>
@@ -509,7 +509,7 @@ export default function PdfProjectView() {
                 onClick={() => setShowAddSection((v) => !v)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   showAddSection
-                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
                     : 'bg-cail-blue text-white hover:bg-cail-navy'
                 }`}
               >
@@ -522,7 +522,7 @@ export default function PdfProjectView() {
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   editMode
                     ? 'bg-cail-navy text-white hover:bg-cail-dark'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
                 }`}
               >
                 {editMode ? 'Done' : 'Edit'}
@@ -537,7 +537,7 @@ export default function PdfProjectView() {
             {role === 'owner' && (
               <button
                 onClick={() => setShowShare(true)}
-                className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
               >
                 Share
               </button>
@@ -558,7 +558,7 @@ export default function PdfProjectView() {
       {showAddSection && canEdit && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Add text */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
           <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Add Document</h2>
           <form onSubmit={createText} className="flex gap-2">
             <input
@@ -566,7 +566,7 @@ export default function PdfProjectView() {
               value={newTextName}
               onChange={(e) => setNewTextName(e.target.value)}
               placeholder="Document name (e.g., Chapter 1)"
-              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
             />
             <button
               type="submit"
@@ -579,7 +579,7 @@ export default function PdfProjectView() {
         </div>
 
         {/* Upload zone */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
           <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Import PDF</h2>
 
           {texts.length > 0 ? (
@@ -587,7 +587,7 @@ export default function PdfProjectView() {
               <select
                 value={selectedTextId}
                 onChange={(e) => setSelectedTextId(e.target.value)}
-                className="w-full mb-3 text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none"
+                className="w-full mb-3 text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none"
               >
                 <option value="">Select a document...</option>
                 {texts.map((t) => (
@@ -605,12 +605,12 @@ export default function PdfProjectView() {
               {uploadProgress && (
                 <div className="mt-3 flex items-center gap-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-cail-blue flex-shrink-0"></div>
-                  <p className="text-xs text-gray-500">{uploadProgress}</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">{uploadProgress}</p>
                 </div>
               )}
             </>
           ) : (
-            <p className="text-sm text-gray-400">Create a document first, then import a PDF.</p>
+            <p className="text-sm text-gray-400 dark:text-slate-500">Create a document first, then import a PDF.</p>
           )}
         </div>
       </div>
@@ -618,13 +618,13 @@ export default function PdfProjectView() {
 
       {/* Texts list */}
       <div className="space-y-4">
-        <h2 className="font-display font-semibold text-lg text-cail-dark">
+        <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">
           Documents ({texts.length})
         </h2>
 
         {texts.length === 0 && (
-          <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
-            <p className="text-sm text-gray-500">No documents yet. Click &quot;+ New Text&quot; to get started.</p>
+          <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
+            <p className="text-sm text-gray-500 dark:text-slate-400">No documents yet. Click &quot;+ New Text&quot; to get started.</p>
           </div>
         )}
 
@@ -646,7 +646,7 @@ export default function PdfProjectView() {
           >
             {/* Drag handle (edit mode only) */}
             {editMode && (
-              <div className="flex items-center flex-shrink-0 text-gray-400">
+              <div className="flex items-center flex-shrink-0 text-gray-400 dark:text-slate-500">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <circle cx="9" cy="6" r="1.5" />
                   <circle cx="15" cy="6" r="1.5" />
@@ -667,12 +667,12 @@ export default function PdfProjectView() {
               </Link>
               <div className="flex items-center gap-3 mt-1 flex-wrap">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                  text.html_content ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-600'
+                  text.html_content ? 'bg-green-50 text-green-700' : 'bg-gray-50 dark:bg-slate-900 text-gray-600'
                 }`}>
                   {text.html_content ? 'HTML ready' : 'Awaiting import'}
                 </span>
                 {text.source_pdf_name && (
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 dark:text-slate-500">
                     {text.source_pdf_name}
                   </span>
                 )}
@@ -692,7 +692,7 @@ export default function PdfProjectView() {
                     setSelectedTextId(String(text.id));
                     setTimeout(() => fileInputRef.current?.click(), 50);
                   }}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                  className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   {text.source_pdf_name ? 'Replace PDF' : 'Upload PDF'}
                 </button>
@@ -716,7 +716,7 @@ export default function PdfProjectView() {
             <svg className="w-16 h-16 mx-auto text-cail-blue mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            <p className="font-display font-semibold text-lg text-cail-dark">Drop PDF here</p>
+            <p className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Drop PDF here</p>
             <p className="text-sm text-gray-500 mt-1">{selectedTextId ? 'Upload to selected text' : 'Select a text first'}</p>
           </div>
         </div>
@@ -729,8 +729,8 @@ export default function PdfProjectView() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-xl text-cail-dark">Export to Manifold</h2>
-              <button onClick={() => setShowExport(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-display font-semibold text-xl text-cail-dark dark:text-slate-200">Export to Manifold</h2>
+              <button onClick={() => setShowExport(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -744,7 +744,7 @@ export default function PdfProjectView() {
                 {tocItems.map((item, idx) => (
                   <div
                     key={item.id}
-                    className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-gray-50 dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                     style={{ marginLeft: item.depth * 24 + 'px' }}
                   >
                     <span className="w-5 h-5 flex items-center justify-center text-gray-400 flex-shrink-0">
@@ -829,12 +829,12 @@ export default function PdfProjectView() {
                   onChange={(e) => setNewSectionLabel(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && tocAddSection()}
                   placeholder="Section heading..."
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                 />
                 <button
                   onClick={tocAddSection}
                   disabled={!newSectionLabel.trim()}
-                  className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-xs font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
                 >
                   + Section
                 </button>
@@ -856,7 +856,7 @@ export default function PdfProjectView() {
                     type={f.type || 'text'}
                     value={exportMeta[f.key]}
                     onChange={(e) => setExportMeta((m) => ({ ...m, [f.key]: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
                   />
                 </div>
               ))}
@@ -866,7 +866,7 @@ export default function PdfProjectView() {
                   value={exportMeta.description}
                   onChange={(e) => setExportMeta((m) => ({ ...m, description: e.target.value }))}
                   rows={2}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-cail-blue outline-none text-sm resize-none"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm resize-none"
                 />
               </div>
             </div>
@@ -874,7 +874,7 @@ export default function PdfProjectView() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowExport(false)}
-                className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancel
               </button>
