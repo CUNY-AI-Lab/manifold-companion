@@ -281,7 +281,7 @@ router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, checkTokenQuota, asyn
   }
 });
 
-router.post('/texts/:id/pdf-cleanup', pdfVisionLimiter, async (req, res) => {
+router.post('/texts/:id/pdf-cleanup', pdfVisionLimiter, checkTokenQuota, async (req, res) => {
   try {
     const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });

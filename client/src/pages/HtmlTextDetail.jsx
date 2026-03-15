@@ -363,8 +363,10 @@ function FormattingToolbar({ onDirty, editableRef }) {
     const replacement = replaceRef.current?.value;
     if (!el || !term || replacement == null) return;
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    el.innerHTML = el.innerHTML.replace(new RegExp(`(?<=>)([^<]*?)${escaped}`, 'g'), (match) =>
-      match.replace(new RegExp(escaped, 'g'), replacement)
+    // Escape HTML entities in replacement to prevent XSS via innerHTML injection
+    const safeReplacement = replacement.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    el.innerHTML = el.innerHTML.replace(new RegExp(`(?<=>)([^<]*?)${escaped}`, 'g'), (match) => // eslint-disable-line -- contenteditable requires innerHTML
+      match.replace(new RegExp(escaped, 'g'), safeReplacement)
     );
     onDirty();
   }
@@ -426,7 +428,8 @@ function FormattingToolbar({ onDirty, editableRef }) {
 
         <TBtn onClick={wrap(() => {
           const url = prompt('Enter URL:');
-          if (url) execCmd('createLink', url);
+          if (url && /^https?:\/\//i.test(url)) execCmd('createLink', url);
+          else if (url) alert('Only http:// and https:// URLs are allowed.');
         })} title="Insert link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </TBtn>
@@ -771,7 +774,7 @@ export default function HtmlTextDetail() {
     'Cmd+B': { handler: () => { execCmd('bold'); setDirty(true); }, label: 'Bold', section: 'HTML Editor', allowInEditable: true },
     'Cmd+I': { handler: () => { execCmd('italic'); setDirty(true); }, label: 'Italic', section: 'HTML Editor', allowInEditable: true },
     'Cmd+U': { handler: () => { execCmd('underline'); setDirty(true); }, label: 'Underline', section: 'HTML Editor', allowInEditable: true },
-    'Cmd+K': { handler: () => { const url = prompt('Enter URL:'); if (url) { execCmd('createLink', url); setDirty(true); } }, label: 'Insert link', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+K': { handler: () => { const url = prompt('Enter URL:'); if (url && /^https?:\/\//i.test(url)) { execCmd('createLink', url); setDirty(true); } else if (url) { alert('Only http:// and https:// URLs are allowed.'); } }, label: 'Insert link', section: 'HTML Editor', allowInEditable: true },
     'Cmd+E': { handler: () => { const sel = window.getSelection(); if (sel.rangeCount) { const r = sel.getRangeAt(0); const code = document.createElement('code'); try { r.surroundContents(code); setDirty(true); } catch(e) { /* selection spans elements */ } } }, label: 'Inline code', section: 'HTML Editor', allowInEditable: true },
     'Cmd+Shift+X': { handler: () => { execCmd('strikeThrough'); setDirty(true); }, label: 'Strikethrough', section: 'HTML Editor', allowInEditable: true },
     'Cmd+Shift+7': { handler: () => { execCmd('insertOrderedList'); setDirty(true); }, label: 'Ordered list', section: 'HTML Editor', allowInEditable: true },

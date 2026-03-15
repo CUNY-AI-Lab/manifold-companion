@@ -12,6 +12,11 @@ const FROM_ADDRESS = process.env.SES_FROM_EMAIL || 'manifold-companion@cuny.qzz.
 const APP_NAME = 'Manifold Companion';
 const APP_URL = process.env.APP_URL || 'https://tools.cuny.qzz.io/manifold-companion';
 
+/** Strip CR/LF from email subjects to prevent header injection. */
+function sanitizeSubject(str) {
+  return String(str).replace(/[\r\n]/g, ' ').trim();
+}
+
 function esc(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -56,7 +61,7 @@ async function sendEmail(to, subject, htmlBody) {
 export async function sendOcrCompleteEmail(to, projectName, textName) {
   await sendEmail(
     to,
-    `OCR complete: ${textName}`,
+    sanitizeSubject(`OCR complete: ${textName}`),
     `<p>OCR processing has finished for <strong>${esc(textName)}</strong> in project <strong>${esc(projectName)}</strong>.</p>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">Review Results</a></p>`
   );
@@ -74,7 +79,7 @@ export async function sendAccountApprovedEmail(to) {
 export async function sendProjectSharedEmail(to, ownerName, projectName, role) {
   await sendEmail(
     to,
-    `${ownerName} shared a project with you`,
+    sanitizeSubject(`${ownerName} shared a project with you`),
     `<p><strong>${esc(ownerName)}</strong> shared the project <strong>${esc(projectName)}</strong> with you as <strong>${esc(role)}</strong>.</p>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">View Project</a></p>`
   );
@@ -84,7 +89,7 @@ export async function sendCommentReplyEmail(to, replierName, commentSnippet, tex
   const snippet = commentSnippet.length > 100 ? commentSnippet.slice(0, 100) + '...' : commentSnippet;
   await sendEmail(
     to,
-    `${replierName} replied to your comment`,
+    sanitizeSubject(`${replierName} replied to your comment`),
     `<p><strong>${esc(replierName)}</strong> replied to your comment on <strong>${esc(textName)}</strong>:</p>
      <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 12px 0; color: #4b5563;">${esc(snippet)}</blockquote>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">View Comment</a></p>`
@@ -105,7 +110,7 @@ export async function sendMentionEmail(to, mentionerName, commentSnippet, textNa
   const snippet = commentSnippet.length > 100 ? commentSnippet.slice(0, 100) + '...' : commentSnippet;
   await sendEmail(
     to,
-    `${mentionerName} mentioned you in a comment`,
+    sanitizeSubject(`${mentionerName} mentioned you in a comment`),
     `<p><strong>${esc(mentionerName)}</strong> mentioned you in a comment on <strong>${esc(textName)}</strong>:</p>
      <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 12px 0; color: #4b5563;">${esc(snippet)}</blockquote>
      <p><a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 20px; font-size: 14px;">View Comment</a></p>`
