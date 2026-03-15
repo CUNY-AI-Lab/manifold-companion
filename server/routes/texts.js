@@ -16,6 +16,8 @@ import {
   getTextById,
   updateText,
   deleteText,
+  bulkDeleteTexts,
+  bulkUpdateTextStatus,
   getProjectById,
   getPagesByText,
   savePageText,
@@ -1056,6 +1058,78 @@ router.post('/projects/:projectId/texts/merge', async (req, res) => {
     res.status(201).json(newText);
   } catch (err) {
     console.error('POST /projects/:projectId/texts/merge error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /projects/:projectId/texts/bulk-delete — bulk delete texts ------
+router.post('/projects/:projectId/texts/bulk-delete', async (req, res) => {
+  try {
+    const { project, status, error } = verifyProjectAccess(
+      Number(req.params.projectId),
+      req.user.id,
+      'editor'
+    );
+    if (error) return res.status(status).json({ error });
+
+    const { textIds } = req.body || {};
+    if (!Array.isArray(textIds) || textIds.length === 0) {
+      return res.status(400).json({ error: 'textIds must be a non-empty array.' });
+    }
+    if (textIds.length > 50) {
+      return res.status(400).json({ error: 'Cannot bulk-delete more than 50 texts at once.' });
+    }
+    if (!textIds.every(id => Number.isInteger(id))) {
+      return res.status(400).json({ error: 'All textIds must be integers.' });
+    }
+
+    // Delete files from disk for each text (owner's directory)
+    await Promise.all(
+      textIds.map(textId =>
+        deleteTextFiles(project.user_id, project.id, textId).catch(err =>
+          console.error(`[bulk-delete] Failed to delete files for text ${textId}:`, err.message)
+        )
+      )
+    );
+
+    const deleted = bulkDeleteTexts(project.id, textIds);
+    res.json({ deleted });
+  } catch (err) {
+    console.error('POST /projects/:projectId/texts/bulk-delete error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /projects/:projectId/texts/bulk-status — bulk update status -----
+const BULK_STATUS_ALLOWED = new Set(['pending', 'ocrd', 'reviewed']);
+
+router.post('/projects/:projectId/texts/bulk-status', (req, res) => {
+  try {
+    const { project, status, error } = verifyProjectAccess(
+      Number(req.params.projectId),
+      req.user.id,
+      'editor'
+    );
+    if (error) return res.status(status).json({ error });
+
+    const { textIds, status: newStatus } = req.body || {};
+    if (!Array.isArray(textIds) || textIds.length === 0) {
+      return res.status(400).json({ error: 'textIds must be a non-empty array.' });
+    }
+    if (textIds.length > 50) {
+      return res.status(400).json({ error: 'Cannot bulk-update more than 50 texts at once.' });
+    }
+    if (!textIds.every(id => Number.isInteger(id))) {
+      return res.status(400).json({ error: 'All textIds must be integers.' });
+    }
+    if (!BULK_STATUS_ALLOWED.has(newStatus)) {
+      return res.status(400).json({ error: 'status must be one of: pending, ocrd, reviewed.' });
+    }
+
+    const updated = bulkUpdateTextStatus(project.id, textIds, newStatus);
+    res.json({ updated });
+  } catch (err) {
+    console.error('POST /projects/:projectId/texts/bulk-status error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

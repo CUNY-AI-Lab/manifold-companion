@@ -482,6 +482,29 @@ export function deleteText(id) {
   return db.prepare('DELETE FROM texts WHERE id = ?').run(id);
 }
 
+export function bulkDeleteTexts(projectId, textIds) {
+  const placeholders = textIds.map(() => '?').join(',');
+  const txn = db.transaction(() => {
+    // Only delete IDs that actually belong to this project
+    const result = db.prepare(
+      `DELETE FROM texts WHERE id IN (${placeholders}) AND project_id = ?`
+    ).run(...textIds, projectId);
+    return result.changes;
+  });
+  return txn();
+}
+
+export function bulkUpdateTextStatus(projectId, textIds, status) {
+  const placeholders = textIds.map(() => '?').join(',');
+  const txn = db.transaction(() => {
+    const result = db.prepare(
+      `UPDATE texts SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders}) AND project_id = ?`
+    ).run(status, ...textIds, projectId);
+    return result.changes;
+  });
+  return txn();
+}
+
 export function reorderTexts(projectId, textIds) {
   const stmt = db.prepare('UPDATE texts SET sort_order = ? WHERE id = ? AND project_id = ?');
   const txn = db.transaction((ids) => {
