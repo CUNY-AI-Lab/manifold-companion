@@ -14,12 +14,33 @@ import {
   unresolveAnnotation,
   deleteAnnotation,
   getAnnotationReplies,
+  getProjectMembers,
+  getUserProjectRole,
 } from '../db.js';
 
 const router = Router();
 
 // All routes require authentication
 router.use(requireAuth);
+
+// ---- GET /texts/:id/mentions/users — project members for @mention autocomplete
+router.get('/texts/:id/mentions/users', (req, res) => {
+  try {
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'viewer');
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    const users = getProjectMembers(result.project.id);
+    res.json({ users });
+  } catch (err) {
+    console.error('GET /texts/:id/mentions/users error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+function parseMentions(raw) {
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
 
 // ---- GET /texts/:id/annotations — list annotations for a text --------------
 router.get('/texts/:id/annotations', (req, res) => {
@@ -29,7 +50,18 @@ router.get('/texts/:id/annotations', (req, res) => {
 
     const includeResolved = req.query.resolved === '1';
     const annotations = getAnnotationsByText(result.text.id, includeResolved);
-    res.json({ annotations });
+
+    // Parse mentions and build mentioned_users map from project members
+    const members = getProjectMembers(result.project.id);
+    const memberMap = {};
+    for (const m of members) memberMap[m.id] = { display_name: m.display_name, email: m.email };
+
+    const parsed = annotations.map(a => ({
+      ...a,
+      mentions: parseMentions(a.mentions),
+    }));
+
+    res.json({ annotations: parsed, mentioned_users: memberMap });
   } catch (err) {
     console.error('GET /texts/:id/annotations error:', err);
     res.status(500).json({ error: 'Internal server error.' });
@@ -42,7 +74,7 @@ router.post('/texts/:id/annotations', (req, res) => {
     const result = verifyTextAccess(Number(req.params.id), req.user.id, 'viewer');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
-    const { anchor_type, anchor_data, body, parent_id } = req.body || {};
+    const { anchor_type, anchor_data, body, parent_id, mentions } = req.body || {};
 
     if (!body || !body.trim()) {
       return res.status(400).json({ error: 'Annotation body is required.' });
@@ -51,13 +83,22 @@ router.post('/texts/:id/annotations', (req, res) => {
       return res.status(400).json({ error: 'Valid anchor_type is required (range, point, or global).' });
     }
 
+    // Validate mentions — must be project members
+    let validMentions = [];
+    if (Array.isArray(mentions) && mentions.length > 0) {
+      const members = getProjectMembers(result.project.id);
+      const memberIds = new Set(members.map(m => m.id));
+      validMentions = mentions.filter(id => memberIds.has(Number(id))).map(Number);
+    }
+
     const id = createAnnotation(
       result.text.id,
       req.user.id,
       anchor_type,
       anchor_data ? JSON.stringify(anchor_data) : null,
       body.trim(),
-      parent_id ? Number(parent_id) : null
+      parent_id ? Number(parent_id) : null,
+      validMentions
     );
 
     const annotation = getAnnotationById(id);
@@ -80,7 +121,10 @@ router.get('/texts/:id/annotations/:annotId', (req, res) => {
     }
 
     const replies = getAnnotationReplies(annotation.id);
-    res.json({ annotation, replies });
+    res.json({
+      annotation: { ...annotation, mentions: parseMentions(annotation.mentions) },
+      replies: replies.map(r => ({ ...r, mentions: parseMentions(r.mentions) })),
+    });
   } catch (err) {
     console.error('GET /texts/:id/annotations/:annotId error:', err);
     res.status(500).json({ error: 'Internal server error.' });
@@ -190,9 +234,17 @@ router.post('/texts/:id/annotations/:annotId/replies', (req, res) => {
       return res.status(404).json({ error: 'Parent annotation not found.' });
     }
 
-    const { body } = req.body || {};
+    const { body, mentions } = req.body || {};
     if (!body || !body.trim()) {
       return res.status(400).json({ error: 'Reply body is required.' });
+    }
+
+    // Validate mentions
+    let validMentions = [];
+    if (Array.isArray(mentions) && mentions.length > 0) {
+      const members = getProjectMembers(result.project.id);
+      const memberIds = new Set(members.map(m => m.id));
+      validMentions = mentions.filter(id => memberIds.has(Number(id))).map(Number);
     }
 
     const id = createAnnotation(
@@ -201,7 +253,8 @@ router.post('/texts/:id/annotations/:annotId/replies', (req, res) => {
       parent.anchor_type,
       parent.anchor_data,
       body.trim(),
-      parent.id
+      parent.id,
+      validMentions
     );
 
     const reply = getAnnotationById(id);

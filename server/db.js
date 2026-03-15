@@ -198,6 +198,7 @@ function runMigrations() {
     'ALTER TABLE users ADD COLUMN display_name TEXT',
     'ALTER TABLE users ADD COLUMN token_allowance INTEGER NOT NULL DEFAULT 5000000',
     'ALTER TABLE users ADD COLUMN token_usage_reset_at TEXT',
+    "ALTER TABLE annotations ADD COLUMN mentions TEXT DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -831,12 +832,30 @@ export function getTextVersionById(versionId) {
 // Annotations
 // ---------------------------------------------------------------------------
 
-export function createAnnotation(textId, userId, anchorType, anchorData, body, parentId = null) {
+export function createAnnotation(textId, userId, anchorType, anchorData, body, parentId = null, mentions = []) {
   const stmt = db.prepare(
-    'INSERT INTO annotations (text_id, user_id, parent_id, anchor_type, anchor_data, body) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO annotations (text_id, user_id, parent_id, anchor_type, anchor_data, body, mentions) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
-  const result = stmt.run(textId, userId, parentId, anchorType, anchorData ? JSON.stringify(anchorData) : null, body);
+  const result = stmt.run(textId, userId, parentId, anchorType, anchorData ? JSON.stringify(anchorData) : null, body, JSON.stringify(mentions));
   return result.lastInsertRowid;
+}
+
+export function getProjectMembers(projectId) {
+  // Returns owner + all shared users for a project
+  const owner = db.prepare(`
+    SELECT u.id, u.email, u.display_name
+    FROM projects p
+    JOIN users u ON u.id = p.user_id
+    WHERE p.id = ?
+  `).get(projectId);
+  const shared = db.prepare(`
+    SELECT u.id, u.email, u.display_name
+    FROM project_shares ps
+    JOIN users u ON u.id = ps.user_id
+    WHERE ps.project_id = ?
+    ORDER BY u.display_name ASC, u.email ASC
+  `).all(projectId);
+  return owner ? [owner, ...shared] : shared;
 }
 
 export function getAnnotationsByText(textId, includeResolved = false) {

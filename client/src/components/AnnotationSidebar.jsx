@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api/client';
 
 function formatTime(ts) {
@@ -25,11 +25,239 @@ function initials(item) {
   return parts.map(p => p[0]?.toUpperCase() || '').join('').slice(0, 2);
 }
 
-function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh }) {
+// Render body text with @mentions highlighted
+function renderBody(body, mentions, memberMap) {
+  if (!mentions || mentions.length === 0 || !memberMap) {
+    return body;
+  }
+  const mentionNames = new Set();
+  for (const uid of mentions) {
+    const u = memberMap[uid];
+    if (u) {
+      if (u.display_name) mentionNames.add(u.display_name);
+      mentionNames.add(u.email);
+    }
+  }
+  if (mentionNames.size === 0) return body;
+
+  const escaped = [...mentionNames].map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(`@(${escaped.join('|')})`, 'g');
+
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  while ((match = pattern.exec(body)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(body.slice(lastIndex, match.index));
+    }
+    parts.push(
+      <span key={match.index} className="text-cail-blue font-medium">
+        @{match[1]}
+      </span>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < body.length) {
+    parts.push(body.slice(lastIndex));
+  }
+  return parts.length > 0 ? parts : body;
+}
+
+// Textarea with @mention autocomplete
+function MentionTextarea({ value, onChange, onMention, members, placeholder, rows, className, inputRef }) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [query, setQuery] = useState('');
+  const [atIndex, setAtIndex] = useState(-1);
+
+  function handleChange(e) {
+    const val = e.target.value;
+    onChange(val);
+
+    const cursor = e.target.selectionStart;
+    const textBefore = val.slice(0, cursor);
+    const lastAt = textBefore.lastIndexOf('@');
+
+    if (lastAt >= 0) {
+      const charBefore = lastAt > 0 ? textBefore[lastAt - 1] : ' ';
+      if (lastAt === 0 || /\s/.test(charBefore)) {
+        const q = textBefore.slice(lastAt + 1);
+        if (!q.includes('\n')) {
+          setQuery(q.toLowerCase());
+          setAtIndex(lastAt);
+          setShowDropdown(true);
+          return;
+        }
+      }
+    }
+    setShowDropdown(false);
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Escape' && showDropdown) {
+      setShowDropdown(false);
+      e.stopPropagation();
+    }
+  }
+
+  function selectMember(member) {
+    const name = member.display_name || member.email;
+    const before = value.slice(0, atIndex);
+    const after = value.slice(atIndex + 1 + query.length);
+    const newVal = `${before}@${name} ${after}`;
+    onChange(newVal);
+    onMention(member.id);
+    setShowDropdown(false);
+
+    setTimeout(() => {
+      if (inputRef?.current) {
+        const pos = atIndex + name.length + 2;
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(pos, pos);
+      }
+    }, 0);
+  }
+
+  const filtered = members.filter(m => {
+    if (!query) return true;
+    const name = (m.display_name || '').toLowerCase();
+    const email = m.email.toLowerCase();
+    return name.includes(query) || email.includes(query);
+  }).slice(0, 6);
+
+  return (
+    <div className="relative">
+      <textarea
+        ref={inputRef}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder={placeholder}
+        rows={rows}
+        className={className}
+      />
+      {showDropdown && filtered.length > 0 && (
+        <div className="absolute z-50 bottom-full mb-1 left-0 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+          {filtered.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); selectMember(m); }}
+              className="w-full text-left px-3 py-2 hover:bg-cail-blue/5 transition-colors flex items-center gap-2"
+            >
+              <span className="w-6 h-6 rounded-full bg-cail-navy text-white flex items-center justify-center text-[10px] font-display font-semibold shrink-0">
+                {initials({ user_display_name: m.display_name, user_email: m.email })}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-cail-dark truncate">{m.display_name || m.email}</p>
+                {m.display_name && <p className="text-xs text-gray-400 truncate">{m.email}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Inline reply input with @mention support
+function MentionInput({ value, onChange, onMention, members, placeholder, className, inputRef }) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [query, setQuery] = useState('');
+  const [atIndex, setAtIndex] = useState(-1);
+
+  function handleChange(e) {
+    const val = e.target.value;
+    onChange(val);
+
+    const cursor = e.target.selectionStart;
+    const textBefore = val.slice(0, cursor);
+    const lastAt = textBefore.lastIndexOf('@');
+
+    if (lastAt >= 0) {
+      const charBefore = lastAt > 0 ? textBefore[lastAt - 1] : ' ';
+      if (lastAt === 0 || /\s/.test(charBefore)) {
+        const q = textBefore.slice(lastAt + 1);
+        if (!q.includes(' ')) {
+          setQuery(q.toLowerCase());
+          setAtIndex(lastAt);
+          setShowDropdown(true);
+          return;
+        }
+      }
+    }
+    setShowDropdown(false);
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Escape' && showDropdown) {
+      setShowDropdown(false);
+      e.stopPropagation();
+    }
+  }
+
+  function selectMember(member) {
+    const name = member.display_name || member.email;
+    const before = value.slice(0, atIndex);
+    const after = value.slice(atIndex + 1 + query.length);
+    const newVal = `${before}@${name} ${after}`;
+    onChange(newVal);
+    onMention(member.id);
+    setShowDropdown(false);
+    setTimeout(() => {
+      if (inputRef?.current) {
+        const pos = atIndex + name.length + 2;
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(pos, pos);
+      }
+    }, 0);
+  }
+
+  const filtered = members.filter(m => {
+    if (!query) return true;
+    const name = (m.display_name || '').toLowerCase();
+    const email = m.email.toLowerCase();
+    return name.includes(query) || email.includes(query);
+  }).slice(0, 6);
+
+  return (
+    <div className="relative flex-1">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder={placeholder}
+        className={className}
+      />
+      {showDropdown && filtered.length > 0 && (
+        <div className="absolute z-50 bottom-full mb-1 left-0 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-32 overflow-y-auto">
+          {filtered.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); selectMember(m); }}
+              className="w-full text-left px-3 py-1.5 hover:bg-cail-blue/5 transition-colors"
+            >
+              <span className="text-xs font-medium text-cail-dark">{m.display_name || m.email}</span>
+              {m.display_name && <span className="text-xs text-gray-400 ml-1">{m.email}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh, members, memberMap }) {
   const [showReplies, setShowReplies] = useState(false);
   const [replies, setReplies] = useState([]);
   const [replyBody, setReplyBody] = useState('');
+  const [replyMentions, setReplyMentions] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const replyRef = useRef(null);
 
   const canResolve = role === 'owner' || role === 'editor';
   const canDelete = role === 'owner' || annotation.user_email === currentUserEmail;
@@ -53,8 +281,12 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh 
     if (!replyBody.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await api.post(`/api/texts/${textId}/annotations/${annotation.id}/replies`, { body: replyBody.trim() });
+      await api.post(`/api/texts/${textId}/annotations/${annotation.id}/replies`, {
+        body: replyBody.trim(),
+        mentions: [...new Set(replyMentions)],
+      });
       setReplyBody('');
+      setReplyMentions([]);
       await loadReplies();
     } catch {
       // ignore
@@ -101,7 +333,9 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh 
         )}
       </div>
 
-      <p className="mt-2 text-sm text-cail-dark whitespace-pre-wrap">{annotation.body}</p>
+      <p className="mt-2 text-sm text-cail-dark whitespace-pre-wrap">
+        {renderBody(annotation.body, annotation.mentions, memberMap)}
+      </p>
 
       <div className="mt-3 flex items-center gap-3 text-xs">
         <button onClick={toggleReplies} className="text-cail-blue hover:underline">
@@ -129,17 +363,21 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh 
                 <span className="text-xs font-medium text-cail-dark">{displayName(r)}</span>
                 <span className="text-[10px] text-gray-400">{formatTime(r.created_at)}</span>
               </div>
-              <p className="text-xs text-cail-dark mt-0.5 whitespace-pre-wrap">{r.body}</p>
+              <p className="text-xs text-cail-dark mt-0.5 whitespace-pre-wrap">
+                {renderBody(r.body, r.mentions, memberMap)}
+              </p>
             </div>
           ))}
           {role !== 'viewer' && (
             <form onSubmit={submitReply} className="mt-2 flex gap-2">
-              <input
-                type="text"
+              <MentionInput
                 value={replyBody}
-                onChange={e => setReplyBody(e.target.value)}
-                placeholder="Reply..."
-                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-cail-blue"
+                onChange={setReplyBody}
+                onMention={(id) => setReplyMentions(prev => [...prev, id])}
+                members={members}
+                placeholder="Reply... (@ to mention)"
+                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-cail-blue"
+                inputRef={replyRef}
               />
               <button
                 type="submit"
@@ -161,9 +399,13 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
   const [showResolved, setShowResolved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [newBody, setNewBody] = useState('');
+  const [newMentions, setNewMentions] = useState([]);
   const [showNewForm, setShowNewForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [members, setMembers] = useState([]);
+  const [memberMap, setMemberMap] = useState({});
+  const newCommentRef = useRef(null);
 
   const fetchAnnotations = useCallback(async () => {
     if (!textId) return;
@@ -172,6 +414,7 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
       const resolved = showResolved ? 1 : 0;
       const res = await api.get(`/api/texts/${textId}/annotations?resolved=${resolved}`);
       setAnnotations(res.annotations || res || []);
+      if (res.mentioned_users) setMemberMap(res.mentioned_users);
     } catch {
       setAnnotations([]);
     }
@@ -184,8 +427,14 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
       api.get('/api/auth/me').then(res => {
         if (res?.user?.email) setCurrentUserEmail(res.user.email);
       }).catch(() => {});
+      api.get(`/api/texts/${textId}/mentions/users`).then(res => {
+        setMembers(res.users || []);
+        const map = {};
+        for (const u of (res.users || [])) map[u.id] = { display_name: u.display_name, email: u.email };
+        setMemberMap(prev => ({ ...prev, ...map }));
+      }).catch(() => {});
     }
-  }, [open, fetchAnnotations]);
+  }, [open, fetchAnnotations, textId]);
 
   useEffect(() => {
     if (!open) return;
@@ -205,8 +454,10 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
         anchor_type: 'global',
         anchor_data: {},
         body: newBody.trim(),
+        mentions: [...new Set(newMentions)],
       });
       setNewBody('');
+      setNewMentions([]);
       setShowNewForm(false);
       await fetchAnnotations();
     } catch {
@@ -254,15 +505,18 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
         {/* New comment form */}
         {showNewForm && (
           <form onSubmit={submitNew} className="px-5 py-3 border-b border-cail-blue/10">
-            <textarea
+            <MentionTextarea
               value={newBody}
-              onChange={e => setNewBody(e.target.value)}
-              placeholder="Write a comment..."
+              onChange={setNewBody}
+              onMention={(id) => setNewMentions(prev => [...prev, id])}
+              members={members}
+              placeholder="Write a comment... (@ to mention)"
               rows={3}
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-cail-blue resize-none"
+              inputRef={newCommentRef}
             />
             <div className="flex justify-end gap-2 mt-2">
-              <button type="button" onClick={() => { setShowNewForm(false); setNewBody(''); }} className="text-sm text-gray-500 hover:text-cail-dark">
+              <button type="button" onClick={() => { setShowNewForm(false); setNewBody(''); setNewMentions([]); }} className="text-sm text-gray-500 hover:text-cail-dark">
                 Cancel
               </button>
               <button
@@ -290,6 +544,8 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
               role={role}
               currentUserEmail={currentUserEmail}
               onRefresh={fetchAnnotations}
+              members={members}
+              memberMap={memberMap}
             />
           ))}
         </div>
