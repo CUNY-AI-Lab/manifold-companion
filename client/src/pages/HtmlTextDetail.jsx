@@ -10,6 +10,7 @@ import { convertPdfToHtmlWithBedrock } from '../lib/pdfBedrockPipeline';
 import VersionHistory from '../components/VersionHistory';
 import AnnotationSidebar from '../components/AnnotationSidebar';
 import KeyboardShortcuts from '../components/KeyboardShortcuts';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
 const MATHML_TAGS = [
   'math', 'maction', 'maligngroup', 'malignmark', 'menclose', 'merror', 'mfenced', 'mfrac',
@@ -622,6 +623,13 @@ export default function HtmlTextDetail() {
   const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
   const [showShortcuts, setShowShortcuts] = useState(false);
 
+  const { isDirty: hasUnsaved, draftBanner, dismissDraft, restoreDraft, markSaved } = useUnsavedChanges(
+    text ? `mc-draft-${id}-html` : null,
+    htmlContent,
+    text?.updated_at,
+    { enabled: activeTab === 'Review' }
+  );
+
   // Details tab state
   const [summary, setSummary] = useState('');
   const [metadata, setMetadata] = useState({});
@@ -794,6 +802,7 @@ export default function HtmlTextDetail() {
       await api.put(`/api/texts/${id}/html`, { html_content: contentToSave });
       setHtmlContent(contentToSave);
       setDirty(false);
+      markSaved(contentToSave);
       setToast('HTML saved.');
       setTimeout(() => setToast(''), 3000);
     } catch (err) {
@@ -830,6 +839,7 @@ export default function HtmlTextDetail() {
       setHtmlContent(result.html);
       katexRenderedRef.current = '';
       setDirty(false);
+      markSaved(result.html);
       setToast('PDF reprocessed successfully.');
       setTimeout(() => setToast(''), 3000);
     } catch (err) {
@@ -1003,6 +1013,24 @@ export default function HtmlTextDetail() {
       {/* ======================== REVIEW TAB ======================== */}
       {activeTab === 'Review' && (
         <div>
+          {draftBanner && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+              <span className="text-sm text-amber-800">
+                Unsaved draft found from {new Date(draftBanner.savedAt).toLocaleString()}.
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { const content = restoreDraft(); if (content) setHtmlContent(content); }}
+                  className="text-sm font-medium text-amber-700 hover:text-amber-900"
+                >
+                  Restore
+                </button>
+                <button onClick={dismissDraft} className="text-sm text-gray-500 hover:text-gray-700">
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             {role === 'viewer' && (
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">

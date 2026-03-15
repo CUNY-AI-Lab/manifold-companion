@@ -120,6 +120,10 @@ export default function ProjectView() {
   const [dragOver, setDragOver] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState('');
 
+  // Full-page drop overlay
+  const [pageDropActive, setPageDropActive] = useState(false);
+  const dropCountRef = useRef(0);
+
   // Edit mode + drag-and-drop reorder
   const [editMode, setEditMode] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
@@ -325,6 +329,53 @@ export default function ProjectView() {
     }
   }, [id]);
 
+  const processDroppedFiles = useCallback((fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length > 0 && selectedTextForUpload) {
+      processAndUpload(files, selectedTextForUpload);
+    }
+  }, [processAndUpload, selectedTextForUpload]);
+
+  useEffect(() => {
+    const onDragEnter = (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+      dropCountRef.current++;
+      setPageDropActive(true);
+    };
+    const onDragLeave = (e) => {
+      e.preventDefault();
+      dropCountRef.current--;
+      if (dropCountRef.current <= 0) {
+        dropCountRef.current = 0;
+        setPageDropActive(false);
+      }
+    };
+    const onDragOver = (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+    };
+    const onPageDrop = (e) => {
+      e.preventDefault();
+      dropCountRef.current = 0;
+      setPageDropActive(false);
+      if (e.dataTransfer?.files?.length) {
+        processDroppedFiles(e.dataTransfer.files);
+      }
+    };
+
+    document.addEventListener('dragenter', onDragEnter);
+    document.addEventListener('dragleave', onDragLeave);
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('drop', onPageDrop);
+    return () => {
+      document.removeEventListener('dragenter', onDragEnter);
+      document.removeEventListener('dragleave', onDragLeave);
+      document.removeEventListener('dragover', onDragOver);
+      document.removeEventListener('drop', onPageDrop);
+    };
+  }, [processDroppedFiles]);
+
   function handleFileSelect(e) {
     const files = Array.from(e.target.files || []);
     if (files.length > 0 && selectedTextForUpload) {
@@ -336,10 +387,7 @@ export default function ProjectView() {
   function handleDrop(e) {
     e.preventDefault();
     setDragOver(false);
-    const files = Array.from(e.dataTransfer.files || []);
-    if (files.length > 0 && selectedTextForUpload) {
-      processAndUpload(files, selectedTextForUpload);
-    }
+    processDroppedFiles(e.dataTransfer.files);
   }
 
   // Export handlers
@@ -833,6 +881,18 @@ export default function ProjectView() {
           </div>
         ))}
       </div>
+
+      {pageDropActive && (
+        <div className="fixed inset-0 z-50 bg-cail-blue/10 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-2xl border-2 border-dashed border-cail-blue p-12 text-center shadow-2xl">
+            <svg className="w-16 h-16 mx-auto text-cail-blue mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p className="font-display font-semibold text-lg text-cail-dark">Drop images here</p>
+            <p className="text-sm text-gray-500 mt-1">JPEG, PNG, TIFF, BMP, WebP, or PDF files</p>
+          </div>
+        </div>
+      )}
 
       <SharePanel projectId={Number(id)} open={showShare} onClose={() => setShowShare(false)} />
 

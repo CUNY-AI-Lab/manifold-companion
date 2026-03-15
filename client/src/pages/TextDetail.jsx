@@ -6,6 +6,7 @@ import { api, BASE } from '../api/client';
 import VersionHistory from '../components/VersionHistory';
 import AnnotationSidebar from '../components/AnnotationSidebar';
 import KeyboardShortcuts from '../components/KeyboardShortcuts';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
 /**
  * Resize a canvas-based image to ensure it stays under maxBytes (approx).
@@ -624,6 +625,14 @@ export default function TextDetail() {
   // Filter out compiled pages for display
   const visiblePages = pages.filter((p) => p.filename !== '__compiled__');
 
+  const currentPageId = visiblePages[reviewPage]?.id;
+  const { isDirty: hasUnsaved, draftBanner, dismissDraft, restoreDraft, markSaved } = useUnsavedChanges(
+    currentPageId ? `mc-draft-${id}-page-${currentPageId}` : null,
+    pageText,
+    text?.updated_at,
+    { enabled: activeTab === 'Review' }
+  );
+
   // Keyboard navigation for lightbox
   useEffect(() => {
     if (lightboxPage === null) return;
@@ -772,6 +781,7 @@ export default function TextDetail() {
         p.id === targetId ? { ...p, ocr_text: pageText } : p
       ));
       setToast('Page text saved.');
+      markSaved(pageText);
       setTimeout(() => setToast(''), 3000);
     } catch (err) {
       setError(err.message);
@@ -1366,6 +1376,24 @@ export default function TextDetail() {
 
                 {/* Text editor with toolbar */}
                 <div className="flex-1 flex flex-col min-w-0 md:h-[65vh]">
+                  {draftBanner && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-3 flex items-center justify-between">
+                      <span className="text-sm text-amber-800">
+                        Unsaved draft found from {new Date(draftBanner.savedAt).toLocaleString()}.
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { const content = restoreDraft(); if (content) setPageText(content); }}
+                          className="text-sm font-medium text-amber-700 hover:text-amber-900"
+                        >
+                          Restore
+                        </button>
+                        <button onClick={dismissDraft} className="text-sm text-gray-500 hover:text-gray-700">
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {/* Markdown toolbar */}
                   <div className="flex items-center gap-1 bg-white rounded-t-2xl border border-gray-100 border-b-0 p-1.5">
                     <button onClick={() => insertReviewMarkdown('**', '**')} className="px-3 py-1 rounded text-sm font-bold text-gray-600 hover:bg-gray-100 transition-colors" title="Bold">B</button>

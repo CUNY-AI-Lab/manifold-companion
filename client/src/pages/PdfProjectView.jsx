@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, BASE } from '../api/client';
 import { convertPdfToHtmlWithBedrock } from '../lib/pdfBedrockPipeline';
@@ -32,6 +32,10 @@ export default function PdfProjectView() {
   const [selectedTextId, setSelectedTextId] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+
+  // Full-page drop overlay
+  const [pageDropActive, setPageDropActive] = useState(false);
+  const dropCountRef = useRef(0);
 
   // Edit mode + drag-and-drop reorder
   const [editMode, setEditMode] = useState(false);
@@ -154,16 +158,8 @@ export default function PdfProjectView() {
     }
   }
 
-  // PDF upload
-  async function handlePdfSelect(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (!selectedTextId) {
-      setError('Create or select a document first.');
-      return;
-    }
-
+  // PDF upload — called by file input and drop handler
+  const handlePdfUpload = useCallback(async (file) => {
     setUploading(true);
     setError('');
     try {
@@ -195,7 +191,66 @@ export default function PdfProjectView() {
       setUploading(false);
       setUploadProgress('');
     }
+  }, [selectedTextId, navigate]);
+
+  async function handlePdfSelect(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!selectedTextId) {
+      setError('Create or select a document first.');
+      return;
+    }
+    await handlePdfUpload(file);
   }
+
+  useEffect(() => {
+    const onDragEnter = (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+      dropCountRef.current++;
+      setPageDropActive(true);
+    };
+    const onDragLeave = (e) => {
+      e.preventDefault();
+      dropCountRef.current--;
+      if (dropCountRef.current <= 0) {
+        dropCountRef.current = 0;
+        setPageDropActive(false);
+      }
+    };
+    const onDragOver = (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+    };
+    const onPageDrop = (e) => {
+      e.preventDefault();
+      dropCountRef.current = 0;
+      setPageDropActive(false);
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+        setError('Only PDF files are accepted.');
+        return;
+      }
+      if (!selectedTextId) {
+        setError('Select a text before dropping a PDF.');
+        return;
+      }
+      handlePdfUpload(file);
+    };
+
+    document.addEventListener('dragenter', onDragEnter);
+    document.addEventListener('dragleave', onDragLeave);
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('drop', onPageDrop);
+    return () => {
+      document.removeEventListener('dragenter', onDragEnter);
+      document.removeEventListener('dragleave', onDragLeave);
+      document.removeEventListener('dragover', onDragOver);
+      document.removeEventListener('drop', onPageDrop);
+    };
+  }, [handlePdfUpload, selectedTextId]);
 
   // Export handlers
   async function openExport() {
@@ -654,6 +709,18 @@ export default function PdfProjectView() {
           </div>
         ))}
       </div>
+
+      {pageDropActive && (
+        <div className="fixed inset-0 z-50 bg-cail-blue/10 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-2xl border-2 border-dashed border-cail-blue p-12 text-center shadow-2xl">
+            <svg className="w-16 h-16 mx-auto text-cail-blue mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p className="font-display font-semibold text-lg text-cail-dark">Drop PDF here</p>
+            <p className="text-sm text-gray-500 mt-1">{selectedTextId ? 'Upload to selected text' : 'Select a text first'}</p>
+          </div>
+        </div>
+      )}
 
       <SharePanel projectId={Number(id)} open={showShare} onClose={() => setShowShare(false)} />
 
