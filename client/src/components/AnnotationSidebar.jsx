@@ -150,8 +150,8 @@ function MentionTextarea({ value, onChange, onMention, members, placeholder, row
                 {initials({ user_display_name: m.display_name, user_email: m.email })}
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-cail-dark truncate">{m.display_name || m.email}</p>
-                {m.display_name && <p className="text-xs text-gray-400 truncate">{m.email}</p>}
+                <p className="text-sm font-medium text-cail-dark dark:text-slate-200 truncate">{m.display_name || m.email}</p>
+                {m.display_name && <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{m.email}</p>}
               </div>
             </button>
           ))}
@@ -242,8 +242,8 @@ function MentionInput({ value, onChange, onMention, members, placeholder, classN
               onMouseDown={(e) => { e.preventDefault(); selectMember(m); }}
               className="w-full text-left px-3 py-1.5 hover:bg-cail-blue/5 transition-colors"
             >
-              <span className="text-xs font-medium text-cail-dark">{m.display_name || m.email}</span>
-              {m.display_name && <span className="text-xs text-gray-400 ml-1">{m.email}</span>}
+              <span className="text-xs font-medium text-cail-dark dark:text-slate-200">{m.display_name || m.email}</span>
+              {m.display_name && <span className="text-xs text-gray-400 dark:text-slate-500 ml-1">{m.email}</span>}
             </button>
           ))}
         </div>
@@ -284,8 +284,8 @@ function ReplyItem({ reply, textId, currentUserEmail, role, onRefresh, members, 
         <span className="w-6 h-6 rounded-full bg-cail-teal/20 text-cail-teal flex items-center justify-center text-[10px] font-display font-semibold">
           {initials(reply)}
         </span>
-        <span className="text-xs font-medium text-cail-dark">{displayName(reply)}</span>
-        <span className="text-[10px] text-gray-400">{formatTime(reply.created_at)}</span>
+        <span className="text-xs font-medium text-cail-dark dark:text-slate-200">{displayName(reply)}</span>
+        <span className="text-[10px] text-gray-400 dark:text-slate-500">{formatTime(reply.created_at)}</span>
       </div>
       {editing ? (
         <div className="mt-1">
@@ -297,20 +297,20 @@ function ReplyItem({ reply, textId, currentUserEmail, role, onRefresh, members, 
           />
           <div className="flex gap-1 mt-1">
             <button onClick={handleSaveEdit} disabled={!editBody.trim() || saving} className="text-[10px] text-cail-blue hover:underline disabled:opacity-50">Save</button>
-            <button onClick={() => { setEditing(false); setEditBody(reply.body); }} className="text-[10px] text-gray-400 hover:underline">Cancel</button>
+            <button onClick={() => { setEditing(false); setEditBody(reply.body); }} className="text-[10px] text-gray-400 dark:text-slate-500 hover:underline">Cancel</button>
           </div>
         </div>
       ) : (
         <>
-          <p className="text-xs text-cail-dark mt-0.5 whitespace-pre-wrap">
+          <p className="text-xs text-cail-dark dark:text-slate-200 mt-0.5 whitespace-pre-wrap">
             {renderBody(reply.body, reply.mentions, memberMap)}
           </p>
           <div className="flex gap-2 mt-0.5">
             {canEdit && (
-              <button onClick={() => setEditing(true)} className="text-[10px] text-gray-400 hover:text-cail-blue">Edit</button>
+              <button onClick={() => setEditing(true)} className="text-[10px] text-gray-400 dark:text-slate-500 hover:text-cail-blue">Edit</button>
             )}
             {canDelete && (
-              <button onClick={handleDelete} className="text-[10px] text-gray-400 hover:text-red-500">Delete</button>
+              <button onClick={handleDelete} className="text-[10px] text-gray-400 dark:text-slate-500 hover:text-red-500">Delete</button>
             )}
           </div>
         </>
@@ -407,8 +407,8 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
             {initials(annotation)}
           </span>
           <div>
-            <span className="text-sm font-medium text-cail-dark">{displayName(annotation)}</span>
-            <span className="text-xs text-gray-400 ml-2">{formatTime(annotation.created_at)}</span>
+            <span className="text-sm font-medium text-cail-dark dark:text-slate-200">{displayName(annotation)}</span>
+            <span className="text-xs text-gray-400 dark:text-slate-500 ml-2">{formatTime(annotation.created_at)}</span>
           </div>
         </div>
         {!!annotation.resolved && (
@@ -422,7 +422,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
             value={editBody}
             onChange={e => setEditBody(e.target.value)}
             rows={3}
-            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-cail-blue resize-none"
+            className="w-full text-sm border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-cail-blue resize-none"
           />
           <div className="flex gap-2 mt-1">
             <button onClick={handleSaveEdit} disabled={!editBody.trim() || savingEdit} className="text-xs text-cail-blue hover:underline disabled:opacity-50">
@@ -432,7 +432,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
           </div>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-cail-dark whitespace-pre-wrap">
+        <p className="mt-2 text-sm text-cail-dark dark:text-slate-200 whitespace-pre-wrap">
           {renderBody(annotation.body, annotation.mentions, memberMap)}
         </p>
       )}

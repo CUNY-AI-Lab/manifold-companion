@@ -27,9 +27,9 @@ function formatDate(dateStr) {
 }
 
 const STATUS_STYLES = {
-  pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  approved: 'bg-green-50 text-green-700 border-green-200',
-  disabled: 'bg-red-50 text-red-700 border-red-200',
+  pending: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800',
+  approved: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
+  disabled: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
 };
 
 const TABS = [
@@ -190,7 +190,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
               </button>
               <button
                 onClick={() => setSelected(new Set())}
-                className="px-3 py-1.5 rounded-full text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                className="px-3 py-1.5 rounded-full text-sm text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Clear
               </button>
@@ -199,7 +199,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
           {pendingUsers.length > 0 && selected.size === 0 && (
             <button
               onClick={selectAllPending}
-              className="px-4 py-1.5 rounded-full border border-yellow-300 text-yellow-700 text-sm font-medium hover:bg-yellow-50 transition-colors"
+              className="px-4 py-1.5 rounded-full border border-yellow-300 dark:border-yellow-700 text-yellow-700 dark:text-yellow-400 text-sm font-medium hover:bg-yellow-50 dark:hover:bg-yellow-900/30 transition-colors"
             >
               Select {pendingUsers.length} Pending
             </button>
@@ -216,61 +216,61 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
       {/* Create user form */}
       {showCreateForm && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 mb-6 shadow-sm">
-          <h2 className="font-display font-semibold text-lg text-cail-dark mb-4">Create New User</h2>
+          <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-4">Create New User</h2>
           <form onSubmit={handleCreateUser} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Full Name</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   maxLength={100}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
                   placeholder="Optional"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Email</label>
                 <input
                   type="email"
                   required
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
                   placeholder="user@example.com"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Password</label>
                 <input
                   type="password"
                   required
                   minLength={8}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
                   placeholder="Min 8 characters"
                 />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Role</label>
                   <select
                     value={newRole}
                     onChange={(e) => setNewRole(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue outline-none text-sm"
                   >
                     <option value="user">User</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Status</label>
                   <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 dark:bg-slate-700 dark:text-slate-200 focus:border-cail-blue outline-none text-sm"
                   >
                     <option value="approved">Approved</option>
                     <option value="pending">Pending</option>
@@ -292,15 +292,15 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
       {/* Stats cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
-          <p className="text-sm text-gray-500 mb-1">Total Users</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">Total Users</p>
           <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{users.length}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
-          <p className="text-sm text-gray-500 mb-1">Pending Approvals</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">Pending Approvals</p>
           <p className="font-display font-semibold text-2xl text-yellow-600">{pendingUsers.length}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
-          <p className="text-sm text-gray-500 mb-1">Total Storage Used</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">Total Storage Used</p>
           <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{formatBytes(totalStorage)}</p>
         </div>
       </div>
@@ -311,7 +311,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50 dark:bg-slate-800/50">
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3 w-10">
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3 w-10">
                   <input
                     type="checkbox"
                     checked={selected.size > 0 && selected.size === users.length}
@@ -322,17 +322,17 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                     className="rounded border-gray-300 dark:border-slate-600"
                   />
                 </th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">User</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Status</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Role</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Storage</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Tokens</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Projects</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Last Login</th>
-                <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Actions</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">User</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">Status</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">Role</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">Storage</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">Tokens</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">Projects</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">Last Login</th>
+                <th className="text-right text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
               {users.map((user) => (
                 <tr key={user.id} className={`hover:bg-gray-50/50 dark:hover:bg-slate-700/50 dark:bg-slate-800/50 transition-colors ${selected.has(user.id) ? 'bg-cail-blue/5' : ''}`}>
                   <td className="px-4 py-4">
@@ -352,7 +352,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                           onChange={(e) => setNameValue(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') saveName(user.id); if (e.key === 'Escape') setEditingName(null); }}
                           placeholder="Display name"
-                          className="w-40 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-cail-blue"
+                          className="w-40 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-cail-blue"
                           autoFocus
                         />
                         <button onClick={() => saveName(user.id)} className="text-xs text-cail-blue hover:underline">Save</button>
@@ -366,7 +366,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                       >
                         {user.display_name ? (
                           <>
-                            <p className="text-sm font-medium text-cail-dark group-hover:text-cail-blue transition-colors">{user.display_name}</p>
+                            <p className="text-sm font-medium text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors">{user.display_name}</p>
                             <p className="text-sm text-gray-400 dark:text-slate-500">{user.email}</p>
                           </>
                         ) : (
@@ -392,7 +392,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                           type="number"
                           value={allowanceValue}
                           onChange={(e) => setAllowanceValue(e.target.value)}
-                          className="w-24 px-2 py-1 text-xs border border-gray-300 dark:border-slate-600 rounded-lg"
+                          className="w-24 px-2 py-1 text-xs border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-lg"
                           min="0"
                         />
                         <button onClick={() => saveAllowance(user.id)} className="text-xs text-cail-blue hover:underline">Save</button>
@@ -404,7 +404,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                         className="text-left hover:text-cail-blue transition-colors"
                         title="Click to edit allowance"
                       >
-                        <span className={`text-sm font-medium ${user.token_allowance > 0 && (user.token_usage / user.token_allowance) > 0.8 ? 'text-red-600' : 'text-gray-600'}`}>
+                        <span className={`text-sm font-medium ${user.token_allowance > 0 && (user.token_usage / user.token_allowance) > 0.8 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-slate-400'}`}>
                           {formatTokens(user.token_usage)}
                         </span>
                         <span className="text-sm text-gray-400 dark:text-slate-500"> / {formatTokens(user.token_allowance)}</span>
@@ -416,17 +416,17 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                   <td className="px-4 py-4">
                     <div className="flex items-center justify-end gap-1 flex-wrap">
                       {user.status === 'pending' && (
-                        <button onClick={() => updateStatus(user.id, 'approved')} className="px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors">Approve</button>
+                        <button onClick={() => updateStatus(user.id, 'approved')} className="px-3 py-1 rounded-full bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs font-medium hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors">Approve</button>
                       )}
                       {user.status === 'approved' && user.role !== 'admin' && (
-                        <button onClick={() => updateStatus(user.id, 'disabled')} className="px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 text-xs font-medium hover:bg-yellow-100 transition-colors">Disable</button>
+                        <button onClick={() => updateStatus(user.id, 'disabled')} className="px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs font-medium hover:bg-yellow-100 dark:hover:bg-yellow-900/50 transition-colors">Disable</button>
                       )}
                       {user.status === 'disabled' && (
-                        <button onClick={() => updateStatus(user.id, 'approved')} className="px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors">Enable</button>
+                        <button onClick={() => updateStatus(user.id, 'approved')} className="px-3 py-1 rounded-full bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs font-medium hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors">Enable</button>
                       )}
-                      <button onClick={() => resetUsage(user.id)} className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium hover:bg-blue-100 transition-colors" title="Reset token usage counter">Reset Usage</button>
+                      <button onClick={() => resetUsage(user.id)} className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors" title="Reset token usage counter">Reset Usage</button>
                       {user.role !== 'admin' && (
-                        <button onClick={() => setConfirmDelete(user)} className="px-3 py-1 rounded-full bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors">Delete</button>
+                        <button onClick={() => setConfirmDelete(user)} className="px-3 py-1 rounded-full bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">Delete</button>
                       )}
                     </div>
                   </td>
@@ -445,13 +445,13 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
       {/* Delete confirmation modal */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-            <h3 className="font-display font-semibold text-lg text-cail-dark mb-2">Delete User</h3>
-            <p className="text-sm text-gray-600 mb-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-2">Delete User</h3>
+            <p className="text-sm text-gray-600 dark:text-slate-400 mb-6">
               Are you sure you want to delete <strong>{confirmDelete.display_name || confirmDelete.email}</strong>? This will remove all their projects and data.
             </p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
               <button onClick={() => deleteUser(confirmDelete.id)} className="px-4 py-2 rounded-full bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">Delete User</button>
             </div>
           </div>
@@ -494,7 +494,7 @@ function UsageTab() {
   }
 
   if (!stats) {
-    return <p className="text-center text-gray-500 py-8">Failed to load usage data.</p>;
+    return <p className="text-center text-gray-500 dark:text-slate-400 py-8">Failed to load usage data.</p>;
   }
 
   return (
@@ -518,15 +518,15 @@ function UsageTab() {
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
-          <p className="text-sm text-gray-500 mb-1">API Calls ({days}d)</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">API Calls ({days}d)</p>
           <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{stats.totals?.total_calls?.toLocaleString() || 0}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
-          <p className="text-sm text-gray-500 mb-1">Tokens Consumed ({days}d)</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">Tokens Consumed ({days}d)</p>
           <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{formatTokens(stats.totals?.total_tokens)}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5">
-          <p className="text-sm text-gray-500 mb-1">Active Users ({days}d)</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">Active Users ({days}d)</p>
           <p className="font-display font-semibold text-2xl text-cail-dark dark:text-slate-200">{stats.byUser?.length || 0}</p>
         </div>
       </div>
@@ -534,7 +534,7 @@ function UsageTab() {
       {/* Endpoint breakdown */}
       {stats.byEndpoint?.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 mb-6">
-          <h3 className="font-display font-semibold text-sm text-cail-dark mb-4">By Endpoint</h3>
+          <h3 className="font-display font-semibold text-sm text-cail-dark dark:text-slate-200 mb-4">By Endpoint</h3>
           <div className="space-y-2">
             {stats.byEndpoint.map((ep) => (
               <div key={ep.endpoint} className="flex items-center justify-between">
@@ -552,20 +552,20 @@ function UsageTab() {
       {/* Per-user usage */}
       {stats.byUser?.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden mb-6">
-          <h3 className="font-display font-semibold text-sm text-cail-dark px-6 py-4 border-b border-gray-100 dark:border-slate-700">Per-User Usage</h3>
+          <h3 className="font-display font-semibold text-sm text-cail-dark dark:text-slate-200 px-6 py-4 border-b border-gray-100 dark:border-slate-700">Per-User Usage</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50 dark:bg-slate-800/50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">User</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Calls</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Tokens Used</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Allowance</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">% Used</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Storage</th>
+                  <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase px-6 py-3">User</th>
+                  <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase px-6 py-3">Calls</th>
+                  <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase px-6 py-3">Tokens Used</th>
+                  <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase px-6 py-3">Allowance</th>
+                  <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase px-6 py-3">% Used</th>
+                  <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase px-6 py-3">Storage</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
                 {stats.byUser.map((u) => {
                   const pct = u.token_allowance > 0 ? Math.round((u.current_usage / u.token_allowance) * 100) : 0;
                   const pctColor = pct > 90 ? 'text-red-600' : pct > 50 ? 'text-yellow-600' : 'text-green-600';
@@ -594,13 +594,13 @@ function UsageTab() {
       {/* Most active projects */}
       {stats.byProject?.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
-          <h3 className="font-display font-semibold text-sm text-cail-dark mb-4">Most Active Projects</h3>
+          <h3 className="font-display font-semibold text-sm text-cail-dark dark:text-slate-200 mb-4">Most Active Projects</h3>
           <div className="space-y-2">
             {stats.byProject.map((p) => (
               <div key={p.project_id} className="flex items-center justify-between">
                 <div>
                   <span className="text-sm text-cail-dark dark:text-slate-200">{p.project_name}</span>
-                  <span className="text-xs text-gray-400 ml-2">({p.owner_email})</span>
+                  <span className="text-xs text-gray-400 dark:text-slate-500 ml-2">({p.owner_email})</span>
                 </div>
                 <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-slate-400">
                   <span>{p.calls} calls</span>
@@ -679,7 +679,7 @@ function BackupsTab({ setToast }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Database & File Backups</h2>
-          <p className="text-sm text-gray-500 mt-1">Create and manage backups of the database and uploaded files.</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Create and manage backups of the database and uploaded files.</p>
         </div>
         <button
           onClick={createBackup}
@@ -691,7 +691,7 @@ function BackupsTab({ setToast }) {
       </div>
 
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           {error}
           <button onClick={() => setError('')} className="ml-2 font-medium hover:underline">Dismiss</button>
         </div>
@@ -703,7 +703,7 @@ function BackupsTab({ setToast }) {
         </div>
       ) : backups.length === 0 ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-12 text-center">
-          <p className="text-gray-500 text-sm">No backups yet. Create your first backup above.</p>
+          <p className="text-gray-500 dark:text-slate-400 text-sm">No backups yet. Create your first backup above.</p>
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
@@ -711,18 +711,18 @@ function BackupsTab({ setToast }) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50 dark:bg-slate-800/50">
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Filename</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Size</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Created</th>
-                <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-4 sm:px-6 py-3">Actions</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 sm:px-6 py-3">Filename</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 sm:px-6 py-3">Size</th>
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 sm:px-6 py-3">Created</th>
+                <th className="text-right text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider px-4 sm:px-6 py-3">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
               {backups.map((b) => (
                 <tr key={b.filename} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50 dark:bg-slate-800/50">
-                  <td className="px-4 sm:px-6 py-4 text-sm text-cail-dark font-mono whitespace-nowrap">{b.filename}</td>
+                  <td className="px-4 sm:px-6 py-4 text-sm text-cail-dark dark:text-slate-200 font-mono whitespace-nowrap">{b.filename}</td>
                   <td className="px-4 sm:px-6 py-4 text-sm text-gray-600 dark:text-slate-400">{formatBytes(b.size)}</td>
-                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-400 whitespace-nowrap">{formatDate(b.created_at)}</td>
+                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-400 dark:text-slate-500 whitespace-nowrap">{formatDate(b.created_at)}</td>
                   <td className="px-4 sm:px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -733,7 +733,7 @@ function BackupsTab({ setToast }) {
                       </button>
                       <button
                         onClick={() => deleteBackup(b.filename)}
-                        className="px-3 py-1 rounded-full bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors"
+                        className="px-3 py-1 rounded-full bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
                       >
                         Delete
                       </button>
@@ -780,7 +780,7 @@ export default function AdminPanel() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Toast */}
       {toast && (
-        <div className="fixed top-20 right-4 z-50 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm shadow-lg">
+        <div className="fixed top-20 right-4 z-50 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 text-sm shadow-lg">
           {toast}
         </div>
       )}
@@ -790,7 +790,7 @@ export default function AdminPanel() {
       </div>
 
       {error && (
-        <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-6 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
           {error}
           <button onClick={() => setError('')} className="ml-2 font-medium hover:underline">Dismiss</button>
         </div>
@@ -804,8 +804,8 @@ export default function AdminPanel() {
             onClick={() => setTab(t.id)}
             className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${
               tab === t.id
-                ? 'bg-white text-cail-dark shadow-sm'
-                : 'text-gray-500 hover:text-cail-dark'
+                ? 'bg-white dark:bg-slate-800 text-cail-dark dark:text-slate-200 shadow-sm'
+                : 'text-gray-500 dark:text-slate-400 hover:text-cail-dark dark:hover:text-slate-200'
             }`}
           >
             {t.label}
@@ -817,7 +817,7 @@ export default function AdminPanel() {
       {loading && tab === 'users' && (
         <div className="space-y-3">
           {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
+            <div key={i} className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 flex items-center gap-4">
               <Skeleton.Circle className="h-8 w-8" />
               <Skeleton.Box className="h-4 w-40" />
               <Skeleton.Box className="h-4 w-24" />

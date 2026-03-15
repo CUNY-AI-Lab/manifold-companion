@@ -104,12 +104,12 @@ All route modules except auth apply `requireAuth` at the router level. Admin rou
 ### Route Structure
 
 ```
-/api/auth                          → server/routes/auth.js         (login, register, logout, me, profile, change-password, forgot/reset password)
+/api/auth                          → server/routes/auth.js         (login, register, logout, me, profile, change-password, forgot/reset password, settings)
 /api/admin                         → server/routes/admin.js        (user mgmt, bulk approval, usage stats, backups)
 /api/users                         → server/routes/users.js        (user search for share autocomplete)
 /api/projects                      → server/routes/projects.js     (CRUD + project type on create)
 /api/projects/:projectId/shares    → server/routes/shares.js       (project sharing CRUD — owner only)
-/api                               → server/routes/texts.js        (texts, pages, upload, HTML, search, versions, split, merge)
+/api                               → server/routes/texts.js        (texts, pages, upload, HTML, search, versions, split, merge, bulk-delete, bulk-status)
 /api                               → server/routes/ocr.js          (SSE OCR pipeline — rate-limited by aiLimiter)
 /api                               → server/routes/llm.js          (summary, translation, PDF page parsing, PDF cleanup)
 /api                               → server/routes/export.js       (ZIP export)
@@ -250,10 +250,31 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **Loading skeletons**: `Skeleton.jsx` provides `Box`, `Circle`, `Card`, `TextRow`, `TableRow` composites with `animate-pulse`. Replaces spinners in Dashboard, ProjectView, PdfProjectView, AdminPanel.
 - **Auto-save drafts**: `useUnsavedChanges` hook (`client/src/hooks/useUnsavedChanges.js`) provides debounced localStorage drafts (5s), `beforeunload` tab-close guard, `popstate` back-button interception, and draft recovery banner. Integrated in both `TextDetail.jsx` (per-page drafts) and `HtmlTextDetail.jsx` (HTML content drafts). Drafts expire after 7 days.
 - **Full-page drag-and-drop**: Both `ProjectView.jsx` and `PdfProjectView.jsx` show a translucent overlay when files are dragged anywhere over the page. ProjectView accepts images/PDFs; PdfProjectView accepts PDFs only and validates text selection.
+- **Settings page** (`SettingsPage.jsx`): Five sections — Profile (display name), Password (change), Appearance (dark mode radio: system/light/dark), Notifications (four email toggles), Usage (storage + token progress bars). Uses `GET/PUT /api/auth/settings` for notification preferences.
+- **Pagination**: `Pagination.jsx` reusable component with ellipsis, mobile-responsive. Server-side pagination on `GET /api/projects` (12/page, independent owned/shared cursors) and `GET /api/projects/:id` texts (20/page). Page state synced to URL query params. Dashboard and both project views use it.
+- **Bulk text operations**: `ProjectView.jsx` and `PdfProjectView.jsx` support multi-select checkboxes on text cards with a floating action bar (fixed bottom). Actions: "Set Status" dropdown (pending/ocrd/reviewed) and "Delete" (with confirm). Uses `POST /api/projects/:projectId/texts/bulk-delete` and `POST /api/projects/:projectId/texts/bulk-status`. Max 50 IDs per request, transaction-based, editor+ role required. Selection clears on page change.
 
 ### Tailwind Theme (client/tailwind.config.js)
 
-Custom color tokens: `cail-navy`, `cail-blue`, `cail-teal`, `cail-azure`, `cail-dark`, `cail-cream`, `cail-stone`. Fonts: Outfit (display), Inter (body).
+Custom color tokens: `cail-navy`, `cail-blue`, `cail-teal`, `cail-azure`, `cail-dark`, `cail-cream`, `cail-stone`. Fonts: Outfit (display), Inter (body). Dark mode uses `darkMode: 'class'` strategy.
+
+### Dark Mode
+
+Class-based Tailwind dark mode (`dark` class on `<html>`). Three modes: system (default), light, dark. Preference stored in `users.theme_preference` column and synced via `PUT /api/auth/profile`. Pre-login fallback reads `localStorage('mc-theme')` to avoid flash.
+
+**AuthContext** exposes `themePreference`, `updateTheme(pref)`, and applies the `dark` class on `<html>`. Listens for system preference changes when mode is `system`.
+
+**Dark palette** (Slate scale): backgrounds `slate-900`/`slate-800`, text `slate-200`/`slate-400`, borders `slate-700`/`slate-600`. Brand colors (blue, teal) unchanged.
+
+**Convention for all components**: Every light-mode class (`bg-white`, `text-gray-*`, `border-gray-*`, `text-cail-dark`) must have a corresponding `dark:` variant. Standard mappings:
+- `bg-white` → `dark:bg-slate-800`, `bg-gray-50/100` → `dark:bg-slate-700` or `dark:bg-slate-900`
+- `text-cail-dark` → `dark:text-slate-200`, `text-gray-500/600` → `dark:text-slate-400`, `text-gray-700` → `dark:text-slate-300`
+- `border-gray-200/100` → `dark:border-slate-700`, `border-gray-300` → `dark:border-slate-600`
+- Status badges: add `dark:bg-{color}-900/30 dark:text-{color}-400`
+
+**PDF preview pane** (`index.css`): The `.pdf-preview-pane` class has extensive `.dark .pdf-preview-pane` CSS overrides for headings, tables, callout boxes, links, figures, and math. These are in `index.css`, not Tailwind classes, because the content is sanitized user-generated HTML.
+
+**Header.jsx**: Sun/moon/monitor toggle button cycles system → light → dark.
 
 ## Production Deployment
 

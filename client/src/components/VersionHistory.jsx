@@ -234,7 +234,7 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
       <div className="relative w-full max-w-2xl bg-white dark:bg-slate-800 shadow-2xl rounded-l-2xl flex flex-col animate-slide-in">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700">
-          <h2 className="text-lg font-display font-semibold text-cail-navy">
+          <h2 className="text-lg font-display font-semibold text-cail-navy dark:text-slate-200">
             Version History
           </h2>
           <button
@@ -306,14 +306,14 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
                             <div
                               key={i}
                               className={
-                                d.type === 'add' ? 'bg-green-50 text-green-800 border-l-2 border-green-400 px-3 py-0.5' :
-                                d.type === 'del' ? 'bg-red-50 text-red-800 border-l-2 border-red-400 px-3 py-0.5' :
-                                d.type === 'sep' ? 'bg-blue-50 text-blue-400 px-3 py-1 text-center' :
-                                d.type === 'info' ? 'text-gray-400 px-3 py-2 text-center italic' :
-                                'text-gray-600 px-3 py-0.5'
+                                d.type === 'add' ? 'bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-400 border-l-2 border-green-400 px-3 py-0.5' :
+                                d.type === 'del' ? 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-400 border-l-2 border-red-400 px-3 py-0.5' :
+                                d.type === 'sep' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-400 px-3 py-1 text-center' :
+                                d.type === 'info' ? 'text-gray-400 dark:text-slate-500 px-3 py-2 text-center italic' :
+                                'text-gray-600 dark:text-slate-400 px-3 py-0.5'
                               }
                             >
-                              <span className="select-none text-gray-300 mr-2">
+                              <span className="select-none text-gray-300 dark:text-slate-600 mr-2">
                                 {d.type === 'add' ? '+' : d.type === 'del' ? '−' : d.type === 'sep' ? '' : ' '}
                               </span>
                               <span className="whitespace-pre-wrap break-words">{d.line}</span>

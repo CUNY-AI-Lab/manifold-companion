@@ -50,10 +50,10 @@ function StepCard({ number, title, children, accent = 'cail-blue' }) {
   const c = colors[accent];
   return (
     <div className={`relative pl-10 py-4 border-l-2 ${c.border}`}>
-      <div className={`absolute left-[-9px] top-5 w-4 h-4 rounded-full ${c.dot} ring-4 ring-white`} />
+      <div className={`absolute left-[-9px] top-5 w-4 h-4 rounded-full ${c.dot} ring-4 ring-white dark:ring-slate-800`} />
       <span className={`font-display text-xs font-semibold uppercase tracking-widest ${c.num}`}>Step {number}</span>
-      <h4 className="font-display font-semibold text-cail-dark mt-1 text-[15px]">{title}</h4>
-      <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{children}</p>
+      <h4 className="font-display font-semibold text-cail-dark dark:text-slate-200 mt-1 text-[15px]">{title}</h4>
+      <p className="text-sm text-gray-500 dark:text-slate-400 mt-1.5 leading-relaxed">{children}</p>
     </div>
   );
 }
@@ -63,9 +63,9 @@ function StepCard({ number, title, children, accent = 'cail-blue' }) {
 /* ------------------------------------------------------------------ */
 function FeaturePill({ icon, children }) {
   return (
-    <div className="flex items-start gap-3 p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+    <div className="flex items-start gap-3 p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
       <span className="text-lg shrink-0 mt-0.5">{icon}</span>
-      <p className="text-sm text-gray-600 leading-relaxed">{children}</p>
+      <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed">{children}</p>
     </div>
   );
 }
@@ -111,7 +111,7 @@ export default function AboutPage() {
         </div>
 
         {/* Diagonal slice at the bottom */}
-        <div className="absolute bottom-0 left-0 right-0 h-20 bg-cail-cream"
+        <div className="absolute bottom-0 left-0 right-0 h-20 bg-cail-cream dark:bg-slate-900"
           style={{ clipPath: 'polygon(0 100%, 100% 100%, 100% 0)' }} />
 
         <div className="relative max-w-5xl mx-auto px-6 sm:px-8 pt-20 pb-32 sm:pt-28 sm:pb-40">
@@ -167,14 +167,14 @@ export default function AboutPage() {
       {/* ============================================================ */}
       {/*  WHAT IT DOES                                                */}
       {/* ============================================================ */}
-      <section className="relative bg-cail-cream">
+      <section className="relative bg-cail-cream dark:bg-slate-900">
         <div className="max-w-5xl mx-auto px-6 sm:px-8 py-20 sm:py-28">
           <RevealSection>
             <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-blue mb-4">Overview</p>
-            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark max-w-2xl leading-tight">
+            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark dark:text-slate-200 max-w-2xl leading-tight">
               Built for researchers, students, and instructors who work with printed and handwritten texts
             </h2>
-            <p className="mt-5 text-gray-500 max-w-2xl leading-relaxed">
+            <p className="mt-5 text-gray-500 dark:text-slate-400 max-w-2xl leading-relaxed">
               The Manifold Companion digitizes documents using AI vision models, then lets you review,
               correct, annotate, and collaborate before exporting publication-ready files for
               CUNY&apos;s Manifold scholarly publishing platform.
@@ -182,18 +182,18 @@ export default function AboutPage() {
           </RevealSection>
 
           <RevealSection delay={80}>
-            <div className="mt-8 flex items-start gap-3 bg-white rounded-2xl border border-cail-blue/10 p-5">
+            <div className="mt-8 flex items-start gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-cail-blue/10 dark:border-slate-700 p-5">
               <span className="text-cail-blue mt-0.5 shrink-0">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
                 </svg>
               </span>
-              <div className="text-sm text-gray-500 leading-relaxed">
-                <strong className="text-cail-dark">Transparency &amp; privacy.</strong>{' '}
+              <div className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed">
+                <strong className="text-cail-dark dark:text-slate-200">Transparency &amp; privacy.</strong>{' '}
                 The Image-to-Markdown pipeline (OCR, summaries, translations) uses{' '}
-                <strong className="text-gray-600">AWS Bedrock</strong>. The PDF-to-HTML pipeline uses{' '}
-                <strong className="text-gray-600">Google Gemini via OpenRouter</strong>.
-                Both providers operate under <strong className="text-gray-600">zero data retention</strong> policies
+                <strong className="text-gray-600 dark:text-slate-300">AWS Bedrock</strong>. The PDF-to-HTML pipeline uses{' '}
+                <strong className="text-gray-600 dark:text-slate-300">Google Gemini via OpenRouter</strong>.
+                Both providers operate under <strong className="text-gray-600 dark:text-slate-300">zero data retention</strong> policies
                 — your documents are processed and immediately discarded, never used for model training.
               </div>
             </div>
@@ -202,22 +202,22 @@ export default function AboutPage() {
           <RevealSection delay={150}>
             <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <FeaturePill icon="&#9998;">
-                <strong className="text-cail-dark">AI-powered OCR</strong> — extract text from scans, photographs, and handwritten pages using state-of-the-art vision models
+                <strong className="text-cail-dark dark:text-slate-200">AI-powered OCR</strong> — extract text from scans, photographs, and handwritten pages using state-of-the-art vision models
               </FeaturePill>
               <FeaturePill icon="&#128221;">
-                <strong className="text-cail-dark">Rich editing</strong> — review page by page in Markdown or edit structured HTML with headings, tables, math, and figures
+                <strong className="text-cail-dark dark:text-slate-200">Rich editing</strong> — review page by page in Markdown or edit structured HTML with headings, tables, math, and figures
               </FeaturePill>
               <FeaturePill icon="&#128101;">
-                <strong className="text-cail-dark">Collaboration</strong> — share projects with editors and viewers, leave threaded comments with @mentions, get notified of changes
+                <strong className="text-cail-dark dark:text-slate-200">Collaboration</strong> — share projects with editors and viewers, leave threaded comments with @mentions, get notified of changes
               </FeaturePill>
               <FeaturePill icon="&#128202;">
-                <strong className="text-cail-dark">Summaries &amp; translations</strong> — generate AI summaries and translate text into 40+ languages with a single click
+                <strong className="text-cail-dark dark:text-slate-200">Summaries &amp; translations</strong> — generate AI summaries and translate text into 40+ languages with a single click
               </FeaturePill>
               <FeaturePill icon="&#128218;">
-                <strong className="text-cail-dark">Dublin Core metadata</strong> — fill in scholarly cataloging fields so your export is ready for library-grade archiving
+                <strong className="text-cail-dark dark:text-slate-200">Dublin Core metadata</strong> — fill in scholarly cataloging fields so your export is ready for library-grade archiving
               </FeaturePill>
               <FeaturePill icon="&#128230;">
-                <strong className="text-cail-dark">Manifold export</strong> — download a ZIP archive with structured HTML and images, ready to import into Manifold as a new text
+                <strong className="text-cail-dark dark:text-slate-200">Manifold export</strong> — download a ZIP archive with structured HTML and images, ready to import into Manifold as a new text
               </FeaturePill>
             </div>
           </RevealSection>
@@ -227,17 +227,17 @@ export default function AboutPage() {
       {/* ============================================================ */}
       {/*  WORKFLOWS                                                   */}
       {/* ============================================================ */}
-      <section className="relative bg-white">
+      <section className="relative bg-white dark:bg-slate-800">
         {/* Subtle top border accent */}
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cail-blue/20 to-transparent" />
 
         <div className="max-w-5xl mx-auto px-6 sm:px-8 py-20 sm:py-28">
           <RevealSection>
             <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-teal mb-4">Workflows</p>
-            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark max-w-2xl leading-tight">
+            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark dark:text-slate-200 max-w-2xl leading-tight">
               Two paths to a published text
             </h2>
-            <p className="mt-4 text-gray-500 max-w-xl">
+            <p className="mt-4 text-gray-500 dark:text-slate-400 max-w-xl">
               Choose the workflow that matches your source material. Both produce export-ready files.
             </p>
           </RevealSection>
@@ -253,12 +253,12 @@ export default function AboutPage() {
                     </svg>
                   </span>
                   <div>
-                    <h3 className="font-display font-bold text-lg text-cail-dark">Image to Markdown</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Scanned pages &middot; Photographs &middot; Handwritten texts</p>
+                    <h3 className="font-display font-bold text-lg text-cail-dark dark:text-slate-200">Image to Markdown</h3>
+                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Scanned pages &middot; Photographs &middot; Handwritten texts</p>
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-500 leading-relaxed mb-6">
+                <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed mb-6">
                   Upload images or multi-page PDFs (rasterized to images). The AI extracts text
                   from each page into Markdown that you review and correct side-by-side with the
                   original scan.
@@ -294,12 +294,12 @@ export default function AboutPage() {
                     </svg>
                   </span>
                   <div>
-                    <h3 className="font-display font-bold text-lg text-cail-dark">PDF to HTML</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Textbooks &middot; Articles &middot; Reports</p>
+                    <h3 className="font-display font-bold text-lg text-cail-dark dark:text-slate-200">PDF to HTML</h3>
+                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Textbooks &middot; Articles &middot; Reports</p>
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-500 leading-relaxed mb-6">
+                <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed mb-6">
                   Upload a digital PDF and the AI converts it to structured HTML — preserving headings,
                   tables, lists, and math formulas (TeX notation rendered with KaTeX).
                 </p>
@@ -330,33 +330,33 @@ export default function AboutPage() {
       {/* ============================================================ */}
       {/*  COLLABORATION                                               */}
       {/* ============================================================ */}
-      <section className="relative bg-cail-cream">
+      <section className="relative bg-cail-cream dark:bg-slate-900">
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cail-teal/20 to-transparent" />
 
         <div className="max-w-5xl mx-auto px-6 sm:px-8 py-20 sm:py-28">
           <RevealSection>
             <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-blue mb-4">Collaboration</p>
-            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark max-w-2xl leading-tight">
+            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark dark:text-slate-200 max-w-2xl leading-tight">
               Work together on documents
             </h2>
           </RevealSection>
 
           <RevealSection delay={100}>
             <div className="mt-10 grid sm:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                <h4 className="font-display font-semibold text-cail-dark text-[15px] mb-3">Sharing &amp; roles</h4>
-                <ul className="space-y-2.5 text-sm text-gray-500">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 shadow-sm">
+                <h4 className="font-display font-semibold text-cail-dark dark:text-slate-200 text-[15px] mb-3">Sharing &amp; roles</h4>
+                <ul className="space-y-2.5 text-sm text-gray-500 dark:text-slate-400">
                   <li className="flex items-start gap-2">
                     <span className="text-cail-blue mt-0.5 shrink-0">&#8227;</span>
                     Share any project with collaborators by email
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-cail-blue mt-0.5 shrink-0">&#8227;</span>
-                    <strong className="text-gray-600">Viewers</strong> can read and export but not edit
+                    <strong className="text-gray-600 dark:text-slate-300">Viewers</strong> can read and export but not edit
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-cail-blue mt-0.5 shrink-0">&#8227;</span>
-                    <strong className="text-gray-600">Editors</strong> can modify text, run OCR, and manage pages
+                    <strong className="text-gray-600 dark:text-slate-300">Editors</strong> can modify text, run OCR, and manage pages
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-cail-blue mt-0.5 shrink-0">&#8227;</span>
@@ -365,9 +365,9 @@ export default function AboutPage() {
                 </ul>
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                <h4 className="font-display font-semibold text-cail-dark text-[15px] mb-3">Annotations &amp; notifications</h4>
-                <ul className="space-y-2.5 text-sm text-gray-500">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 shadow-sm">
+                <h4 className="font-display font-semibold text-cail-dark dark:text-slate-200 text-[15px] mb-3">Annotations &amp; notifications</h4>
+                <ul className="space-y-2.5 text-sm text-gray-500 dark:text-slate-400">
                   <li className="flex items-start gap-2">
                     <span className="text-cail-teal mt-0.5 shrink-0">&#8227;</span>
                     Leave comments on any document via the annotations sidebar
@@ -391,18 +391,18 @@ export default function AboutPage() {
 
           <RevealSection delay={200}>
             <div className="mt-6 grid sm:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                <h4 className="font-display font-semibold text-cail-dark text-[15px] mb-3">Version history</h4>
-                <p className="text-sm text-gray-500 leading-relaxed">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 shadow-sm">
+                <h4 className="font-display font-semibold text-cail-dark dark:text-slate-200 text-[15px] mb-3">Version history</h4>
+                <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed">
                   Every save creates a version snapshot. Browse previous versions with a visual diff, see who
                   made each change, and revert to any earlier state with one click. Available in the Review tab
                   of both editors.
                 </p>
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                <h4 className="font-display font-semibold text-cail-dark text-[15px] mb-3">Split &amp; merge</h4>
-                <p className="text-sm text-gray-500 leading-relaxed">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 shadow-sm">
+                <h4 className="font-display font-semibold text-cail-dark dark:text-slate-200 text-[15px] mb-3">Split &amp; merge</h4>
+                <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed">
                   Reorganize your documents after OCR. Split a text into multiple parts by assigning pages
                   to groups, or merge several texts into one. Useful when page order needs adjusting or
                   when separate scans belong to the same document.
@@ -416,54 +416,54 @@ export default function AboutPage() {
       {/* ============================================================ */}
       {/*  QUICK REFERENCE                                             */}
       {/* ============================================================ */}
-      <section className="relative bg-white">
+      <section className="relative bg-white dark:bg-slate-800">
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cail-blue/20 to-transparent" />
 
         <div className="max-w-5xl mx-auto px-6 sm:px-8 py-20 sm:py-28">
           <RevealSection>
             <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-teal mb-4">Quick reference</p>
-            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark max-w-2xl leading-tight">
+            <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark dark:text-slate-200 max-w-2xl leading-tight">
               Supported formats &amp; limits
             </h2>
           </RevealSection>
 
           <RevealSection delay={100}>
-            <div className="mt-10 overflow-hidden rounded-2xl border border-gray-100 overflow-x-auto">
+            <div className="mt-10 overflow-hidden rounded-2xl border border-gray-100 dark:border-slate-700 overflow-x-auto">
               <table className="w-full text-sm min-w-[400px]">
                 <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-5 py-3 font-display font-semibold text-cail-dark text-xs uppercase tracking-wider">Category</th>
-                    <th className="px-5 py-3 font-display font-semibold text-cail-dark text-xs uppercase tracking-wider">Details</th>
+                  <tr className="bg-gray-50 dark:bg-slate-700 text-left">
+                    <th className="px-5 py-3 font-display font-semibold text-cail-dark dark:text-slate-200 text-xs uppercase tracking-wider">Category</th>
+                    <th className="px-5 py-3 font-display font-semibold text-cail-dark dark:text-slate-200 text-xs uppercase tracking-wider">Details</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                   <tr>
-                    <td className="px-5 py-3 text-gray-600 font-medium">Image formats</td>
-                    <td className="px-5 py-3 text-gray-500">JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF</td>
+                    <td className="px-5 py-3 text-gray-600 dark:text-slate-300 font-medium">Image formats</td>
+                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400">JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF</td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 text-gray-600 font-medium">PDF upload</td>
-                    <td className="px-5 py-3 text-gray-500">Any PDF — rasterized for Image-to-Markdown, parsed natively for PDF-to-HTML</td>
+                    <td className="px-5 py-3 text-gray-600 dark:text-slate-300 font-medium">PDF upload</td>
+                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400">Any PDF — rasterized for Image-to-Markdown, parsed natively for PDF-to-HTML</td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 text-gray-600 font-medium">Storage quota</td>
-                    <td className="px-5 py-3 text-gray-500">50 MB per user (uploaded images and PDFs)</td>
+                    <td className="px-5 py-3 text-gray-600 dark:text-slate-300 font-medium">Storage quota</td>
+                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400">50 MB per user (uploaded images and PDFs)</td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 text-gray-600 font-medium">Math notation</td>
-                    <td className="px-5 py-3 text-gray-500">TeX/LaTeX rendered with KaTeX; converted to MathML at export</td>
+                    <td className="px-5 py-3 text-gray-600 dark:text-slate-300 font-medium">Math notation</td>
+                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400">TeX/LaTeX rendered with KaTeX; converted to MathML at export</td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 text-gray-600 font-medium">Languages</td>
-                    <td className="px-5 py-3 text-gray-500">40+ languages for OCR and translation</td>
+                    <td className="px-5 py-3 text-gray-600 dark:text-slate-300 font-medium">Languages</td>
+                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400">40+ languages for OCR and translation</td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 text-gray-600 font-medium">Project expiry</td>
-                    <td className="px-5 py-3 text-gray-500">Projects expire after 90 days — export your work before then</td>
+                    <td className="px-5 py-3 text-gray-600 dark:text-slate-300 font-medium">Project expiry</td>
+                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400">Projects expire after 90 days — export your work before then</td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 text-gray-600 font-medium">Export format</td>
-                    <td className="px-5 py-3 text-gray-500">ZIP archive with Markdown or HTML + images, ready for Manifold ingestion</td>
+                    <td className="px-5 py-3 text-gray-600 dark:text-slate-300 font-medium">Export format</td>
+                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400">ZIP archive with Markdown or HTML + images, ready for Manifold ingestion</td>
                   </tr>
                 </tbody>
               </table>

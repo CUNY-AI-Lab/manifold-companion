@@ -194,7 +194,7 @@ export default function SharePanel({ projectId, open, onClose }) {
                 </select>
                 <button
                   onClick={() => handleRemove(share.id)}
-                  className="px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                  className="px-3 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
                 >
                   Remove
                 </button>

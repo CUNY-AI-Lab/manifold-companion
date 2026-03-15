@@ -110,7 +110,7 @@ export default function SearchPage() {
                 <h2 className="font-display font-semibold text-sm text-cail-dark dark:text-slate-200">{group.name || 'Unknown Project'}</h2>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                   group.type === 'pdf_to_html'
-                    ? 'bg-amber-100 text-amber-700'
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                     : 'bg-cail-blue/10 text-cail-blue'
                 }`}>
                   {group.type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}

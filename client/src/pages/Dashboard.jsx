@@ -276,7 +276,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       project.project_type === 'pdf_to_html'
-                        ? 'bg-amber-100 text-amber-700'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                         : 'bg-cail-blue/10 text-cail-blue'
                     }`}>
                       {project.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}
@@ -288,7 +288,7 @@ export default function Dashboard() {
                       {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
                     </span>
                     {days !== null && (
-                      <span className={`text-xs ${days <= 7 ? 'text-red-500' : 'text-gray-400'}`}>
+                      <span className={`text-xs ${days <= 7 ? 'text-red-500' : 'text-gray-400 dark:text-slate-500'}`}>
                         {days} day{days !== 1 ? 's' : ''} left
                       </span>
                     )}
@@ -327,14 +327,14 @@ export default function Dashboard() {
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     project.share_role === 'editor'
-                      ? 'bg-green-100 text-green-700'
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                       : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
                   }`}>
                     {project.share_role === 'editor' ? 'Editor' : 'Viewer'}
                   </span>
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     project.project_type === 'pdf_to_html'
-                      ? 'bg-amber-100 text-amber-700'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                       : 'bg-cail-blue/10 text-cail-blue'
                   }`}>
                     {project.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}
@@ -368,7 +368,7 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-600 dark:text-slate-400 group-hover:text-cail-teal transition-colors">Storage</span>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 dark:text-slate-400">
                   {formatBytes(usedStorage)} / {formatBytes(totalStorage)}
                 </span>
               </div>
@@ -393,7 +393,7 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-600 dark:text-slate-400 group-hover:text-cail-blue transition-colors">Token Usage</span>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 dark:text-slate-400">
                   {formatTokens(tokenUsage)} / {formatTokens(tokenAllowance)}
                 </span>
               </div>

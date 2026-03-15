@@ -178,7 +178,7 @@ function TBtn({ onClick, title, children, active, className: extra }) {
       onMouseDown={(e) => { e.preventDefault(); onClick(); }}
       title={title}
       className={`px-2 py-1.5 rounded text-sm font-medium transition hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-cail-dark dark:hover:text-slate-200 ${
-        active ? 'bg-cail-blue/10 text-cail-blue' : 'text-gray-600'
+        active ? 'bg-cail-blue/10 text-cail-blue' : 'text-gray-600 dark:text-slate-400'
       } ${extra || ''}`}
     >
       {children}
@@ -187,7 +187,7 @@ function TBtn({ onClick, title, children, active, className: extra }) {
 }
 
 function Sep() {
-  return <div className="w-px h-5 bg-gray-200 mx-0.5" />;
+  return <div className="w-px h-5 bg-gray-200 dark:bg-slate-600 mx-0.5" />;
 }
 
 function getBlockTag() {
@@ -286,7 +286,7 @@ function FormattingToolbar({ onDirty, editableRef }) {
   }
 
   return (
-    <div className="border-b border-gray-200 dark:border-slate-700 bg-gray-50/80 rounded-t-xl">
+    <div className="border-b border-gray-200 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-700/50 rounded-t-xl">
       <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5">
         {/* Block type */}
         <select
@@ -294,7 +294,7 @@ function FormattingToolbar({ onDirty, editableRef }) {
           onMouseDown={(e) => e.stopPropagation()}
           onChange={(e) => { const v = e.target.value; if (v) { formatBlock(v); setBlockTag(v); onDirty(); } }}
           value={blockTag}
-          className="px-2 py-1 rounded border border-gray-200 dark:border-slate-700 text-xs text-gray-700 bg-white hover:border-gray-300 dark:border-slate-600 focus:border-cail-blue outline-none cursor-pointer"
+          className="px-2 py-1 rounded border border-gray-200 dark:border-slate-600 text-xs text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-700 hover:border-gray-300 dark:hover:border-slate-500 focus:border-cail-blue outline-none cursor-pointer"
           title="Block type"
         >
           <option value="p">Paragraph</option>
@@ -392,12 +392,12 @@ function FormattingToolbar({ onDirty, editableRef }) {
       </div>
 
       {showFind && (
-        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-100 dark:border-slate-700 bg-gray-50/50">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-700/30">
           <input
             ref={findRef}
             type="text"
             placeholder="Find..."
-            className="px-2 py-1 text-xs border border-gray-200 dark:border-slate-700 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
+            className="px-2 py-1 text-xs border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-slate-700 dark:text-slate-200 w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
             onKeyDown={(e) => { if (e.key === 'Enter') doFind(); }}
           />
           <button onClick={doFind} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600">Find</button>
@@ -405,7 +405,7 @@ function FormattingToolbar({ onDirty, editableRef }) {
             ref={replaceRef}
             type="text"
             placeholder="Replace..."
-            className="px-2 py-1 text-xs border border-gray-200 dark:border-slate-700 rounded bg-white w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
+            className="px-2 py-1 text-xs border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-slate-700 dark:text-slate-200 w-36 focus:border-cail-blue focus:ring-1 focus:ring-cail-blue/20 outline-none"
             onKeyDown={(e) => { if (e.key === 'Enter') doReplace(); }}
           />
           <button onClick={doReplace} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600">Replace</button>
@@ -1241,7 +1241,7 @@ export default function HtmlTextDetail() {
                         saveHtml();
                       }
                     }}
-                    className="pdf-preview-pane min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto bg-white p-4 sm:p-6 focus:outline-none"
+                    className="pdf-preview-pane min-h-[40vh] max-h-[50vh] lg:min-h-[75vh] lg:max-h-[75vh] overflow-auto bg-white dark:bg-slate-800 p-4 sm:p-6 focus:outline-none"
                     dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
                   />
                   <ImageResizer editableRef={editableRef} onDirty={() => setDirty(true)} />

@@ -1400,21 +1400,21 @@ export default function TextDetail() {
                     </div>
                   )}
                   {/* Markdown toolbar */}
-                  <div className="flex items-center gap-1 bg-white rounded-t-2xl border border-gray-100 border-b-0 p-1.5">
-                    <button onClick={() => insertReviewMarkdown('**', '**')} className="px-3 py-1 rounded text-sm font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Bold">B</button>
-                    <button onClick={() => insertReviewMarkdown('*', '*')} className="px-3 py-1 rounded text-sm italic text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Italic">I</button>
-                    <button onClick={() => insertReviewMarkdown('# ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 1">H1</button>
-                    <button onClick={() => insertReviewMarkdown('## ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 2">H2</button>
-                    <button onClick={() => insertReviewMarkdown('### ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 3">H3</button>
-                    <button onClick={() => insertReviewMarkdown('\n\n---\n\n')} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Separator">--</button>
-                    <button onClick={() => insertReviewMarkdown('> ')} className="px-3 py-1 rounded text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Blockquote">&ldquo;</button>
+                  <div className="flex items-center gap-1 bg-white dark:bg-slate-800 rounded-t-2xl border border-gray-100 dark:border-slate-700 border-b-0 p-1.5">
+                    <button onClick={() => insertReviewMarkdown('**', '**')} className="px-3 py-1 rounded text-sm font-bold text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Bold">B</button>
+                    <button onClick={() => insertReviewMarkdown('*', '*')} className="px-3 py-1 rounded text-sm italic text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Italic">I</button>
+                    <button onClick={() => insertReviewMarkdown('# ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 1">H1</button>
+                    <button onClick={() => insertReviewMarkdown('## ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 2">H2</button>
+                    <button onClick={() => insertReviewMarkdown('### ')} className="px-2 py-1 rounded text-xs font-bold text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Heading 3">H3</button>
+                    <button onClick={() => insertReviewMarkdown('\n\n---\n\n')} className="px-3 py-1 rounded text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Separator">--</button>
+                    <button onClick={() => insertReviewMarkdown('> ')} className="px-3 py-1 rounded text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Blockquote">&ldquo;</button>
                   </div>
                   <textarea
                     ref={reviewTextareaRef}
                     value={pageText}
                     onChange={(e) => setPageText(e.target.value)}
                     readOnly={role === 'viewer'}
-                    className={`w-full flex-1 px-4 py-3 rounded-b-2xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none ${role === 'viewer' ? 'bg-gray-50 dark:bg-slate-900 cursor-not-allowed' : 'bg-white'}`}
+                    className={`w-full flex-1 px-4 py-3 rounded-b-2xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none ${role === 'viewer' ? 'bg-gray-50 dark:bg-slate-900 cursor-not-allowed' : 'bg-white dark:bg-slate-800'} dark:text-slate-200`}
                     placeholder="OCR text for this page..."
                   />
                 </div>

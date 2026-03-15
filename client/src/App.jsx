@@ -31,7 +31,7 @@ function ProtectedRoute({ children, adminOnly = false }) {
 export default function App() {
   const { user } = useAuth();
   return (
-    <div className="min-h-screen flex flex-col bg-cail-cream">
+    <div className="min-h-screen flex flex-col bg-cail-cream dark:bg-slate-900">
       {user && <Header />}
       <main className={`flex-1 ${user ? 'pt-16' : ''}`}>
         <Routes>
