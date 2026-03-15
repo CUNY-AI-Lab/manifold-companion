@@ -1,17 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, BASE } from '../api/client';
 import { convertPdfToHtmlWithBedrock } from '../lib/pdfBedrockPipeline';
 import SharePanel from '../components/SharePanel';
 import Skeleton from '../components/Skeleton';
+import Pagination from '../components/Pagination';
+
+const TEXTS_PAGE_LIMIT = 20;
 
 export default function PdfProjectView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [project, setProject] = useState(null);
   const [texts, setTexts] = useState([]);
+  const [totalTexts, setTotalTexts] = useState(0);
+  const [textsPageSize, setTextsPageSize] = useState(TEXTS_PAGE_LIMIT);
+  const [textsPage, setTextsPage] = useState(() => Math.max(1, Number(searchParams.get('page')) || 1));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -51,15 +58,23 @@ export default function PdfProjectView() {
   const [exporting, setExporting] = useState(false);
   const [newSectionLabel, setNewSectionLabel] = useState('');
 
+  // Sync textsPage to URL
+  useEffect(() => {
+    const params = textsPage > 1 ? { page: String(textsPage) } : {};
+    setSearchParams(params, { replace: true });
+  }, [textsPage]);
+
   useEffect(() => {
     loadProject();
-  }, [id]);
+  }, [id, textsPage]);
 
   async function loadProject() {
     try {
-      const data = await api.get(`/api/projects/${id}`);
+      const data = await api.get(`/api/projects/${id}?page=${textsPage}&limit=${TEXTS_PAGE_LIMIT}`);
       setProject(data);
       setTexts(data.texts || []);
+      setTotalTexts(data.totalTexts ?? (data.texts || []).length);
+      setTextsPageSize(data.pageSize ?? TEXTS_PAGE_LIMIT);
       setNameValue(data.name);
       if (!selectedTextId && data.texts?.length) {
         setSelectedTextId(String(data.texts[0].id));
@@ -69,6 +84,11 @@ export default function PdfProjectView() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleTextsPageChange(newPage) {
+    setTextsPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function saveName() {
@@ -619,7 +639,7 @@ export default function PdfProjectView() {
       {/* Texts list */}
       <div className="space-y-4">
         <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">
-          Documents ({texts.length})
+          Documents ({totalTexts || texts.length})
         </h2>
 
         {texts.length === 0 && (
@@ -708,6 +728,14 @@ export default function PdfProjectView() {
             </div>
           </div>
         ))}
+
+        <Pagination
+          currentPage={textsPage}
+          totalPages={Math.ceil(totalTexts / textsPageSize)}
+          onPageChange={handleTextsPageChange}
+          totalItems={totalTexts}
+          pageSize={textsPageSize}
+        />
       </div>
 
       {pageDropActive && (

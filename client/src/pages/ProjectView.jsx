@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { api, BASE } from '../api/client';
 import SharePanel from '../components/SharePanel';
 import { SplitModal, MergeModal } from '../components/SplitMergeModals';
 import Skeleton from '../components/Skeleton';
+import Pagination from '../components/Pagination';
+
+const TEXTS_PAGE_LIMIT = 20;
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -94,9 +97,13 @@ export default function ProjectView() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [project, setProject] = useState(null);
   const [texts, setTexts] = useState([]);
+  const [totalTexts, setTotalTexts] = useState(0);
+  const [textsPageSize, setTextsPageSize] = useState(TEXTS_PAGE_LIMIT);
+  const [textsPage, setTextsPage] = useState(() => Math.max(1, Number(searchParams.get('page')) || 1));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -144,21 +151,34 @@ export default function ProjectView() {
   const [splitTextId, setSplitTextId] = useState(null);
   const [splitPages, setSplitPages] = useState([]);
 
+  // Sync textsPage to URL
+  useEffect(() => {
+    const params = textsPage > 1 ? { page: String(textsPage) } : {};
+    setSearchParams(params, { replace: true });
+  }, [textsPage]);
+
   useEffect(() => {
     loadProject();
-  }, [id]);
+  }, [id, textsPage]);
 
   async function loadProject() {
     try {
-      const data = await api.get(`/api/projects/${id}`);
+      const data = await api.get(`/api/projects/${id}?page=${textsPage}&limit=${TEXTS_PAGE_LIMIT}`);
       setProject(data);
       setTexts(data.texts || []);
+      setTotalTexts(data.totalTexts ?? (data.texts || []).length);
+      setTextsPageSize(data.pageSize ?? TEXTS_PAGE_LIMIT);
       setNameValue(data.name);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleTextsPageChange(newPage) {
+    setTextsPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function saveName() {
@@ -780,7 +800,7 @@ export default function ProjectView() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">
-            Texts ({texts.length})
+            Texts ({totalTexts || texts.length})
           </h2>
           {canEdit && texts.length >= 2 && (
             <button
@@ -880,6 +900,14 @@ export default function ProjectView() {
             </div>
           </div>
         ))}
+
+        <Pagination
+          currentPage={textsPage}
+          totalPages={Math.ceil(totalTexts / textsPageSize)}
+          onPageChange={handleTextsPageChange}
+          totalItems={totalTexts}
+          pageSize={textsPageSize}
+        />
       </div>
 
       {pageDropActive && (

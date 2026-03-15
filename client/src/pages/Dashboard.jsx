@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import SearchBar from '../components/SearchBar';
 import UsageBreakdown from '../components/UsageBreakdown';
 import Skeleton from '../components/Skeleton';
+import Pagination from '../components/Pagination';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -32,15 +33,27 @@ function daysRemaining(expiresAt) {
   return days > 0 ? days : 0;
 }
 
+const PAGE_LIMIT = 12;
+
 export default function Dashboard() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [projects, setProjects] = useState([]);
   const [shared, setShared] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalShared, setTotalShared] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_LIMIT);
+  const [sharedPageSize, setSharedPageSize] = useState(PAGE_LIMIT);
   const [storageUsed, setStorageUsed] = useState(0);
   const [tokenUsage, setTokenUsage] = useState(0);
   const [tokenAllowance, setTokenAllowance] = useState(5_000_000);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Pagination — read initial values from URL
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get('page')) || 1));
+  const [sharedPage, setSharedPage] = useState(() => Math.max(1, Number(searchParams.get('sharedPage')) || 1));
 
   // New project form
   const [showForm, setShowForm] = useState(false);
@@ -50,15 +63,29 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false);
   const [usageModal, setUsageModal] = useState(null);
 
+  // Sync page state to URL
+  useEffect(() => {
+    const params = {};
+    if (page > 1) params.page = String(page);
+    if (sharedPage > 1) params.sharedPage = String(sharedPage);
+    setSearchParams(params, { replace: true });
+  }, [page, sharedPage]);
+
   useEffect(() => {
     loadProjects();
-  }, []);
+  }, [page, sharedPage]);
 
   async function loadProjects() {
     try {
-      const data = await api.get('/api/projects');
+      const data = await api.get(
+        `/api/projects?page=${page}&limit=${PAGE_LIMIT}&sharedPage=${sharedPage}&sharedLimit=${PAGE_LIMIT}`
+      );
       setProjects(data.projects || []);
       setShared(data.shared || []);
+      setTotal(data.total ?? (data.projects || []).length);
+      setTotalShared(data.totalShared ?? (data.shared || []).length);
+      setPageSize(data.pageSize ?? PAGE_LIMIT);
+      setSharedPageSize(data.sharedPageSize ?? PAGE_LIMIT);
       setStorageUsed(data.storage_used_bytes || 0);
       setTokenUsage(data.token_usage || 0);
       setTokenAllowance(data.token_allowance || 5_000_000);
@@ -67,6 +94,15 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handlePageChange(newPage) {
+    setPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function handleSharedPageChange(newPage) {
+    setSharedPage(newPage);
   }
 
   async function handleCreate(e) {
@@ -221,48 +257,57 @@ export default function Dashboard() {
 
       {/* Project grid */}
       {!loading && projects.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => {
-            const days = daysRemaining(project.expires_at);
-            return (
-              <Link
-                key={project.id}
-                to={`/projects/${project.id}`}
-                className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
-              >
-                <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors mb-2">
-                  {project.name}
-                </h3>
-                {project.description && (
-                  <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 line-clamp-2">{project.description}</p>
-                )}
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    project.project_type === 'pdf_to_html'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-cail-blue/10 text-cail-blue'
-                  }`}>
-                    {project.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}
-                  </span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cail-blue/10 text-cail-blue">
-                    {project.text_count || 0} text{(project.text_count || 0) !== 1 ? 's' : ''}
-                  </span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">
-                    {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
-                  </span>
-                  {days !== null && (
-                    <span className={`text-xs ${days <= 7 ? 'text-red-500' : 'text-gray-400'}`}>
-                      {days} day{days !== 1 ? 's' : ''} left
-                    </span>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((project) => {
+              const days = daysRemaining(project.expires_at);
+              return (
+                <Link
+                  key={project.id}
+                  to={`/projects/${project.id}`}
+                  className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
+                >
+                  <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors mb-2">
+                    {project.name}
+                  </h3>
+                  {project.description && (
+                    <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 line-clamp-2">{project.description}</p>
                   )}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      project.project_type === 'pdf_to_html'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-cail-blue/10 text-cail-blue'
+                    }`}>
+                      {project.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}
+                    </span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cail-blue/10 text-cail-blue">
+                      {project.text_count || 0} text{(project.text_count || 0) !== 1 ? 's' : ''}
+                    </span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">
+                      {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
+                    </span>
+                    {days !== null && (
+                      <span className={`text-xs ${days <= 7 ? 'text-red-500' : 'text-gray-400'}`}>
+                        {days} day{days !== 1 ? 's' : ''} left
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+          <Pagination
+            currentPage={page}
+            totalPages={Math.ceil(total / pageSize)}
+            onPageChange={handlePageChange}
+            totalItems={total}
+            pageSize={pageSize}
+          />
+        </>
       )}
       {/* Shared with You */}
-      {shared.length > 0 && (
+      {(shared.length > 0 || totalShared > 0) && (
         <>
           <div className="mt-12 mb-6">
             <h2 className="font-display font-semibold text-xl text-cail-dark dark:text-slate-200">Shared with You</h2>
@@ -304,6 +349,13 @@ export default function Dashboard() {
               </Link>
             ))}
           </div>
+          <Pagination
+            currentPage={sharedPage}
+            totalPages={Math.ceil(totalShared / sharedPageSize)}
+            onPageChange={handleSharedPageChange}
+            totalItems={totalShared}
+            pageSize={sharedPageSize}
+          />
         </>
       )}
       {/* Usage bars */}
