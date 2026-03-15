@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, BASE } from '../api/client';
 import { convertPdfToHtmlWithBedrock } from '../lib/pdfBedrockPipeline';
 import SharePanel from '../components/SharePanel';
+import Skeleton from '../components/Skeleton';
 
 export default function PdfProjectView() {
   const { id } = useParams();
@@ -332,8 +333,12 @@ export default function PdfProjectView() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cail-blue"></div>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Skeleton.Box className="h-8 w-64 mb-2" />
+        <Skeleton.Box className="h-4 w-96 mb-8" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }, (_, i) => <Skeleton.TextRow key={i} />)}
+        </div>
       </div>
     );
   }

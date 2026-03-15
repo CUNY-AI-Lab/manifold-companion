@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import SearchBar from '../components/SearchBar';
 import UsageBreakdown from '../components/UsageBreakdown';
+import Skeleton from '../components/Skeleton';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -197,8 +198,8 @@ export default function Dashboard() {
 
       {/* Loading state */}
       {loading && (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cail-blue"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }, (_, i) => <Skeleton.Card key={i} />)}
         </div>
       )}
 

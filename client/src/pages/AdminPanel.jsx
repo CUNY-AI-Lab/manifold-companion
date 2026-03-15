@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api, BASE } from '../api/client';
+import Skeleton from '../components/Skeleton';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -814,8 +815,16 @@ export default function AdminPanel() {
 
       {/* Loading */}
       {loading && tab === 'users' && (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cail-blue"></div>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
+              <Skeleton.Circle className="h-8 w-8" />
+              <Skeleton.Box className="h-4 w-40" />
+              <Skeleton.Box className="h-4 w-24" />
+              <Skeleton.Box className="h-4 w-20" />
+              <Skeleton.Box className="h-4 w-16 ml-auto" />
+            </div>
+          ))}
         </div>
       )}
 
