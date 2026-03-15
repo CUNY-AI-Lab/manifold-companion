@@ -3,10 +3,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 const DRAFT_DEBOUNCE_MS = 5000;
 const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-export default function useUnsavedChanges(draftKey, currentContent, serverUpdatedAt, { enabled = true } = {}) {
+export default function useUnsavedChanges(draftKey, currentContent, serverUpdatedAt, { enabled = true, isDirtyOverride, getContent } = {}) {
   const savedContentRef = useRef(currentContent);
   const [draftBanner, setDraftBanner] = useState(null);
-  const isDirty = enabled && currentContent !== savedContentRef.current;
+  const isDirty = enabled && (isDirtyOverride !== undefined ? isDirtyOverride : currentContent !== savedContentRef.current);
 
   // Draft recovery on mount
   useEffect(() => {
@@ -36,14 +36,15 @@ export default function useUnsavedChanges(draftKey, currentContent, serverUpdate
     if (!enabled || !draftKey || !isDirty) return;
     const timer = setTimeout(() => {
       try {
+        const content = getContent ? getContent() : currentContent;
         localStorage.setItem(draftKey, JSON.stringify({
-          content: currentContent,
+          content,
           savedAt: Date.now(),
         }));
       } catch {}
     }, DRAFT_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [enabled, draftKey, currentContent, isDirty]);
+  }, [enabled, draftKey, currentContent, isDirty, getContent]);
 
   // beforeunload guard
   useEffect(() => {

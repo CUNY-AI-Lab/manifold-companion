@@ -623,11 +623,20 @@ export default function HtmlTextDetail() {
   const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
   const [showShortcuts, setShowShortcuts] = useState(false);
 
+  const getContentForDraft = useCallback(() => {
+    if (!sourceMode && editableRef.current) {
+      return extractTexFromKatex(normalizeImageSrcs(editableRef.current.innerHTML));
+    } else if (sourceMode && sourceRef.current) {
+      return sourceRef.current.value;
+    }
+    return htmlContent;
+  }, [sourceMode, htmlContent]);
+
   const { isDirty: hasUnsaved, draftBanner, dismissDraft, restoreDraft, markSaved } = useUnsavedChanges(
     text ? `mc-draft-${id}-html` : null,
     htmlContent,
     text?.updated_at,
-    { enabled: activeTab === 'Review' }
+    { enabled: activeTab === 'Review', isDirtyOverride: dirty, getContent: getContentForDraft }
   );
 
   // Details tab state
