@@ -20,6 +20,8 @@ import textRoutes from './routes/texts.js';
 import ocrRoutes from './routes/ocr.js';
 import llmRoutes from './routes/llm.js';
 import exportRoutes from './routes/export.js';
+import sharesRoutes from './routes/shares.js';
+import annotationRoutes from './routes/annotations.js';
 import { startCleanupCron } from './services/cleanup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -116,6 +118,8 @@ app.use('/api', textRoutes);
 app.use('/api', ocrRoutes);
 app.use('/api', llmRoutes);
 app.use('/api', exportRoutes);
+app.use('/api/projects/:projectId/shares', sharesRoutes);
+app.use('/api', annotationRoutes);
 
 // Serve React app in production
 const clientDist = join(__dirname, '..', 'client', 'dist');

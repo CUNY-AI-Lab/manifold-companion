@@ -118,6 +118,52 @@ function createSchema() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (text_id) REFERENCES texts(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS project_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('viewer', 'editor')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(project_id, user_id),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS text_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      text_id INTEGER NOT NULL,
+      content_type TEXT NOT NULL CHECK(content_type IN ('compiled', 'html', 'page')),
+      content TEXT NOT NULL,
+      page_filename TEXT,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (text_id) REFERENCES texts(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_text_versions_lookup
+      ON text_versions(text_id, content_type, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS annotations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      text_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      parent_id INTEGER,
+      anchor_type TEXT NOT NULL CHECK(anchor_type IN ('range', 'point', 'global')),
+      anchor_data TEXT,
+      body TEXT NOT NULL,
+      resolved INTEGER NOT NULL DEFAULT 0,
+      resolved_by INTEGER,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (text_id) REFERENCES texts(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (parent_id) REFERENCES annotations(id) ON DELETE CASCADE,
+      FOREIGN KEY (resolved_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_annotations_lookup
+      ON annotations(text_id, resolved, created_at);
   `);
 }
 
@@ -601,13 +647,17 @@ export function deleteTextSettings(textId) {
 export function searchTexts(userId, query) {
   const pattern = `%${query}%`;
   return db.prepare(`
-    SELECT t.*, p.name AS project_name
+    SELECT t.*, p.name AS project_name, p.project_type,
+      CASE WHEN p.user_id = ? THEN 'owner' ELSE ps.role END AS access_role
     FROM texts t
     JOIN projects p ON t.project_id = p.id
-    WHERE p.user_id = ?
+    LEFT JOIN project_shares ps ON ps.project_id = p.id AND ps.user_id = ?
+    WHERE (p.user_id = ? OR ps.user_id = ?)
       AND (
         t.name LIKE ?
         OR t.summary LIKE ?
+        OR p.name LIKE ?
+        OR t.html_content LIKE ?
         OR EXISTS (
           SELECT 1 FROM pages pg WHERE pg.text_id = t.id AND pg.ocr_text LIKE ?
         )
@@ -618,5 +668,178 @@ export function searchTexts(userId, query) {
         )
       )
     ORDER BY t.updated_at DESC
-  `).all(userId, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+    LIMIT 50
+  `).all(userId, userId, userId, userId, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+}
+
+// ---------------------------------------------------------------------------
+// Project Shares
+// ---------------------------------------------------------------------------
+
+export function createProjectShare(projectId, userId, role = 'viewer') {
+  const stmt = db.prepare(
+    'INSERT INTO project_shares (project_id, user_id, role) VALUES (?, ?, ?)'
+  );
+  const result = stmt.run(projectId, userId, role);
+  return result.lastInsertRowid;
+}
+
+export function getProjectShares(projectId) {
+  return db.prepare(`
+    SELECT ps.id, ps.user_id, u.email, ps.role, ps.created_at
+    FROM project_shares ps
+    JOIN users u ON u.id = ps.user_id
+    WHERE ps.project_id = ?
+    ORDER BY ps.created_at ASC
+  `).all(projectId);
+}
+
+export function getProjectShare(projectId, userId) {
+  return db.prepare(
+    'SELECT * FROM project_shares WHERE project_id = ? AND user_id = ?'
+  ).get(projectId, userId);
+}
+
+export function updateProjectShareRole(projectId, userId, role) {
+  return db.prepare(
+    'UPDATE project_shares SET role = ? WHERE project_id = ? AND user_id = ?'
+  ).run(role, projectId, userId);
+}
+
+export function deleteProjectShare(projectId, userId) {
+  return db.prepare(
+    'DELETE FROM project_shares WHERE project_id = ? AND user_id = ?'
+  ).run(projectId, userId);
+}
+
+export function deleteProjectShareById(shareId) {
+  return db.prepare('DELETE FROM project_shares WHERE id = ?').run(shareId);
+}
+
+export function getProjectShareById(shareId) {
+  return db.prepare('SELECT * FROM project_shares WHERE id = ?').get(shareId);
+}
+
+export function getSharedProjectsByUser(userId) {
+  return db.prepare(`
+    SELECT p.*, ps.role AS share_role, u.email AS owner_email
+    FROM projects p
+    JOIN project_shares ps ON ps.project_id = p.id
+    JOIN users u ON u.id = p.user_id
+    WHERE ps.user_id = ?
+    ORDER BY p.updated_at DESC
+  `).all(userId);
+}
+
+export function getUserProjectRole(projectId, userId) {
+  const row = db.prepare(`
+    SELECT CASE WHEN p.user_id = ? THEN 'owner' ELSE ps.role END AS role
+    FROM projects p
+    LEFT JOIN project_shares ps ON ps.project_id = p.id AND ps.user_id = ?
+    WHERE p.id = ?
+  `).get(userId, userId, projectId);
+  return row?.role || null;
+}
+
+// ---------------------------------------------------------------------------
+// Text Versions
+// ---------------------------------------------------------------------------
+
+export function createTextVersion(textId, contentType, content, userId, pageFilename = null) {
+  const stmt = db.prepare(
+    'INSERT INTO text_versions (text_id, content_type, content, page_filename, user_id) VALUES (?, ?, ?, ?, ?)'
+  );
+  const result = stmt.run(textId, contentType, content, pageFilename, userId);
+
+  // Prune to keep last 50 versions per text+type
+  db.prepare(`
+    DELETE FROM text_versions WHERE id IN (
+      SELECT id FROM text_versions
+      WHERE text_id = ? AND content_type = ?
+      ORDER BY created_at DESC
+      LIMIT -1 OFFSET 50
+    )
+  `).run(textId, contentType);
+
+  return result.lastInsertRowid;
+}
+
+export function getTextVersions(textId, contentType, limit = 50) {
+  return db.prepare(`
+    SELECT tv.id, tv.content_type, tv.page_filename, tv.user_id, u.email AS user_email, tv.created_at
+    FROM text_versions tv
+    JOIN users u ON u.id = tv.user_id
+    WHERE tv.text_id = ? AND tv.content_type = ?
+    ORDER BY tv.created_at DESC
+    LIMIT ?
+  `).all(textId, contentType, limit);
+}
+
+export function getTextVersionById(versionId) {
+  return db.prepare('SELECT * FROM text_versions WHERE id = ?').get(versionId);
+}
+
+// ---------------------------------------------------------------------------
+// Annotations
+// ---------------------------------------------------------------------------
+
+export function createAnnotation(textId, userId, anchorType, anchorData, body, parentId = null) {
+  const stmt = db.prepare(
+    'INSERT INTO annotations (text_id, user_id, parent_id, anchor_type, anchor_data, body) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  const result = stmt.run(textId, userId, parentId, anchorType, anchorData ? JSON.stringify(anchorData) : null, body);
+  return result.lastInsertRowid;
+}
+
+export function getAnnotationsByText(textId, includeResolved = false) {
+  const resolvedClause = includeResolved ? '' : 'AND a.resolved = 0';
+  return db.prepare(`
+    SELECT a.*, u.email AS user_email,
+      (SELECT COUNT(*) FROM annotations r WHERE r.parent_id = a.id) AS reply_count
+    FROM annotations a
+    JOIN users u ON u.id = a.user_id
+    WHERE a.text_id = ? AND a.parent_id IS NULL ${resolvedClause}
+    ORDER BY a.created_at ASC
+  `).all(textId);
+}
+
+export function getAnnotationById(id) {
+  return db.prepare(`
+    SELECT a.*, u.email AS user_email
+    FROM annotations a
+    JOIN users u ON u.id = a.user_id
+    WHERE a.id = ?
+  `).get(id);
+}
+
+export function updateAnnotationBody(id, body) {
+  return db.prepare(
+    "UPDATE annotations SET body = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(body, id);
+}
+
+export function resolveAnnotation(id, userId) {
+  return db.prepare(
+    "UPDATE annotations SET resolved = 1, resolved_by = ?, resolved_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
+  ).run(userId, id);
+}
+
+export function unresolveAnnotation(id) {
+  return db.prepare(
+    "UPDATE annotations SET resolved = 0, resolved_by = NULL, resolved_at = NULL, updated_at = datetime('now') WHERE id = ?"
+  ).run(id);
+}
+
+export function deleteAnnotation(id) {
+  return db.prepare('DELETE FROM annotations WHERE id = ?').run(id);
+}
+
+export function getAnnotationReplies(parentId) {
+  return db.prepare(`
+    SELECT a.*, u.email AS user_email
+    FROM annotations a
+    JOIN users u ON u.id = a.user_id
+    WHERE a.parent_id = ?
+    ORDER BY a.created_at ASC
+  `).all(parentId);
 }

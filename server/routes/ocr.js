@@ -7,10 +7,9 @@ import { join } from 'path';
 import { readFile } from 'fs/promises';
 import sharp from 'sharp';
 import { requireAuth } from '../middleware/auth.js';
+import { verifyTextAccess } from '../middleware/access.js';
 import { aiLimiter } from '../middleware/rateLimits.js';
 import {
-  getTextById,
-  getProjectById,
   getPagesByText,
   getTextSettings,
   savePageOCR,
@@ -24,24 +23,6 @@ const router = Router();
 
 // All routes require authentication
 router.use(requireAuth);
-
-// ---------------------------------------------------------------------------
-// Ownership helper
-// ---------------------------------------------------------------------------
-
-function verifyTextOwnership(textId, userId) {
-  const text = getTextById(textId);
-  if (!text) {
-    return { status: 404, error: 'Text not found.' };
-  }
-
-  const project = getProjectById(text.project_id);
-  if (!project || project.user_id !== userId) {
-    return { status: 403, error: 'Access denied.' };
-  }
-
-  return { text, project };
-}
 
 function requireImageProject(project) {
   if (project.project_type !== 'image_to_markdown') {
@@ -92,7 +73,7 @@ function compileFullText(textId) {
 // ---- GET /texts/:id/ocr — SSE stream for OCR processing -----------------
 router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
     const typeCheck = requireImageProject(result.project);
     if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
@@ -121,7 +102,7 @@ router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
     // Load pages and settings
     const pages = getPagesByText(text.id).filter((p) => p.filename !== '__compiled__');
     const settings = getTextSettings(text.id) || {};
-    const dir = getTextDir(req.user.id, project.id, text.id);
+    const dir = getTextDir(project.user_id, project.id, text.id);
 
     if (pages.length === 0) {
       sendEvent('error', { message: 'No pages found. Upload images first.' });
@@ -204,7 +185,7 @@ router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
 // ---- POST /texts/:id/ocr-single — re-OCR a single page ------------------
 router.post('/texts/:id/ocr-single', aiLimiter, async (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
     const typeCheck = requireImageProject(result.project);
     if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
@@ -223,7 +204,7 @@ router.post('/texts/:id/ocr-single', aiLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Page not found.' });
     }
 
-    const dir = getTextDir(req.user.id, project.id, text.id);
+    const dir = getTextDir(project.user_id, project.id, text.id);
     const filePath = join(dir, page.filename);
     const settings = getTextSettings(text.id) || {};
 

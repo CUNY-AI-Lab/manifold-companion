@@ -7,10 +7,10 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import archiver from 'archiver';
 import { requireAuth } from '../middleware/auth.js';
+import { verifyProjectAccess } from '../middleware/access.js';
 import { convertHtmlTexToMathML } from '../services/openrouter.js';
 import { getTextDir } from '../services/storage.js';
 import {
-  getProjectById,
   getTextById,
   getPagesByText,
   getTextMetadata,
@@ -24,31 +24,13 @@ const router = Router();
 router.use(requireAuth);
 
 // ---------------------------------------------------------------------------
-// Ownership helper
-// ---------------------------------------------------------------------------
-
-function verifyProjectOwnership(projectId, userId) {
-  const project = getProjectById(projectId);
-  if (!project) {
-    return { status: 404, error: 'Project not found.' };
-  }
-  if (project.user_id !== userId) {
-    return { status: 403, error: 'Access denied.' };
-  }
-  return { project };
-}
-
-// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
 // ---- GET /projects/:projectId/export-settings — load saved export config --
 router.get('/projects/:projectId/export-settings', (req, res) => {
   try {
-    const result = verifyProjectOwnership(
-      Number(req.params.projectId),
-      req.user.id
-    );
+    const result = verifyProjectAccess(Number(req.params.projectId), req.user.id, 'viewer');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const settings = getProjectExportSettings(result.project.id);
@@ -62,10 +44,7 @@ router.get('/projects/:projectId/export-settings', (req, res) => {
 // ---- POST /projects/:projectId/export — generate Manifold ZIP ------------
 router.post('/projects/:projectId/export', async (req, res) => {
   try {
-    const result = verifyProjectOwnership(
-      Number(req.params.projectId),
-      req.user.id
-    );
+    const result = verifyProjectAccess(Number(req.params.projectId), req.user.id, 'viewer');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const { project } = result;
@@ -183,7 +162,7 @@ router.post('/projects/:projectId/export', async (req, res) => {
         if (uniqueImages.length > 0) {
           // Add images to a subfolder in the archive
           const imgDir = `images-${num}`;
-          const textDir = getTextDir(req.user.id, project.id, text.id);
+          const textDir = getTextDir(project.user_id, project.id, text.id);
           for (const imgFilename of uniqueImages) {
             try {
               const imgBuffer = await readFile(join(textDir, imgFilename));

@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { verifyProjectAccess } from '../middleware/access.js';
 import { ALLOWED_LANGUAGES } from './texts.js';
 import {
   createProject,
@@ -15,6 +16,7 @@ import {
   getPageCountByProject,
   getPageCountByText,
   reorderTexts,
+  getSharedProjectsByUser,
 } from '../db.js';
 import { deleteProjectFiles } from '../services/storage.js';
 
@@ -26,7 +28,7 @@ export { ALLOWED_PROJECT_TYPES };
 // All routes require authentication
 router.use(requireAuth);
 
-// ---- GET / — list user's projects ----------------------------------------
+// ---- GET / — list user's projects + shared projects ----------------------
 router.get('/', (req, res) => {
   try {
     const projects = getProjectsByUser(req.user.id);
@@ -37,7 +39,14 @@ router.get('/', (req, res) => {
       return { ...p, text_count: texts.length, page_count: getPageCountByProject(p.id) };
     });
 
-    res.json({ projects: enriched, storage_used_bytes: req.user.storage_used_bytes || 0 });
+    // Get projects shared with this user
+    const sharedRaw = getSharedProjectsByUser(req.user.id);
+    const shared = sharedRaw.map((p) => {
+      const texts = getTextsByProject(p.id);
+      return { ...p, text_count: texts.length, page_count: getPageCountByProject(p.id) };
+    });
+
+    res.json({ projects: enriched, shared, storage_used_bytes: req.user.storage_used_bytes || 0 });
   } catch (err) {
     console.error('GET /api/projects error:', err);
     res.status(500).json({ error: 'Internal server error.' });
@@ -86,39 +95,25 @@ router.post('/', (req, res) => {
 // ---- GET /:id — get single project with its texts -------------------------
 router.get('/:id', (req, res) => {
   try {
-    const project = getProjectById(Number(req.params.id));
+    const result = verifyProjectAccess(Number(req.params.id), req.user.id, 'viewer');
+    if (result.error) return res.status(result.status).json({ error: result.error });
 
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found.' });
-    }
-
-    if (project.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied.' });
-    }
-
-    const texts = getTextsByProject(project.id).map((t) => ({
+    const texts = getTextsByProject(result.project.id).map((t) => ({
       ...t,
       page_count: getPageCountByText(t.id),
     }));
-    res.json({ ...project, texts });
+    res.json({ ...result.project, texts, role: result.role });
   } catch (err) {
     console.error('GET /api/projects/:id error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
 
-// ---- PUT /:id — update project -------------------------------------------
+// ---- PUT /:id — update project (editor+) ---------------------------------
 router.put('/:id', (req, res) => {
   try {
-    const project = getProjectById(Number(req.params.id));
-
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found.' });
-    }
-
-    if (project.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied.' });
-    }
+    const result = verifyProjectAccess(Number(req.params.id), req.user.id, 'editor');
+    if (result.error) return res.status(result.status).json({ error: result.error });
 
     const { name, description, default_language } = req.body || {};
 
@@ -132,9 +127,9 @@ router.put('/:id', (req, res) => {
       fields.default_language = default_language;
     }
 
-    updateProject(project.id, fields);
+    updateProject(result.project.id, fields);
 
-    const updated = getProjectById(project.id);
+    const updated = getProjectById(result.project.id);
     res.json(updated);
   } catch (err) {
     console.error('PUT /api/projects/:id error:', err);
@@ -142,25 +137,18 @@ router.put('/:id', (req, res) => {
   }
 });
 
-// ---- PUT /:id/texts/reorder — reorder texts within project ----------------
+// ---- PUT /:id/texts/reorder — reorder texts within project (editor+) -----
 router.put('/:id/texts/reorder', (req, res) => {
   try {
-    const project = getProjectById(Number(req.params.id));
-
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found.' });
-    }
-
-    if (project.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied.' });
-    }
+    const result = verifyProjectAccess(Number(req.params.id), req.user.id, 'editor');
+    if (result.error) return res.status(result.status).json({ error: result.error });
 
     const { textIds } = req.body || {};
     if (!Array.isArray(textIds) || textIds.length === 0) {
       return res.status(400).json({ error: 'textIds array is required.' });
     }
 
-    reorderTexts(project.id, textIds.map(Number));
+    reorderTexts(result.project.id, textIds.map(Number));
     res.json({ ok: true });
   } catch (err) {
     console.error('PUT /api/projects/:id/texts/reorder error:', err);
@@ -168,24 +156,17 @@ router.put('/:id/texts/reorder', (req, res) => {
   }
 });
 
-// ---- DELETE /:id — delete project + files ---------------------------------
+// ---- DELETE /:id — delete project + files (owner only) -------------------
 router.delete('/:id', async (req, res) => {
   try {
-    const project = getProjectById(Number(req.params.id));
+    const result = verifyProjectAccess(Number(req.params.id), req.user.id, 'owner');
+    if (result.error) return res.status(result.status).json({ error: result.error });
 
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found.' });
-    }
+    // Remove files from disk first (files are in owner's directory)
+    await deleteProjectFiles(result.project.user_id, result.project.id);
 
-    if (project.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied.' });
-    }
-
-    // Remove files from disk first
-    await deleteProjectFiles(req.user.id, project.id);
-
-    // Then delete from database (cascades to texts, pages, metadata, settings)
-    deleteProject(project.id);
+    // Then delete from database (cascades to texts, pages, metadata, settings, shares)
+    deleteProject(result.project.id);
 
     res.json({ ok: true });
   } catch (err) {

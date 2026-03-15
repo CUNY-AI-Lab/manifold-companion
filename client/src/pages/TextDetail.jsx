@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { api, BASE } from '../api/client';
+import VersionHistory from '../components/VersionHistory';
+import AnnotationSidebar from '../components/AnnotationSidebar';
 
 /**
  * Resize a canvas-based image to ensure it stays under maxBytes (approx).
@@ -330,13 +332,17 @@ function renderSanitizedMarkdown(md) {
 
 export default function TextDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
 
   const [text, setText] = useState(null);
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
-  const [activeTab, setActiveTab] = useState('Pages');
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab');
+    return TABS.includes(tab) ? tab : 'Pages';
+  });
 
   // Upload state
   const fileInputRef = useRef(null);
@@ -390,6 +396,11 @@ export default function TextDetail() {
   const [lbDragging, setLbDragging] = useState(false);
   const lbDragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
+  // Collaboration state
+  const [role, setRole] = useState('viewer');
+  const [showVersions, setShowVersions] = useState(false);
+  const [showAnnotations, setShowAnnotations] = useState(false);
+
   // OCR Settings modal state
   const [showOcrSettings, setShowOcrSettings] = useState(false);
   const [ocrSettings, setOcrSettings] = useState({
@@ -410,6 +421,7 @@ export default function TextDetail() {
       const data = await api.get(`/api/texts/${id}`);
       setText(data);
       setPages(data.pages || []);
+      setRole(data.role || 'viewer');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -928,7 +940,12 @@ export default function TextDetail() {
       )}
 
       {/* Title */}
-      <h1 className="font-display font-semibold text-2xl text-cail-dark mb-4">{text.name}</h1>
+      <div className="flex items-center gap-3 mb-4">
+        <h1 className="font-display font-semibold text-2xl text-cail-dark">{text.name}</h1>
+        {role === 'viewer' && (
+          <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-medium">Read-only</span>
+        )}
+      </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
@@ -955,19 +972,23 @@ export default function TextDetail() {
       {activeTab === 'Pages' && (
         <div>
           <div className="flex items-center gap-4 mb-6">
-            <button
-              onClick={runOCR}
-              disabled={ocrRunning || visiblePages.length === 0}
-              className="px-6 py-2.5 rounded-full bg-cail-blue text-white text-sm font-medium hover:bg-cail-navy transition-colors disabled:opacity-50"
-            >
-              {ocrRunning ? 'Running OCR...' : 'Run OCR'}
-            </button>
-            <button
-              onClick={openOcrSettings}
-              className="px-4 py-2.5 rounded-full bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors"
-            >
-              OCR Settings
-            </button>
+            {role !== 'viewer' && (
+              <>
+                <button
+                  onClick={runOCR}
+                  disabled={ocrRunning || visiblePages.length === 0}
+                  className="px-6 py-2.5 rounded-full bg-cail-blue text-white text-sm font-medium hover:bg-cail-navy transition-colors disabled:opacity-50"
+                >
+                  {ocrRunning ? 'Running OCR...' : 'Run OCR'}
+                </button>
+                <button
+                  onClick={openOcrSettings}
+                  className="px-4 py-2.5 rounded-full bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors"
+                >
+                  OCR Settings
+                </button>
+              </>
+            )}
             {visiblePages.length > 1 && (
               <button
                 onClick={() => setReorderMode((m) => !m)}
@@ -980,16 +1001,18 @@ export default function TextDetail() {
                 {reorderMode ? 'Done Reordering' : 'Reorder'}
               </button>
             )}
-            <button
-              onClick={() => setShowUploadZone((v) => !v)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                showUploadZone
-                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  : 'bg-cail-blue/10 text-cail-blue hover:bg-cail-blue/20'
-              }`}
-            >
-              {showUploadZone ? 'Cancel' : '+ Add Pages'}
-            </button>
+            {role !== 'viewer' && (
+              <button
+                onClick={() => setShowUploadZone((v) => !v)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  showUploadZone
+                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-cail-blue/10 text-cail-blue hover:bg-cail-blue/20'
+                }`}
+              >
+                {showUploadZone ? 'Cancel' : '+ Add Pages'}
+              </button>
+            )}
             <span className="text-sm text-gray-500">
               {visiblePages.length} page{visiblePages.length !== 1 ? 's' : ''}
             </span>
@@ -1095,8 +1118,8 @@ export default function TextDetail() {
                     dragOverIdx === idx && dragIdx !== idx ? 'border-cail-blue ring-2 ring-cail-blue/30' : 'border-gray-100'
                   }`}
                 >
-                  {/* Delete button (visible on hover, hidden in reorder mode) */}
-                  {!reorderMode && (
+                  {/* Delete button (visible on hover, hidden in reorder mode and for viewers) */}
+                  {!reorderMode && role !== 'viewer' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeletePage(page.id); }}
                       className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
@@ -1210,13 +1233,21 @@ export default function TextDetail() {
                     </svg>
                   </button>
                 </div>
-                <button
-                  onClick={savePageReview}
-                  disabled={savingPage}
-                  className="px-4 py-1.5 rounded-full bg-cail-blue text-white text-sm font-medium hover:bg-cail-navy transition-colors disabled:opacity-50"
-                >
-                  {savingPage ? 'Saving...' : 'Save Page'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowVersions(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                    History
+                  </button>
+                  <button onClick={() => setShowAnnotations(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                    Comments
+                  </button>
+                  <button
+                    onClick={savePageReview}
+                    disabled={savingPage || role === 'viewer'}
+                    className="px-4 py-1.5 rounded-full bg-cail-blue text-white text-sm font-medium hover:bg-cail-navy transition-colors disabled:opacity-50"
+                  >
+                    {savingPage ? 'Saving...' : 'Save Page'}
+                  </button>
+                </div>
               </div>
 
               {/* 3-column layout: sidebar | image | editor */}
@@ -1326,7 +1357,8 @@ export default function TextDetail() {
                     ref={reviewTextareaRef}
                     value={pageText}
                     onChange={(e) => setPageText(e.target.value)}
-                    className="w-full flex-1 px-4 py-3 rounded-b-2xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none bg-white"
+                    readOnly={role === 'viewer'}
+                    className={`w-full flex-1 px-4 py-3 rounded-b-2xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none ${role === 'viewer' ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
                     placeholder="OCR text for this page..."
                   />
                 </div>
@@ -1705,6 +1737,9 @@ export default function TextDetail() {
           </div>
         </div>
       )}
+
+      <VersionHistory textId={text?.id} contentType="compiled" open={showVersions} onClose={() => setShowVersions(false)} onRevert={() => loadText()} />
+      <AnnotationSidebar textId={text?.id} open={showAnnotations} onClose={() => setShowAnnotations(false)} role={role} />
     </div>
   );
 }

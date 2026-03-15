@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import JSZip from 'jszip';
 import katex from 'katex';
@@ -7,6 +7,8 @@ import renderMathInElement from 'katex/contrib/auto-render';
 import 'katex/dist/katex.min.css';
 import { api, BASE } from '../api/client';
 import { convertPdfToHtmlWithBedrock } from '../lib/pdfBedrockPipeline';
+import VersionHistory from '../components/VersionHistory';
+import AnnotationSidebar from '../components/AnnotationSidebar';
 
 const MATHML_TAGS = [
   'math', 'maction', 'maligngroup', 'malignmark', 'menclose', 'merror', 'mfenced', 'mfrac',
@@ -593,6 +595,7 @@ function linkTocEntries(html) {
 
 export default function HtmlTextDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const editableRef = useRef(null);
   const sourceRef = useRef(null);
   const [text, setText] = useState(null);
@@ -609,7 +612,13 @@ export default function HtmlTextDetail() {
   const [toast, setToast] = useState('');
   const [sourceMode, setSourceMode] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState('Review');
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab');
+    return TABS.includes(tab) ? tab : 'Review';
+  });
+  const [role, setRole] = useState('viewer');
+  const [showVersions, setShowVersions] = useState(false);
+  const [showAnnotations, setShowAnnotations] = useState(false);
 
   // Details tab state
   const [summary, setSummary] = useState('');
@@ -618,33 +627,34 @@ export default function HtmlTextDetail() {
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [savingMetadata, setSavingMetadata] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  // Render TeX with KaTeX after content loads
+  const katexRenderedRef = useRef('');
 
-    async function load() {
-      try {
-        const [textData, htmlData, summaryData, metaData] = await Promise.all([
-          api.get(`/api/texts/${id}`),
-          api.get(`/api/texts/${id}/html`),
-          api.get(`/api/texts/${id}/summary`).catch(() => ({ summary: '' })),
-          api.get(`/api/texts/${id}/metadata`).catch(() => ({})),
-        ]);
-        if (!active) return;
-        setText(textData);
-        setHtmlContent(htmlData.html_content || '');
-        setSourcePdfName(htmlData.source_pdf_name || '');
-        setSummary(summaryData.summary || '');
-        setMetadata(metaData || {});
-      } catch (err) {
-        if (active) setError(err.message);
-      } finally {
-        if (active) setLoading(false);
-      }
+  const loadText = useCallback(async () => {
+    try {
+      const [textData, htmlData, summaryData, metaData] = await Promise.all([
+        api.get(`/api/texts/${id}`),
+        api.get(`/api/texts/${id}/html`),
+        api.get(`/api/texts/${id}/summary`).catch(() => ({ summary: '' })),
+        api.get(`/api/texts/${id}/metadata`).catch(() => ({})),
+      ]);
+      setText(textData);
+      setRole(textData.role || 'viewer');
+      setHtmlContent(htmlData.html_content || '');
+      setSourcePdfName(htmlData.source_pdf_name || '');
+      setSummary(summaryData.summary || '');
+      setMetadata(metaData || {});
+      katexRenderedRef.current = '';
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-
-    load();
-    return () => { active = false; };
   }, [id]);
+
+  useEffect(() => {
+    loadText();
+  }, [loadText]);
 
   const sanitizedHtml = useMemo(() => {
     let html = DOMPurify.sanitize(htmlContent, SANITIZE_CONFIG);
@@ -668,8 +678,6 @@ export default function HtmlTextDetail() {
     return () => el.removeEventListener('error', handler, true);
   });
 
-  // Render TeX with KaTeX after content loads
-  const katexRenderedRef = useRef('');
   useEffect(() => {
     const el = editableRef.current;
     if (!el || sourceMode || activeTab !== 'Review') return;
@@ -981,6 +989,11 @@ export default function HtmlTextDetail() {
       {activeTab === 'Review' && (
         <div>
           <div className="flex flex-wrap items-center gap-3 mb-4">
+            {role === 'viewer' && (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                Read-only
+              </span>
+            )}
             {sourcePdfName && (
               <a
                 href={`${BASE}/api/texts/${id}/source-pdf/${encodeURIComponent(sourcePdfName)}`}
@@ -996,7 +1009,7 @@ export default function HtmlTextDetail() {
                 {reprocessProgress}
               </span>
             )}
-            {sourcePdfName && (
+            {sourcePdfName && role !== 'viewer' && (
               <button
                 onClick={reprocessPdf}
                 disabled={reprocessing}
@@ -1012,16 +1025,30 @@ export default function HtmlTextDetail() {
             >
               {downloading ? 'Packaging...' : 'Download'}
             </button>
+            {role !== 'viewer' && (
+              <button
+                onClick={saveHtml}
+                disabled={saving}
+                className={`px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50 ${
+                  dirty
+                    ? 'bg-amber-500 text-white hover:bg-amber-600'
+                    : 'bg-cail-blue text-white hover:bg-cail-navy'
+                }`}
+              >
+                {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Save HTML'}
+              </button>
+            )}
             <button
-              onClick={saveHtml}
-              disabled={saving}
-              className={`px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50 ${
-                dirty
-                  ? 'bg-amber-500 text-white hover:bg-amber-600'
-                  : 'bg-cail-blue text-white hover:bg-cail-navy'
-              }`}
+              onClick={() => setShowVersions(true)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
             >
-              {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Save HTML'}
+              History
+            </button>
+            <button
+              onClick={() => setShowAnnotations(true)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              Comments
             </button>
           </div>
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6">
@@ -1127,6 +1154,7 @@ export default function HtmlTextDetail() {
               <textarea
                 ref={sourceRef}
                 defaultValue={htmlContent}
+                readOnly={role === 'viewer'}
                 onChange={() => setDirty(true)}
                 onKeyDown={(e) => {
                   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -1139,11 +1167,11 @@ export default function HtmlTextDetail() {
               />
             ) : (
               <div className="rounded-xl border border-gray-200 overflow-hidden">
-                <FormattingToolbar onDirty={() => setDirty(true)} editableRef={editableRef} />
+                {role !== 'viewer' && <FormattingToolbar onDirty={() => setDirty(true)} editableRef={editableRef} />}
                 <div className="relative">
                   <div
                     ref={editableRef}
-                    contentEditable
+                    contentEditable={role !== 'viewer'}
                     suppressContentEditableWarning
                     onInput={handleEditableInput}
                     onKeyDown={(e) => {
@@ -1223,6 +1251,9 @@ export default function HtmlTextDetail() {
           </div>
         </div>
       )}
+
+      <VersionHistory textId={text?.id} contentType="html" open={showVersions} onClose={() => setShowVersions(false)} onRevert={() => loadText()} />
+      <AnnotationSidebar textId={text?.id} open={showAnnotations} onClose={() => setShowAnnotations(false)} role={role} />
     </div>
   );
 }

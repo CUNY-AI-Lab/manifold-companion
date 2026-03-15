@@ -11,6 +11,10 @@ Multi-user document-processing platform with two first-class workflows:
 
 The app is an Express backend serving a React SPA, with SQLite for persistence, AWS Bedrock for OCR/summaries/translations, and OpenRouter for PDF-to-HTML conversion.
 
+## UI Development
+
+When adding or modifying UI components, always invoke the `frontend-design` skill to ensure visual consistency and high design quality. This applies to all client-side changes that affect what the user sees.
+
 ## Dev Commands
 
 ```bash
@@ -91,22 +95,31 @@ All route modules except auth apply `requireAuth` at the router level. Admin rou
 ### Route Structure
 
 ```
-/api/auth        → server/routes/auth.js      (login, register, logout, me, change-password)
-/api/admin       → server/routes/admin.js     (user management)
-/api/projects    → server/routes/projects.js  (CRUD + project type on create)
-/api             → server/routes/texts.js     (texts, pages, image upload, PDF upload, HTML storage, image/PDF serving, metadata, settings)
-/api             → server/routes/ocr.js       (SSE OCR pipeline — rate-limited by aiLimiter)
-/api             → server/routes/llm.js       (summary, translation, PDF page parsing, PDF cleanup)
-/api             → server/routes/export.js    (ZIP export)
+/api/auth                          → server/routes/auth.js         (login, register, logout, me, change-password)
+/api/admin                         → server/routes/admin.js        (user management)
+/api/projects                      → server/routes/projects.js     (CRUD + project type on create)
+/api/projects/:projectId/shares    → server/routes/shares.js       (project sharing CRUD — owner only)
+/api                               → server/routes/texts.js        (texts, pages, upload, HTML, search, versions)
+/api                               → server/routes/ocr.js          (SSE OCR pipeline — rate-limited by aiLimiter)
+/api                               → server/routes/llm.js          (summary, translation, PDF page parsing, PDF cleanup)
+/api                               → server/routes/export.js       (ZIP export)
+/api                               → server/routes/annotations.js  (inline annotations/comments with replies)
 ```
 
-### Ownership Enforcement
+### Access Control (server/middleware/access.js)
 
-Every resource route uses a `verifyTextOwnership(textId, userId)` or `verifyProjectOwnership(projectId, userId)` helper that walks text → project → user to verify ownership. This pattern is duplicated in `texts.js`, `ocr.js`, `llm.js`, and `export.js`.
+Centralized role-aware access verification replaces the old duplicated ownership helpers. Two functions:
+
+- `verifyProjectAccess(projectId, userId, minRole)` — returns `{ project, role }` or `{ status, error }`
+- `verifyTextAccess(textId, userId, minRole)` — returns `{ text, project, role }` or `{ status, error }`
+
+Role hierarchy: `owner > editor > viewer`. The `getUserProjectRole()` DB function checks project ownership first, then falls back to `project_shares`. All route files use these instead of inline ownership checks.
+
+**File storage for shared projects**: Files always live in the owner's directory (`data/{project.user_id}/...`). Collaborators access files via `result.project.user_id`, never `req.user.id`. Storage quotas only apply to the owner.
 
 ### Database (server/db.js)
 
-Six tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`. Key conventions:
+Nine tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `project_shares`, `text_versions`, `annotations`. Key conventions:
 
 - **`__compiled__` sentinel**: A page with `filename = '__compiled__'` stores user-edited full text. Must be filtered out from display queries (`pages.filter(p => p.filename !== '__compiled__')`). Referenced across `db.js`, `texts.js`, `ocr.js`, `llm.js`, `export.js`, and `TextDetail.jsx`.
 - **Project type**: `projects.project_type` is `image_to_markdown` or `pdf_to_html`; it is set at creation and used by the client routers to choose the correct UI.
@@ -115,6 +128,9 @@ Six tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`. Key c
 - **Text status flow**: `pending → processing → ocrd → reviewed`
 - **Project expiry**: 90-day TTL set at creation, cleaned up by `server/services/cleanup.js` cron (runs every 24h).
 - **Admin seeding**: `initDatabase()` calls `seedAdmin()` which creates admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars if not already present.
+- **Project shares**: `project_shares` table tracks `(project_id, user_id, role)` with UNIQUE constraint. Roles: `viewer`, `editor`. Cascade deletes on project or user removal.
+- **Version history**: `text_versions` table stores content snapshots with `content_type` (`compiled`, `html`, `page`), user attribution, and timestamp. Auto-pruned to 50 versions per text+type. Versions are created automatically when saving text content (before overwrite).
+- **Annotations**: `annotations` table supports threaded comments with `parent_id` for replies, `anchor_type` (`range`, `point`, `global`), and `anchor_data` (JSON with CSS selectors or paragraph offsets). Supports resolve/unresolve workflow with `resolved_by` and `resolved_at`.
 
 ### OCR Pipeline (server/routes/ocr.js + server/services/bedrock.js)
 
@@ -182,6 +198,11 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **HTML rendering**: `HtmlTextDetail.jsx` sanitizes rendered HTML while allowing MathML tags/attributes. KaTeX auto-render converts TeX delimiters to visual math in the contenteditable preview; `extractTexFromKatex()` reverses this before saving.
 - **Image zoom**: Both editors have scroll-to-zoom + drag-to-pan on image/PDF panes (lightbox-style interaction). `TextDetail.jsx` Review tab uses `reviewZoom`/`reviewPan` state; `HtmlTextDetail.jsx` uses `pdfZoom` with `minWidth`-based horizontal scroll.
 - **PDF project text actions**: `PdfProjectView.jsx` supports create, replace upload, open editor, and delete for PDF-to-HTML texts.
+- **Search**: `SearchBar.jsx` provides debounced search with a 3-result dropdown and "See all" link to `/search` page. `SearchPage.jsx` shows full results grouped by project.
+- **Collaboration UI**: `SharePanel.jsx` (portal modal) for owners to add/remove/update shares by email. `ProjectView.jsx` and `PdfProjectView.jsx` show role-based UI (hide edit/delete for viewers, share button for owners).
+- **Version history**: `VersionHistory.jsx` (portal modal) shows version list with preview and revert. Accessible via "History" button in the Review tab of both editors.
+- **Annotations**: `AnnotationSidebar.jsx` (slide-out panel) for threaded comments with replies, resolve/unresolve, and delete. Accessible via "Comments" button in the Review tab.
+- **Tab deep linking**: Both `TextDetail.jsx` and `HtmlTextDetail.jsx` read a `?tab=` query param on mount to set the initial active tab (used by search results to open directly to Review).
 
 ### Tailwind Theme (client/tailwind.config.js)
 
@@ -258,7 +279,8 @@ The AWS account (`757395169441`) has GuardDuty enabled with SNS alerts to `smore
 
 These are intentional copy-paste patterns to be aware of when making changes:
 
-- `verifyTextOwnership()` -- duplicated in `texts.js`, `ocr.js`, `llm.js`
 - `compileFullText()` -- duplicated in `ocr.js`, `llm.js`
 - `pdfToImages()` and `resizeImageBlob()` -- duplicated in `ProjectView.jsx`, `TextDetail.jsx`
 - The legacy browser heuristic converter in `client/src/lib/pdfToHtml.js` and the current pipeline in `client/src/lib/pdfBedrockPipeline.js` may diverge. Prefer changing the pipeline path unless intentionally reviving the heuristic fallback.
+
+Note: `verifyTextOwnership()` and `verifyProjectOwnership()` were previously duplicated across route files. These have been replaced by centralized `verifyTextAccess()` and `verifyProjectAccess()` in `server/middleware/access.js`.

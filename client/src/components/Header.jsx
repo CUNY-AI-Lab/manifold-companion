@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BASE } from '../api/client';
+import SearchBar from './SearchBar';
 
 function ManifoldLogo({ className = '' }) {
   return (
@@ -178,8 +179,9 @@ export default function Header() {
             </button>
           </nav>
 
-          {/* Right: User + Logout (desktop) */}
+          {/* Right: Search + User + Logout (desktop) */}
           <div className="hidden md:flex items-center gap-4">
+            <SearchBar compact />
             <span className="text-sm text-gray-500">{user?.email}</span>
             <button
               onClick={logout}

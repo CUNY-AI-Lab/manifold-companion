@@ -4,11 +4,10 @@
 
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { verifyTextAccess } from '../middleware/access.js';
 import { aiLimiter, formulaRepairLimiter, pdfVisionLimiter } from '../middleware/rateLimits.js';
 import { ALLOWED_LANGUAGES } from './texts.js';
 import {
-  getTextById,
-  getProjectById,
   getPagesByText,
   setTextSummary,
   setTextTranslation,
@@ -27,24 +26,6 @@ const router = Router();
 
 // All routes require authentication
 router.use(requireAuth);
-
-// ---------------------------------------------------------------------------
-// Ownership helper
-// ---------------------------------------------------------------------------
-
-function verifyTextOwnership(textId, userId) {
-  const text = getTextById(textId);
-  if (!text) {
-    return { status: 404, error: 'Text not found.' };
-  }
-
-  const project = getProjectById(text.project_id);
-  if (!project || project.user_id !== userId) {
-    return { status: 403, error: 'Access denied.' };
-  }
-
-  return { text, project };
-}
 
 function requirePdfProject(project) {
   if (project.project_type !== 'pdf_to_html') {
@@ -71,7 +52,7 @@ function compileFullText(textId) {
 // ---- GET /texts/:id/summary — return cached summary ---------------------
 router.get('/texts/:id/summary', (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'viewer');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     res.json({ summary: result.text.summary || null });
@@ -84,7 +65,7 @@ router.get('/texts/:id/summary', (req, res) => {
 // ---- POST /texts/:id/summary — generate summary via Bedrock -------------
 router.post('/texts/:id/summary', aiLimiter, async (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const fullText = compileFullText(result.text.id);
@@ -108,7 +89,7 @@ router.post('/texts/:id/summary', aiLimiter, async (req, res) => {
 // ---- PUT /texts/:id/summary — save manually-edited summary --------------
 router.put('/texts/:id/summary', (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const { summary } = req.body || {};
@@ -131,7 +112,7 @@ router.put('/texts/:id/summary', (req, res) => {
 // ---- GET /texts/:id/translation — return cached translation --------------
 router.get('/texts/:id/translation', (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'viewer');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const translation = getTextTranslation(result.text.id);
@@ -149,7 +130,7 @@ router.get('/texts/:id/translation', (req, res) => {
 // ---- POST /texts/:id/translation — generate translation via Bedrock -----
 router.post('/texts/:id/translation', aiLimiter, async (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const { targetLanguage } = req.body || {};
@@ -189,7 +170,7 @@ router.post('/texts/:id/translation', aiLimiter, async (req, res) => {
 // ---- PUT /texts/:id/translation — save manually-edited translation ------
 router.put('/texts/:id/translation', (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
 
     const { translation } = req.body || {};
@@ -208,7 +189,7 @@ router.put('/texts/:id/translation', (req, res) => {
 // ---- POST /texts/:id/formula-repair — convert formulas to MathML ---------
 router.post('/texts/:id/formula-repair', formulaRepairLimiter, async (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
     const typeCheck = requirePdfProject(result.project);
     if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
@@ -240,7 +221,7 @@ router.post('/texts/:id/formula-repair', formulaRepairLimiter, async (req, res) 
 
 router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, async (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
     const typeCheck = requirePdfProject(result.project);
     if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });
@@ -261,7 +242,7 @@ router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, async (req, res) => {
         const figures = await extractFiguresFromPdf(pdfBase64, pageNumber);
         if (figures.length > 0) {
           // Save extracted figures to the text's directory on disk
-          const textDir = getTextDir(req.user.id, result.project.id, result.text.id);
+          const textDir = getTextDir(result.project.user_id, result.project.id, result.text.id);
           await mkdir(textDir, { recursive: true });
           for (const fig of figures) {
             await writeFile(join(textDir, fig.filename), fig.data);
@@ -291,7 +272,7 @@ router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, async (req, res) => {
 
 router.post('/texts/:id/pdf-cleanup', pdfVisionLimiter, async (req, res) => {
   try {
-    const result = verifyTextOwnership(Number(req.params.id), req.user.id);
+    const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
     const typeCheck = requirePdfProject(result.project);
     if (typeCheck.error) return res.status(typeCheck.status).json({ error: typeCheck.error });

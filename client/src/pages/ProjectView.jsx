@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api, BASE } from '../api/client';
+import SharePanel from '../components/SharePanel';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -101,6 +102,9 @@ export default function ProjectView() {
   // Inline editing
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState('');
+
+  // Share panel
+  const [showShare, setShowShare] = useState(false);
 
   // New text form
   const [showAddSection, setShowAddSection] = useState(false);
@@ -481,6 +485,9 @@ export default function ProjectView() {
     );
   }
 
+  const role = project?.role || 'viewer';
+  const canEdit = role === 'owner' || role === 'editor';
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Toast */}
@@ -512,7 +519,7 @@ export default function ProjectView() {
       <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex-1">
-            {editingName ? (
+            {editingName && role === 'owner' ? (
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -526,13 +533,22 @@ export default function ProjectView() {
                 <button onClick={() => { setEditingName(false); setNameValue(project.name); }} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
               </div>
             ) : (
-              <h1
-                className="font-display font-semibold text-2xl text-cail-dark cursor-pointer hover:text-cail-blue transition-colors"
-                onClick={() => setEditingName(true)}
-                title="Click to edit"
-              >
-                {project.name}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1
+                  className={`font-display font-semibold text-2xl text-cail-dark${role === 'owner' ? ' cursor-pointer hover:text-cail-blue transition-colors' : ''}`}
+                  onClick={role === 'owner' ? () => setEditingName(true) : undefined}
+                  title={role === 'owner' ? 'Click to edit' : undefined}
+                >
+                  {project.name}
+                </h1>
+                {role !== 'owner' && (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    role === 'editor' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {role === 'editor' ? 'Editor' : 'Viewer'}
+                  </span>
+                )}
+              </div>
             )}
             {project.description && (
               <p className="text-sm text-gray-500 mt-1">{project.description}</p>
@@ -540,17 +556,19 @@ export default function ProjectView() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowAddSection((v) => !v)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                showAddSection
-                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  : 'bg-cail-blue text-white hover:bg-cail-navy'
-              }`}
-            >
-              {showAddSection ? 'Cancel' : '+ New Text'}
-            </button>
-            {texts.length > 1 && (
+            {canEdit && (
+              <button
+                onClick={() => setShowAddSection((v) => !v)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  showAddSection
+                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-cail-blue text-white hover:bg-cail-navy'
+                }`}
+              >
+                {showAddSection ? 'Cancel' : '+ New Text'}
+              </button>
+            )}
+            {canEdit && texts.length > 1 && (
               <button
                 onClick={() => setEditMode((v) => !v)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
@@ -568,18 +586,28 @@ export default function ProjectView() {
             >
               Export to Manifold
             </button>
-            <button
-              onClick={deleteProject}
-              className="px-4 py-2 rounded-full bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 transition-colors"
-            >
-              Delete
-            </button>
+            {role === 'owner' && (
+              <button
+                onClick={() => setShowShare(true)}
+                className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors"
+              >
+                Share
+              </button>
+            )}
+            {role === 'owner' && (
+              <button
+                onClick={deleteProject}
+                className="px-4 py-2 rounded-full bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 transition-colors"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Add text + Upload area */}
-      {showAddSection && (
+      {showAddSection && canEdit && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Add text */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6">
@@ -745,16 +773,20 @@ export default function ProjectView() {
               >
                 Open
               </Link>
-              <button
-                onClick={() => deleteText(text.id)}
-                className="px-3 py-1.5 rounded-full text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
-              >
-                Delete
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => deleteText(text.id)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         ))}
       </div>
+
+      <SharePanel projectId={Number(id)} open={showShare} onClose={() => setShowShare(false)} />
 
       {/* Export Modal */}
       {showExport && (

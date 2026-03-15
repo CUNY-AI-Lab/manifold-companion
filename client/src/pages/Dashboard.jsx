@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import SearchBar from '../components/SearchBar';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -25,6 +26,7 @@ function daysRemaining(expiresAt) {
 export default function Dashboard() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
+  const [shared, setShared] = useState([]);
   const [storageUsed, setStorageUsed] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -44,6 +46,7 @@ export default function Dashboard() {
     try {
       const data = await api.get('/api/projects');
       setProjects(data.projects || []);
+      setShared(data.shared || []);
       setStorageUsed(data.storage_used_bytes || 0);
     } catch (err) {
       setError(err.message);
@@ -113,6 +116,11 @@ export default function Dashboard() {
             style={{ width: `${storagePercent}%` }}
           />
         </div>
+      </div>
+
+      {/* Search */}
+      <div className="mb-6">
+        <SearchBar compact={false} />
       </div>
 
       {/* 90-day expiry notice for regular users */}
@@ -254,6 +262,51 @@ export default function Dashboard() {
             );
           })}
         </div>
+      )}
+      {/* Shared with You */}
+      {shared.length > 0 && (
+        <>
+          <div className="mt-12 mb-6">
+            <h2 className="font-display font-semibold text-xl text-cail-dark">Shared with You</h2>
+            <p className="text-sm text-gray-500 mt-1">Projects other users have shared with you</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {shared.map((project) => (
+              <Link
+                key={project.id}
+                to={`/projects/${project.id}`}
+                className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
+              >
+                <h3 className="font-display font-semibold text-lg text-cail-dark group-hover:text-cail-blue transition-colors mb-1">
+                  {project.name}
+                </h3>
+                <p className="text-xs text-gray-400 mb-3">{project.owner_email}</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    project.share_role === 'editor'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {project.share_role === 'editor' ? 'Editor' : 'Viewer'}
+                  </span>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    project.project_type === 'pdf_to_html'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-cail-blue/10 text-cail-blue'
+                  }`}>
+                    {project.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}
+                  </span>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cail-blue/10 text-cail-blue">
+                    {project.text_count || 0} text{(project.text_count || 0) !== 1 ? 's' : ''}
+                  </span>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                    {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
