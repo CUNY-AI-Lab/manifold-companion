@@ -151,7 +151,7 @@ function MentionTextarea({ value, onChange, onMention, members, placeholder, row
               </span>
               <div className="min-w-0">
                 <p className="text-sm font-medium text-cail-dark dark:text-slate-200 truncate">{m.display_name || m.email}</p>
-                {m.display_name && <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{m.email}</p>}
+                {m.display_name && <p className="text-xs text-gray-500 dark:text-slate-500 truncate">{m.email}</p>}
               </div>
             </button>
           ))}
@@ -243,7 +243,7 @@ function MentionInput({ value, onChange, onMention, members, placeholder, classN
               className="w-full text-left px-3 py-1.5 hover:bg-cail-blue/5 transition-colors"
             >
               <span className="text-xs font-medium text-cail-dark dark:text-slate-200">{m.display_name || m.email}</span>
-              {m.display_name && <span className="text-xs text-gray-400 dark:text-slate-500 ml-1">{m.email}</span>}
+              {m.display_name && <span className="text-xs text-gray-500 dark:text-slate-500 ml-1">{m.email}</span>}
             </button>
           ))}
         </div>
@@ -285,7 +285,7 @@ function ReplyItem({ reply, textId, currentUserEmail, role, onRefresh, members, 
           {initials(reply)}
         </span>
         <span className="text-xs font-medium text-cail-dark dark:text-slate-200">{displayName(reply)}</span>
-        <span className="text-[10px] text-gray-400 dark:text-slate-500">{formatTime(reply.created_at)}</span>
+        <span className="text-[10px] text-gray-500 dark:text-slate-500">{formatTime(reply.created_at)}</span>
       </div>
       {editing ? (
         <div className="mt-1">
@@ -297,7 +297,7 @@ function ReplyItem({ reply, textId, currentUserEmail, role, onRefresh, members, 
           />
           <div className="flex gap-1 mt-1">
             <button onClick={handleSaveEdit} disabled={!editBody.trim() || saving} className="text-[10px] text-cail-blue hover:underline disabled:opacity-50">Save</button>
-            <button onClick={() => { setEditing(false); setEditBody(reply.body); }} className="text-[10px] text-gray-400 dark:text-slate-500 hover:underline">Cancel</button>
+            <button onClick={() => { setEditing(false); setEditBody(reply.body); }} className="text-[10px] text-gray-500 dark:text-slate-500 hover:underline">Cancel</button>
           </div>
         </div>
       ) : (
@@ -307,10 +307,10 @@ function ReplyItem({ reply, textId, currentUserEmail, role, onRefresh, members, 
           </p>
           <div className="flex gap-2 mt-0.5">
             {canEdit && (
-              <button onClick={() => setEditing(true)} className="text-[10px] text-gray-400 dark:text-slate-500 hover:text-cail-blue">Edit</button>
+              <button onClick={() => setEditing(true)} className="text-[10px] text-gray-500 dark:text-slate-500 hover:text-cail-blue">Edit</button>
             )}
             {canDelete && (
-              <button onClick={handleDelete} className="text-[10px] text-gray-400 dark:text-slate-500 hover:text-red-500">Delete</button>
+              <button onClick={handleDelete} className="text-[10px] text-gray-500 dark:text-slate-500 hover:text-red-500">Delete</button>
             )}
           </div>
         </>
@@ -408,11 +408,11 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
           </span>
           <div>
             <span className="text-sm font-medium text-cail-dark dark:text-slate-200">{displayName(annotation)}</span>
-            <span className="text-xs text-gray-400 dark:text-slate-500 ml-2">{formatTime(annotation.created_at)}</span>
+            <span className="text-xs text-gray-500 dark:text-slate-500 ml-2">{formatTime(annotation.created_at)}</span>
           </div>
         </div>
         {!!annotation.resolved && (
-          <span className="text-xs bg-cail-teal/10 text-cail-teal px-2 py-0.5 rounded-full font-medium">Resolved</span>
+          <span className="text-xs bg-cail-teal/10 text-cail-azure px-2 py-0.5 rounded-full font-medium">Resolved</span>
         )}
       </div>
 
@@ -428,7 +428,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
             <button onClick={handleSaveEdit} disabled={!editBody.trim() || savingEdit} className="text-xs text-cail-blue hover:underline disabled:opacity-50">
               {savingEdit ? 'Saving...' : 'Save'}
             </button>
-            <button onClick={() => { setEditing(false); setEditBody(annotation.body); }} className="text-xs text-gray-400 hover:underline">Cancel</button>
+            <button onClick={() => { setEditing(false); setEditBody(annotation.body); }} className="text-xs text-gray-500 hover:underline">Cancel</button>
           </div>
         </div>
       ) : (
@@ -442,10 +442,10 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
           {showReplies ? 'Hide replies' : 'Replies'}
         </button>
         {canEdit && !editing && (
-          <button onClick={() => setEditing(true)} className="text-gray-400 hover:text-cail-blue">Edit</button>
+          <button onClick={() => setEditing(true)} className="text-gray-500 hover:text-cail-blue">Edit</button>
         )}
         {canResolve && (
-          <button onClick={toggleResolve} className="text-cail-teal hover:underline">
+          <button onClick={toggleResolve} className="text-cail-azure hover:underline">
             {annotation.resolved ? 'Unresolve' : 'Resolve'}
           </button>
         )}
@@ -456,7 +456,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
 
       {showReplies && (
         <div className="mt-3 ml-4 border-l-2 border-cail-blue/10 pl-3">
-          {replies.length === 0 && <p className="text-xs text-gray-400">No replies yet.</p>}
+          {replies.length === 0 && <p className="text-xs text-gray-500">No replies yet.</p>}
           {replies.map(r => (
             <ReplyItem
               key={r.id}
@@ -577,7 +577,7 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-cail-blue/10 dark:border-slate-700">
           <h2 className="text-lg font-display font-semibold text-cail-navy dark:text-slate-200">Annotations</h2>
-          <button onClick={onClose} className="text-gray-400 dark:text-slate-500 hover:text-cail-dark dark:hover:text-slate-200 text-xl leading-none">&times;</button>
+          <button onClick={onClose} className="text-gray-500 dark:text-slate-500 hover:text-cail-dark dark:hover:text-slate-200 text-xl leading-none">&times;</button>
         </div>
 
         {/* Controls */}
@@ -631,9 +631,9 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
 
         {/* Annotation list */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {loading && <p className="text-sm text-gray-400 text-center py-8">Loading...</p>}
+          {loading && <p className="text-sm text-gray-500 text-center py-8">Loading...</p>}
           {!loading && annotations.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">No annotations yet.</p>
+            <p className="text-sm text-gray-500 text-center py-8">No annotations yet.</p>
           )}
           {annotations.map(a => (
             <AnnotationItem

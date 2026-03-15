@@ -1074,7 +1074,7 @@ export default function TextDetail() {
               </div>
             ) : (
               <div className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-gray-500 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
                 <p className="text-sm text-gray-500 dark:text-slate-400">
@@ -1187,7 +1187,7 @@ export default function TextDetail() {
             </div>
           )}
           {reorderMode && (
-            <p className="text-xs text-gray-400 mt-3 text-center">Drag pages to reorder, then click Done Reordering</p>
+            <p className="text-xs text-gray-500 mt-3 text-center">Drag pages to reorder, then click Done Reordering</p>
           )}
         </div>
       )}
@@ -1208,7 +1208,7 @@ export default function TextDetail() {
             >
               {copySuccess ? 'Copied!' : 'Copy to Clipboard'}
             </button>
-            <span className="text-sm text-gray-400 dark:text-slate-500">
+            <span className="text-sm text-gray-500 dark:text-slate-500">
               Read-only view. Edit individual pages in the Review tab.
             </span>
           </div>
@@ -1265,7 +1265,7 @@ export default function TextDetail() {
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Keyboard shortcuts (?)">
+                  <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-500 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Keyboard shortcuts (?)">
                     ?
                   </button>
                   <button onClick={() => setShowVersions(true)} className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
@@ -1687,7 +1687,7 @@ export default function TextDetail() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-display font-semibold text-xl text-cail-dark dark:text-slate-200">OCR Settings</h2>
-              <button onClick={() => setShowOcrSettings(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">
+              <button onClick={() => setShowOcrSettings(false)} className="text-gray-500 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>

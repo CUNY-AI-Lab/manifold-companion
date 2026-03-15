@@ -513,7 +513,7 @@ function FormattingToolbar({ onDirty, editableRef }) {
           />
           <button onClick={doReplace} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600">Replace</button>
           <button onClick={doReplaceAll} className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600">All</button>
-          <button onClick={() => setShowFind(false)} className="px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">x</button>
+          <button onClick={() => setShowFind(false)} className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">x</button>
         </div>
       )}
     </div>
@@ -1270,7 +1270,7 @@ export default function HtmlTextDetail() {
                 {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Save HTML'}
               </button>
             )}
-            <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Keyboard shortcuts (?)">
+            <button onClick={() => setShowShortcuts(true)} className="w-7 h-7 rounded-full text-xs font-bold text-gray-500 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Keyboard shortcuts (?)">
               ?
             </button>
             <button

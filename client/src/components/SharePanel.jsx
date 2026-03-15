@@ -94,7 +94,7 @@ export default function SharePanel({ projectId, open, onClose }) {
           <h2 id="share-panel-title" className="text-xl font-display font-bold text-cail-navy dark:text-slate-200">Share Project</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 text-2xl leading-none"
+            className="text-gray-500 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 text-2xl leading-none"
             aria-label="Close share panel"
           >
             &times;
@@ -145,7 +145,7 @@ export default function SharePanel({ projectId, open, onClose }) {
                         className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
                       >
                         <p className="text-sm font-medium text-cail-dark dark:text-slate-200 truncate">{u.display_name || u.email}</p>
-                        {u.display_name && <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{u.email}</p>}
+                        {u.display_name && <p className="text-xs text-gray-500 dark:text-slate-500 truncate">{u.email}</p>}
                       </button>
                     </li>
                   ))}
@@ -175,7 +175,7 @@ export default function SharePanel({ projectId, open, onClose }) {
             <div className="w-6 h-6 border-2 border-cail-blue border-t-transparent rounded-full animate-spin" />
           </div>
         ) : shares.length === 0 ? (
-          <p className="text-center text-gray-400 dark:text-slate-500 text-sm py-6">No shares yet</p>
+          <p className="text-center text-gray-500 dark:text-slate-500 text-sm py-6">No shares yet</p>
         ) : (
           <ul className="space-y-2">
             {shares.map((share) => (
@@ -188,7 +188,7 @@ export default function SharePanel({ projectId, open, onClose }) {
                     {share.display_name || share.email}
                   </span>
                   {share.display_name && (
-                    <span className="text-xs text-gray-400 dark:text-slate-500 truncate block">{share.email}</span>
+                    <span className="text-xs text-gray-500 dark:text-slate-500 truncate block">{share.email}</span>
                   )}
                 </div>
                 <select

@@ -79,7 +79,7 @@ export default function UsageBreakdown({ type, onClose }) {
               {type === 'storage' ? 'Storage Breakdown' : 'Token Usage Breakdown'}
             </h2>
             {!loading && data && (
-              <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
+              <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">
                 {type === 'storage'
                   ? `${formatBytes(totalStorageBytes)} total across ${data.storage.length} project${data.storage.length !== 1 ? 's' : ''}`
                   : `${formatTokens(totalTokens)} tokens used`
@@ -89,7 +89,7 @@ export default function UsageBreakdown({ type, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -106,7 +106,7 @@ export default function UsageBreakdown({ type, onClose }) {
           ) : type === 'storage' ? (
             <>
               {(!data?.storage || data.storage.length === 0) ? (
-                <p className="text-sm text-gray-400 text-center py-8">No storage used yet.</p>
+                <p className="text-sm text-gray-500 text-center py-8">No storage used yet.</p>
               ) : (
                 <div className="space-y-3">
                   {data.storage
@@ -127,9 +127,9 @@ export default function UsageBreakdown({ type, onClose }) {
           ) : (
             <>
               {/* By Project */}
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">By Project</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">By Project</h3>
               {(!data?.tokensByProject || data.tokensByProject.length === 0) ? (
-                <p className="text-sm text-gray-400 text-center py-4">No token usage yet.</p>
+                <p className="text-sm text-gray-500 text-center py-4">No token usage yet.</p>
               ) : (
                 <div className="space-y-3 mb-8">
                   {data.tokensByProject.map((p) => (
@@ -147,9 +147,9 @@ export default function UsageBreakdown({ type, onClose }) {
               )}
 
               {/* By Endpoint */}
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">By Endpoint</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">By Endpoint</h3>
               {(!data?.tokensByEndpoint || data.tokensByEndpoint.length === 0) ? (
-                <p className="text-sm text-gray-400 text-center py-4">No token usage yet.</p>
+                <p className="text-sm text-gray-500 text-center py-4">No token usage yet.</p>
               ) : (
                 <div className="space-y-3">
                   {data.tokensByEndpoint.map((ep) => (

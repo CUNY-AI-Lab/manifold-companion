@@ -72,7 +72,7 @@ export default function Pagination({ currentPage, totalPages, onPageChange, tota
           item === '…' ? (
             <span
               key={`ellipsis-${i}`}
-              className="px-2 text-sm text-gray-400 dark:text-slate-500"
+              className="px-2 text-sm text-gray-500 dark:text-slate-500"
             >
               …
             </span>

@@ -68,7 +68,7 @@ export default function SearchPage() {
       <div className="relative mb-8">
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 dark:text-slate-500 pointer-events-none"
+          className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500 dark:text-slate-500 pointer-events-none"
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
@@ -146,7 +146,7 @@ export default function SearchPage() {
 
       {!searched && !loading && (
         <div className="text-center py-12">
-          <p className="text-gray-400 dark:text-slate-500 text-sm">Type at least 2 characters to search</p>
+          <p className="text-gray-500 dark:text-slate-500 text-sm">Type at least 2 characters to search</p>
         </div>
       )}
     </div>

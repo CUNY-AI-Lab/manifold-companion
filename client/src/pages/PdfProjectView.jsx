@@ -550,7 +550,7 @@ export default function PdfProjectView() {
                   autoFocus
                 />
                 <button onClick={saveName} className="text-sm text-cail-blue hover:text-cail-navy font-medium">Save</button>
-                <button onClick={() => { setEditingName(false); setNameValue(project.name); }} className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">Cancel</button>
+                <button onClick={() => { setEditingName(false); setNameValue(project.name); }} className="text-sm text-gray-500 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">Cancel</button>
               </div>
             ) : (
               <div className="flex items-center gap-3">
@@ -682,7 +682,7 @@ export default function PdfProjectView() {
               )}
             </>
           ) : (
-            <p className="text-sm text-gray-400 dark:text-slate-500">Create a document first, then import a PDF.</p>
+            <p className="text-sm text-gray-500 dark:text-slate-500">Create a document first, then import a PDF.</p>
           )}
         </div>
       </div>
@@ -739,7 +739,7 @@ export default function PdfProjectView() {
 
             {/* Drag handle (edit mode only) */}
             {editMode && (
-              <div className="flex items-center flex-shrink-0 text-gray-400 dark:text-slate-500">
+              <div className="flex items-center flex-shrink-0 text-gray-500 dark:text-slate-500">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <circle cx="9" cy="6" r="1.5" />
                   <circle cx="15" cy="6" r="1.5" />
@@ -765,7 +765,7 @@ export default function PdfProjectView() {
                   {text.html_content ? 'HTML ready' : 'Awaiting import'}
                 </span>
                 {text.source_pdf_name && (
-                  <span className="text-xs text-gray-400 dark:text-slate-500">
+                  <span className="text-xs text-gray-500 dark:text-slate-500">
                     {text.source_pdf_name}
                   </span>
                 )}
@@ -875,7 +875,7 @@ export default function PdfProjectView() {
                 <option value="ocrd">OCR&apos;d</option>
                 <option value="reviewed">Reviewed</option>
               </select>
-              <svg className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
@@ -901,7 +901,7 @@ export default function PdfProjectView() {
             <button
               onClick={deselectAll}
               disabled={bulkLoading}
-              className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 disabled:opacity-50 transition-colors p-1"
+              className="text-gray-500 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 disabled:opacity-50 transition-colors p-1"
               aria-label="Clear selection"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -920,7 +920,7 @@ export default function PdfProjectView() {
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-display font-semibold text-xl text-cail-dark dark:text-slate-200">Export to Manifold</h2>
-              <button onClick={() => setShowExport(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">
+              <button onClick={() => setShowExport(false)} className="text-gray-500 hover:text-gray-600 dark:hover:text-slate-300 dark:text-slate-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -937,7 +937,7 @@ export default function PdfProjectView() {
                     className="flex items-center gap-1 py-1.5 px-2 rounded-lg bg-gray-50 dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                     style={{ marginLeft: item.depth * 24 + 'px' }}
                   >
-                    <span className="w-5 h-5 flex items-center justify-center text-gray-400 dark:text-slate-500 flex-shrink-0">
+                    <span className="w-5 h-5 flex items-center justify-center text-gray-500 dark:text-slate-500 flex-shrink-0">
                       {item.type === 'section' ? (
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -957,7 +957,7 @@ export default function PdfProjectView() {
                       <button
                         onClick={() => tocIndent(idx, -1)}
                         disabled={item.depth === 0}
-                        className="p-1 rounded text-gray-400 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        className="p-1 rounded text-gray-500 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-500 disabled:hover:bg-transparent"
                         title="Outdent"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -967,7 +967,7 @@ export default function PdfProjectView() {
                       <button
                         onClick={() => tocIndent(idx, 1)}
                         disabled={item.depth >= 5}
-                        className="p-1 rounded text-gray-400 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        className="p-1 rounded text-gray-500 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-500 disabled:hover:bg-transparent"
                         title="Indent"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -977,7 +977,7 @@ export default function PdfProjectView() {
                       <button
                         onClick={() => tocMove(idx, -1)}
                         disabled={idx === 0}
-                        className="p-1 rounded text-gray-400 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        className="p-1 rounded text-gray-500 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-500 disabled:hover:bg-transparent"
                         title="Move up"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -987,7 +987,7 @@ export default function PdfProjectView() {
                       <button
                         onClick={() => tocMove(idx, 1)}
                         disabled={idx === tocItems.length - 1}
-                        className="p-1 rounded text-gray-400 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        className="p-1 rounded text-gray-500 dark:text-slate-500 hover:text-cail-blue hover:bg-white dark:hover:bg-slate-600 disabled:opacity-30 disabled:hover:text-gray-500 disabled:hover:bg-transparent"
                         title="Move down"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -996,7 +996,7 @@ export default function PdfProjectView() {
                       </button>
                       <button
                         onClick={() => tocRemove(idx)}
-                        className="p-1 rounded text-gray-400 dark:text-slate-500 hover:text-red-500 hover:bg-white dark:hover:bg-slate-600"
+                        className="p-1 rounded text-gray-500 dark:text-slate-500 hover:text-red-500 hover:bg-white dark:hover:bg-slate-600"
                         title="Remove"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1007,7 +1007,7 @@ export default function PdfProjectView() {
                   </div>
                 ))}
                 {tocItems.length === 0 && (
-                  <p className="text-sm text-gray-400 dark:text-slate-500 text-center py-4">No items. Add texts or sections below.</p>
+                  <p className="text-sm text-gray-500 dark:text-slate-500 text-center py-4">No items. Add texts or sections below.</p>
                 )}
               </div>
 

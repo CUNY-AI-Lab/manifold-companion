@@ -77,7 +77,7 @@ export default function SearchBar({ compact = false, onSelect }) {
       <div className="relative">
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-slate-500 pointer-events-none"
+          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 dark:text-slate-500 pointer-events-none"
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
@@ -112,7 +112,7 @@ export default function SearchBar({ compact = false, onSelect }) {
                   <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{r.project_name}</p>
                 )}
                 {r.summary && (
-                  <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 line-clamp-2">{r.summary}</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5 line-clamp-2">{r.summary}</p>
                 )}
               </button>
             </li>
@@ -132,7 +132,7 @@ export default function SearchBar({ compact = false, onSelect }) {
 
       {open && query.length >= 2 && !loading && results.length === 0 && (
         <div className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg px-4 py-3">
-          <p className="text-sm text-gray-400 dark:text-slate-500">No results found</p>
+          <p className="text-sm text-gray-500 dark:text-slate-500">No results found</p>
         </div>
       )}
     </div>

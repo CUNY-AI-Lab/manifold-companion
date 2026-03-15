@@ -248,7 +248,7 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 dark:text-slate-500 hover:text-cail-dark dark:hover:text-slate-200 transition-colors text-xl leading-none"
+            className="text-gray-500 dark:text-slate-500 hover:text-cail-dark dark:hover:text-slate-200 transition-colors text-xl leading-none"
             aria-label="Close version history"
           >
             &times;
@@ -318,7 +318,7 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
                                 d.type === 'add' ? 'bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-400 border-l-2 border-green-400 px-3 py-0.5' :
                                 d.type === 'del' ? 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-400 border-l-2 border-red-400 px-3 py-0.5' :
                                 d.type === 'sep' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-400 px-3 py-1 text-center' :
-                                d.type === 'info' ? 'text-gray-400 dark:text-slate-500 px-3 py-2 text-center italic' :
+                                d.type === 'info' ? 'text-gray-500 dark:text-slate-500 px-3 py-2 text-center italic' :
                                 'text-gray-600 dark:text-slate-400 px-3 py-0.5'
                               }
                             >

@@ -26,7 +26,7 @@ const TYPE_ICONS = {
     </svg>
   ),
   project_shared: (
-    <svg className="w-4 h-4 text-cail-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-cail-azure" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   ),
@@ -179,7 +179,7 @@ export default function NotificationBell() {
               )}
               <button
                 onClick={prefsOpen ? () => setPrefsOpen(false) : openPrefs}
-                className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+                className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
                 title="Email preferences"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -215,7 +215,7 @@ export default function NotificationBell() {
           {/* Notification list */}
           <div className="max-h-80 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-700">
             {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">
+              <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-slate-500">
                 No notifications yet
               </div>
             ) : (
@@ -228,7 +228,7 @@ export default function NotificationBell() {
                 >
                   <div className="mt-0.5 shrink-0">
                     {TYPE_ICONS[notif.type] || (
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     )}
@@ -237,7 +237,7 @@ export default function NotificationBell() {
                     <p className={`text-sm leading-snug ${!notif.read ? 'font-medium text-cail-dark dark:text-slate-200' : 'text-gray-700 dark:text-slate-300'}`}>
                       {notif.title}
                     </p>
-                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 truncate">{notif.body}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5 truncate">{notif.body}</p>
                     <p className="text-[11px] text-gray-300 dark:text-slate-600 mt-1">{timeAgo(notif.created_at)}</p>
                   </div>
                   {!notif.read && (

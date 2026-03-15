@@ -34,7 +34,7 @@ export default function KeyboardShortcuts({ onClose }) {
           <button
             onClick={onClose}
             aria-label="Close keyboard shortcuts"
-            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -45,7 +45,7 @@ export default function KeyboardShortcuts({ onClose }) {
           {hasShortcuts ? (
             Object.entries(sections).map(([section, items]) => (
               <div key={section}>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 mb-2.5">{section}</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-500 mb-2.5">{section}</h3>
                 <div className="space-y-2.5">
                   {items.map((item, i) => (
                     <div key={i} className="flex items-center justify-between">
@@ -61,7 +61,7 @@ export default function KeyboardShortcuts({ onClose }) {
               </div>
             ))
           ) : (
-            <p className="text-sm text-gray-400 dark:text-slate-500 text-center py-4">
+            <p className="text-sm text-gray-500 dark:text-slate-500 text-center py-4">
               No shortcuts registered on this page.
             </p>
           )}

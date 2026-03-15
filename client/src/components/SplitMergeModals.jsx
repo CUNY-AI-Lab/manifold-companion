@@ -63,7 +63,7 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
 
   const GROUP_COLORS = [
     'bg-cail-blue/20 border-cail-blue text-cail-blue',
-    'bg-cail-teal/20 border-cail-teal text-cail-teal',
+    'bg-cail-teal/20 border-cail-teal text-cail-azure',
     'bg-amber-100 border-amber-400 text-amber-700',
     'bg-violet-100 border-violet-400 text-violet-700',
     'bg-rose-100 border-rose-400 text-rose-700',
@@ -134,9 +134,9 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
         <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div>
             <h2 id="split-modal-title" className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Split Text</h2>
-            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{realPages.length} pages — assign each to a group</p>
+            <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">{realPages.length} pages — assign each to a group</p>
           </div>
-          <button onClick={onClose} aria-label="Close split modal" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} aria-label="Close split modal" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -155,7 +155,7 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
                   className="flex-1 text-sm border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-cail-blue"
                   placeholder="Group name"
                 />
-                <span className="text-xs text-gray-400 w-16 text-right">{group.pages.size} pg</span>
+                <span className="text-xs text-gray-500 w-16 text-right">{group.pages.size} pg</span>
                 {groups.length > 2 && (
                   <button onClick={() => removeGroup(idx)} className="text-gray-300 hover:text-red-400 transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,13 +167,13 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
             ))}
             <div className="flex gap-2">
               <button onClick={addGroup} className="text-xs text-cail-blue hover:text-cail-navy font-medium">+ Add group</button>
-              <button onClick={autoAssign} className="text-xs text-gray-400 hover:text-cail-dark font-medium">Auto-assign evenly</button>
+              <button onClick={autoAssign} className="text-xs text-gray-500 hover:text-cail-dark font-medium">Auto-assign evenly</button>
             </div>
           </div>
 
           {/* Page grid — click a page to cycle through groups */}
           <div className="border border-gray-100 dark:border-slate-700 rounded-xl p-3">
-            <p className="text-xs text-gray-400 dark:text-slate-500 mb-2">Click a page to assign it to the selected group. Click again to cycle.</p>
+            <p className="text-xs text-gray-500 dark:text-slate-500 mb-2">Click a page to assign it to the selected group. Click again to cycle.</p>
             <div className="flex flex-wrap gap-1.5">
               {realPages.map(page => {
                 const gIdx = getPageGroup(page.page_number);
@@ -292,9 +292,9 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
         <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div>
             <h2 id="merge-modal-title" className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Merge Texts</h2>
-            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Combine multiple texts into one</p>
+            <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">Combine multiple texts into one</p>
           </div>
-          <button onClick={onClose} aria-label="Close merge modal" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} aria-label="Close merge modal" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -339,7 +339,7 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
                       )}
                     </span>
                     <span className="truncate">{t.name}</span>
-                    <span className="text-xs text-gray-400 dark:text-slate-500 ml-auto shrink-0">{t.page_count || 0} pg</span>
+                    <span className="text-xs text-gray-500 dark:text-slate-500 ml-auto shrink-0">{t.page_count || 0} pg</span>
                   </button>
                 );
               })}
@@ -359,7 +359,7 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
                       <button
                         onClick={() => moveUp(idx)}
                         disabled={idx === 0}
-                        className="p-0.5 text-gray-400 hover:text-cail-dark disabled:opacity-30"
+                        className="p-0.5 text-gray-500 hover:text-cail-dark disabled:opacity-30"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -368,7 +368,7 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
                       <button
                         onClick={() => moveDown(idx)}
                         disabled={idx >= selected.length - 1}
-                        className="p-0.5 text-gray-400 hover:text-cail-dark disabled:opacity-30"
+                        className="p-0.5 text-gray-500 hover:text-cail-dark disabled:opacity-30"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

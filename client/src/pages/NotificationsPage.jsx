@@ -53,7 +53,7 @@ const TYPE_META = {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     ),
-    color: 'text-cail-teal',
+    color: 'text-cail-azure',
     bg: 'bg-cail-teal/5',
     label: 'Shared',
   },
@@ -85,7 +85,7 @@ const FALLBACK_META = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
-  color: 'text-gray-400',
+  color: 'text-gray-500',
   bg: 'bg-gray-50',
   label: 'Info',
 };
@@ -175,7 +175,7 @@ export default function NotificationsPage() {
         <div>
           <h1 className="font-display font-bold text-2xl text-cail-dark">Notifications</h1>
           {unread > 0 && (
-            <p className="text-sm text-gray-400 mt-1">{unread} unread</p>
+            <p className="text-sm text-gray-500 mt-1">{unread} unread</p>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -189,7 +189,7 @@ export default function NotificationsPage() {
           )}
           <button
             onClick={() => { setPrefsOpen(!prefsOpen); if (!prefsOpen) fetchPrefs(); }}
-            className={`p-2 rounded-xl transition-colors ${prefsOpen ? 'bg-cail-blue/10 text-cail-blue' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            className={`p-2 rounded-xl transition-colors ${prefsOpen ? 'bg-cail-blue/10 text-cail-blue' : 'text-gray-500 hover:text-gray-600 hover:bg-gray-100'}`}
             title="Email preferences"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -258,7 +258,7 @@ export default function NotificationsPage() {
           <svg className="w-12 h-12 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-500">
             {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
           </p>
         </div>
@@ -266,7 +266,7 @@ export default function NotificationsPage() {
         <div className="space-y-8">
           {groups.map((group) => (
             <div key={group.label}>
-              <h3 className="font-display text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3 px-1">
+              <h3 className="font-display text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3 px-1">
                 {group.label}
               </h3>
               <div className="space-y-1.5">
@@ -291,13 +291,13 @@ export default function NotificationsPage() {
                             {notif.title}
                           </p>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[11px] text-gray-400">{timeAgo(notif.created_at)}</span>
+                            <span className="text-[11px] text-gray-500">{timeAgo(notif.created_at)}</span>
                             {!notif.read && (
                               <span className="w-2 h-2 rounded-full bg-cail-blue shrink-0" />
                             )}
                           </div>
                         </div>
-                        <p className={`text-sm mt-1 leading-relaxed ${!notif.read ? 'text-gray-500' : 'text-gray-400'}`}>
+                        <p className={`text-sm mt-1 leading-relaxed ${!notif.read ? 'text-gray-600' : 'text-gray-500'}`}>
                           {notif.body}
                         </p>
                         <span className={`inline-block mt-2 text-[10px] font-semibold uppercase tracking-wider ${meta.color} opacity-60`}>

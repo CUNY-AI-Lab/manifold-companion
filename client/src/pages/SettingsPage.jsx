@@ -35,7 +35,7 @@ function Section({ id, icon, title, description, children }) {
         <span className="text-cail-blue">{icon}</span>
         <div>
           <h2 className="font-display font-semibold text-base text-cail-dark dark:text-slate-100">{title}</h2>
-          {description && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{description}</p>}
+          {description && <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">{description}</p>}
         </div>
       </div>
       <div className="px-6 py-5 space-y-5">
@@ -54,7 +54,7 @@ function Toggle({ checked, onChange, label, description }) {
     <label className="flex items-center justify-between gap-4 py-3 border-b border-gray-50 dark:border-slate-700/50 last:border-0 cursor-pointer group">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors">{label}</p>
-        {description && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{description}</p>}
+        {description && <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">{description}</p>}
       </div>
       <button
         role="switch"
@@ -166,7 +166,7 @@ function ProfileSection({ user }) {
               type="email"
               value={user?.email || ''}
               readOnly
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-700/50 text-sm text-gray-400 dark:text-slate-500 cursor-not-allowed"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-700/50 text-sm text-gray-500 dark:text-slate-500 cursor-not-allowed"
             />
           </div>
         </div>
@@ -339,14 +339,14 @@ function AppearanceSection({ user }) {
                   : 'border-gray-100 dark:border-slate-700 hover:border-gray-200 dark:hover:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700/50'
               }`}
             >
-              <span className={`transition-colors ${active ? 'text-cail-blue' : 'text-gray-400 dark:text-slate-500 group-hover:text-gray-600 dark:group-hover:text-slate-300'}`}>
+              <span className={`transition-colors ${active ? 'text-cail-blue' : 'text-gray-500 dark:text-slate-500 group-hover:text-gray-600 dark:group-hover:text-slate-300'}`}>
                 {opt.icon}
               </span>
               <div className="text-center">
                 <p className={`text-sm font-semibold ${active ? 'text-cail-blue' : 'text-cail-dark dark:text-slate-200'}`}>
                   {opt.label}
                 </p>
-                <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-0.5 leading-tight">{opt.description}</p>
+                <p className="text-[11px] text-gray-500 dark:text-slate-500 mt-0.5 leading-tight">{opt.description}</p>
               </div>
               {active && (
                 <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-cail-blue" />
@@ -439,7 +439,7 @@ function NotificationsSection() {
           ))}
         </div>
       ) : (
-        <p className="text-sm text-gray-400">Could not load preferences.</p>
+        <p className="text-sm text-gray-500">Could not load preferences.</p>
       )}
     </Section>
   );
@@ -474,19 +474,19 @@ function UsageSection({ user }) {
           <div className="flex items-center justify-between mb-2">
             <div>
               <p className="text-sm font-medium text-cail-dark dark:text-slate-200">AI Token Usage</p>
-              <p className="text-xs text-gray-400 dark:text-slate-500">Resets when admin resets your allowance</p>
+              <p className="text-xs text-gray-500 dark:text-slate-500">Resets when admin resets your allowance</p>
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-cail-dark dark:text-slate-100 tabular-nums">
                 {formatTokens(tokenUsed)}
               </p>
-              <p className="text-xs text-gray-400 dark:text-slate-500 tabular-nums">
+              <p className="text-xs text-gray-500 dark:text-slate-500 tabular-nums">
                 of {formatTokens(tokenMax)}
               </p>
             </div>
           </div>
           <ProgressBar value={tokenUsed} max={tokenMax} colorClass="bg-cail-blue" />
-          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1.5 text-right">
+          <p className="text-xs text-gray-500 dark:text-slate-500 mt-1.5 text-right">
             {tokenPct.toFixed(1)}% used
           </p>
         </div>
@@ -498,19 +498,19 @@ function UsageSection({ user }) {
           <div className="flex items-center justify-between mb-2">
             <div>
               <p className="text-sm font-medium text-cail-dark dark:text-slate-200">File Storage</p>
-              <p className="text-xs text-gray-400 dark:text-slate-500">Uploaded images and source PDFs</p>
+              <p className="text-xs text-gray-500 dark:text-slate-500">Uploaded images and source PDFs</p>
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-cail-dark dark:text-slate-100 tabular-nums">
                 {formatBytes(storageUsed)}
               </p>
-              <p className="text-xs text-gray-400 dark:text-slate-500">
+              <p className="text-xs text-gray-500 dark:text-slate-500">
                 of {formatBytes(MAX_STORAGE_BYTES)}
               </p>
             </div>
           </div>
           <ProgressBar value={storageUsed} max={MAX_STORAGE_BYTES} colorClass="bg-cail-teal" />
-          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1.5 text-right">
+          <p className="text-xs text-gray-500 dark:text-slate-500 mt-1.5 text-right">
             {storagePct.toFixed(1)}% used
           </p>
         </div>
@@ -540,7 +540,7 @@ function SideNav({ active }) {
   return (
     <nav className="hidden lg:block w-44 shrink-0">
       <div className="sticky top-24 space-y-0.5">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-slate-500 px-3 mb-3">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-slate-500 px-3 mb-3">
           Settings
         </p>
         {NAV_ITEMS.map((item) => (
@@ -596,7 +596,7 @@ export default function SettingsPage() {
       {/* Page header */}
       <div className="mb-8">
         <h1 className="font-display font-bold text-2xl text-cail-dark dark:text-slate-100">Settings</h1>
-        <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">
+        <p className="text-sm text-gray-500 dark:text-slate-500 mt-1">
           Manage your account, appearance, and preferences
         </p>
       </div>

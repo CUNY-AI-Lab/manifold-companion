@@ -356,7 +356,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                           autoFocus
                         />
                         <button onClick={() => saveName(user.id)} className="text-xs text-cail-blue hover:underline">Save</button>
-                        <button onClick={() => setEditingName(null)} className="text-xs text-gray-400 hover:underline">Cancel</button>
+                        <button onClick={() => setEditingName(null)} className="text-xs text-gray-500 hover:underline">Cancel</button>
                       </div>
                     ) : (
                       <button
@@ -367,7 +367,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                         {user.display_name ? (
                           <>
                             <p className="text-sm font-medium text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors">{user.display_name}</p>
-                            <p className="text-sm text-gray-400 dark:text-slate-500">{user.email}</p>
+                            <p className="text-sm text-gray-500 dark:text-slate-500">{user.email}</p>
                           </>
                         ) : (
                           <>
@@ -396,7 +396,7 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                           min="0"
                         />
                         <button onClick={() => saveAllowance(user.id)} className="text-xs text-cail-blue hover:underline">Save</button>
-                        <button onClick={() => setEditingAllowance(null)} className="text-xs text-gray-400 hover:underline">Cancel</button>
+                        <button onClick={() => setEditingAllowance(null)} className="text-xs text-gray-500 hover:underline">Cancel</button>
                       </div>
                     ) : (
                       <button
@@ -407,12 +407,12 @@ function UsersTab({ users, onRefresh, toast, setToast, error, setError }) {
                         <span className={`text-sm font-medium ${user.token_allowance > 0 && (user.token_usage / user.token_allowance) > 0.8 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-slate-400'}`}>
                           {formatTokens(user.token_usage)}
                         </span>
-                        <span className="text-sm text-gray-400 dark:text-slate-500"> / {formatTokens(user.token_allowance)}</span>
+                        <span className="text-sm text-gray-500 dark:text-slate-500"> / {formatTokens(user.token_allowance)}</span>
                       </button>
                     )}
                   </td>
                   <td className="px-4 py-4 text-sm text-gray-600 dark:text-slate-400">{user.project_count || 0}</td>
-                  <td className="px-4 py-4 text-sm text-gray-400 dark:text-slate-500">{formatDate(user.last_login_at)}</td>
+                  <td className="px-4 py-4 text-sm text-gray-500 dark:text-slate-500">{formatDate(user.last_login_at)}</td>
                   <td className="px-4 py-4">
                     <div className="flex items-center justify-end gap-1 flex-wrap">
                       {user.status === 'pending' && (
@@ -573,7 +573,7 @@ function UsageTab() {
                     <tr key={u.user_id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50 dark:bg-slate-800/50">
                       <td className="px-6 py-3">
                         <p className="text-sm text-cail-dark dark:text-slate-200">{u.display_name || u.email}</p>
-                        {u.display_name && <p className="text-xs text-gray-400 dark:text-slate-500">{u.email}</p>}
+                        {u.display_name && <p className="text-xs text-gray-500 dark:text-slate-500">{u.email}</p>}
                       </td>
                       <td className="px-6 py-3 text-sm text-gray-600 dark:text-slate-400">{u.calls}</td>
                       <td className="px-6 py-3 text-sm text-gray-600 dark:text-slate-400">{formatTokens(u.current_usage)}</td>
@@ -600,7 +600,7 @@ function UsageTab() {
               <div key={p.project_id} className="flex items-center justify-between">
                 <div>
                   <span className="text-sm text-cail-dark dark:text-slate-200">{p.project_name}</span>
-                  <span className="text-xs text-gray-400 dark:text-slate-500 ml-2">({p.owner_email})</span>
+                  <span className="text-xs text-gray-500 dark:text-slate-500 ml-2">({p.owner_email})</span>
                 </div>
                 <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-slate-400">
                   <span>{p.calls} calls</span>
@@ -722,7 +722,7 @@ function BackupsTab({ setToast }) {
                 <tr key={b.filename} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50 dark:bg-slate-800/50">
                   <td className="px-4 sm:px-6 py-4 text-sm text-cail-dark dark:text-slate-200 font-mono whitespace-nowrap">{b.filename}</td>
                   <td className="px-4 sm:px-6 py-4 text-sm text-gray-600 dark:text-slate-400">{formatBytes(b.size)}</td>
-                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-400 dark:text-slate-500 whitespace-nowrap">{formatDate(b.created_at)}</td>
+                  <td className="px-4 sm:px-6 py-4 text-sm text-gray-500 dark:text-slate-500 whitespace-nowrap">{formatDate(b.created_at)}</td>
                   <td className="px-4 sm:px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
                       <button

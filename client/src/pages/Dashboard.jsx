@@ -177,7 +177,7 @@ export default function Dashboard() {
             </div>
             <button
               onClick={dismissWelcome}
-              className="shrink-0 p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors"
+              className="shrink-0 p-1 rounded-lg text-gray-500 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors"
               aria-label="Dismiss welcome banner"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -345,7 +345,7 @@ export default function Dashboard() {
                       {project.page_count || 0} page{(project.page_count || 0) !== 1 ? 's' : ''}
                     </span>
                     {days !== null && (
-                      <span className={`text-xs ${days <= 7 ? 'text-red-500' : 'text-gray-400 dark:text-slate-500'}`}>
+                      <span className={`text-xs ${days <= 7 ? 'text-red-500' : 'text-gray-500 dark:text-slate-500'}`}>
                         {days} day{days !== 1 ? 's' : ''} left
                       </span>
                     )}
@@ -380,7 +380,7 @@ export default function Dashboard() {
                 <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 group-hover:text-cail-blue transition-colors mb-1">
                   {project.name}
                 </h3>
-                <p className="text-xs text-gray-400 dark:text-slate-500 mb-3">{project.owner_email}</p>
+                <p className="text-xs text-gray-500 dark:text-slate-500 mb-3">{project.owner_email}</p>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     project.share_role === 'editor'

@@ -233,7 +233,7 @@ export default function AboutPage() {
 
         <div className="max-w-5xl mx-auto px-6 sm:px-8 py-20 sm:py-28">
           <RevealSection>
-            <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-teal mb-4">Workflows</p>
+            <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-azure mb-4">Workflows</p>
             <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark dark:text-slate-200 max-w-2xl leading-tight">
               Two paths to a published text
             </h2>
@@ -254,7 +254,7 @@ export default function AboutPage() {
                   </span>
                   <div>
                     <h3 className="font-display font-bold text-lg text-cail-dark dark:text-slate-200">Image to Markdown</h3>
-                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Scanned pages &middot; Photographs &middot; Handwritten texts</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">Scanned pages &middot; Photographs &middot; Handwritten texts</p>
                   </div>
                 </div>
 
@@ -295,7 +295,7 @@ export default function AboutPage() {
                   </span>
                   <div>
                     <h3 className="font-display font-bold text-lg text-cail-dark dark:text-slate-200">PDF to HTML</h3>
-                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Textbooks &middot; Articles &middot; Reports</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">Textbooks &middot; Articles &middot; Reports</p>
                   </div>
                 </div>
 
@@ -421,7 +421,7 @@ export default function AboutPage() {
 
         <div className="max-w-5xl mx-auto px-6 sm:px-8 py-20 sm:py-28">
           <RevealSection>
-            <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-teal mb-4">Quick reference</p>
+            <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cail-azure mb-4">Quick reference</p>
             <h2 className="font-display font-bold text-2xl sm:text-3xl text-cail-dark dark:text-slate-200 max-w-2xl leading-tight">
               Supported formats &amp; limits
             </h2>
