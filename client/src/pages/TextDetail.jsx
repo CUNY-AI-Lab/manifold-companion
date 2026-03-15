@@ -7,6 +7,7 @@ import VersionHistory from '../components/VersionHistory';
 import AnnotationSidebar from '../components/AnnotationSidebar';
 import KeyboardShortcuts from '../components/KeyboardShortcuts';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import useHotkeys from '../hooks/useHotkeys';
 
 /**
  * Resize a canvas-based image to ensure it stays under maxBytes (approx).
@@ -633,6 +634,29 @@ export default function TextDetail() {
     { enabled: activeTab === 'Review' }
   );
 
+  // MD Editor shortcuts
+  useHotkeys({
+    'Cmd+S': { handler: () => savePageReview(), label: 'Save page', section: 'MD Editor', allowInEditable: true },
+    'Cmd+Shift+S': { handler: () => { savePageReview(); if (reviewPage < visiblePages.length - 1) setReviewPage(p => p + 1); }, label: 'Save and next page', section: 'MD Editor', allowInEditable: true },
+  }, { when: activeTab === 'Review' && role !== 'viewer' });
+
+  // Page navigation (arrow keys should NOT work in editable targets - default behavior)
+  useHotkeys({
+    'ArrowLeft': { handler: () => { if (reviewPage > 0) setReviewPage(p => p - 1); }, label: 'Previous page', section: 'MD Editor' },
+    'ArrowRight': { handler: () => { if (reviewPage < visiblePages.length - 1) setReviewPage(p => p + 1); }, label: 'Next page', section: 'MD Editor' },
+  }, { when: activeTab === 'Review' });
+
+  // Navigation shortcuts
+  useHotkeys({
+    'Cmd+Shift+C': { handler: () => setShowAnnotations(s => !s), label: 'Toggle comments', section: 'Navigation' },
+    'Cmd+Shift+H': { handler: () => setShowVersions(s => !s), label: 'Version history', section: 'Navigation' },
+    'Alt+ArrowLeft': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx > 0) setActiveTab(TABS[idx - 1]); }, label: 'Previous tab', section: 'Navigation' },
+    'Alt+ArrowRight': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx < TABS.length - 1) setActiveTab(TABS[idx + 1]); }, label: 'Next tab', section: 'Navigation' },
+    'Escape': { handler: () => { if (showShortcuts) setShowShortcuts(false); else if (showAnnotations) setShowAnnotations(false); else if (showVersions) setShowVersions(false); }, label: 'Close panel', section: 'General' },
+    '?': { handler: () => setShowShortcuts(s => !s), label: 'Keyboard shortcuts', section: 'General' },
+    'Cmd+/': { handler: () => setShowShortcuts(s => !s), label: 'Keyboard shortcuts', section: 'General', allowInEditable: true },
+  }, { when: true });
+
   // Keyboard navigation for lightbox
   useEffect(() => {
     if (lightboxPage === null) return;
@@ -662,38 +686,6 @@ export default function TextDetail() {
       setReviewPan({ x: 0, y: 0 });
     }
   }, [activeTab, reviewPage, pages]);
-
-  // Keyboard navigation for review
-  useEffect(() => {
-    if (activeTab !== 'Review') return;
-
-    function handleKey(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        savePageReview();
-        return;
-      }
-      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
-      if (e.key === 'ArrowLeft' && reviewPage > 0) setReviewPage((p) => p - 1);
-      if (e.key === 'ArrowRight' && reviewPage < visiblePages.length - 1) setReviewPage((p) => p + 1);
-    }
-
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [activeTab, reviewPage, visiblePages.length]);
-
-  // Global ? shortcut for keyboard shortcuts overlay
-  useEffect(() => {
-    function handleShortcutKey(e) {
-      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setShowShortcuts((s) => !s);
-      }
-    }
-    window.addEventListener('keydown', handleShortcutKey);
-    return () => window.removeEventListener('keydown', handleShortcutKey);
-  }, []);
 
   // OCR via SSE — with confirmation dialog (Task 1)
   function runOCR() {

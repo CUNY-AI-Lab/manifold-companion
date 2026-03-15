@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BASE } from '../api/client';
 import SearchBar from './SearchBar';
 import NotificationBell from './NotificationBell';
+import useHotkeys from '../hooks/useHotkeys';
 
 const THEME_CYCLE = ['system', 'light', 'dark'];
 
@@ -53,7 +54,10 @@ export { ManifoldLogo };
 export default function Header() {
   const { user, logout, updateTheme } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const pendingKeyRef = useRef(null);
+  const pendingTimerRef = useRef(null);
 
   const currentThemePref = user?.theme_preference || localStorage.getItem('mc-theme') || 'system';
 
@@ -62,6 +66,39 @@ export default function Header() {
     const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
     updateTheme(next);
   }
+
+  // Global shortcuts
+  useHotkeys({
+    'Cmd+Shift+D': { handler: () => cycleTheme(), label: 'Cycle theme', section: 'Global' },
+    '/': { handler: () => { const el = document.querySelector('[data-search-input]'); if (el) el.focus(); }, label: 'Focus search', section: 'Global' },
+  }, { when: !!user });
+
+  // Two-key "Go to" combos
+  useHotkeys({
+    'g': {
+      handler: () => {
+        clearTimeout(pendingTimerRef.current);
+        pendingKeyRef.current = 'g';
+        pendingTimerRef.current = setTimeout(() => { pendingKeyRef.current = null; }, 500);
+      },
+      label: 'Go to... (then D=Dashboard, S=Settings)',
+      section: 'Global',
+    },
+    'd': {
+      handler: () => {
+        if (pendingKeyRef.current === 'g') { pendingKeyRef.current = null; clearTimeout(pendingTimerRef.current); navigate('/'); }
+      },
+      label: 'Go to Dashboard (after G)',
+      section: 'Global',
+    },
+    's': {
+      handler: () => {
+        if (pendingKeyRef.current === 'g') { pendingKeyRef.current = null; clearTimeout(pendingTimerRef.current); navigate('/settings'); }
+      },
+      label: 'Go to Settings (after G)',
+      section: 'Global',
+    },
+  }, { when: !!user });
 
   const navLinks = [
     { to: '/', label: 'Dashboard' },

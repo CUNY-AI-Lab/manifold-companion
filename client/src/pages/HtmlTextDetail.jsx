@@ -11,6 +11,7 @@ import VersionHistory from '../components/VersionHistory';
 import AnnotationSidebar from '../components/AnnotationSidebar';
 import KeyboardShortcuts from '../components/KeyboardShortcuts';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import useHotkeys from '../hooks/useHotkeys';
 
 const MATHML_TAGS = [
   'math', 'maction', 'maligngroup', 'malignmark', 'menclose', 'merror', 'mfenced', 'mfrac',
@@ -624,6 +625,46 @@ export default function HtmlTextDetail() {
   const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
   const [showShortcuts, setShowShortcuts] = useState(false);
 
+  // Editor shortcuts - active only in Review tab when user can edit
+  useHotkeys({
+    'Cmd+B': { handler: () => { execCmd('bold'); setDirty(true); }, label: 'Bold', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+I': { handler: () => { execCmd('italic'); setDirty(true); }, label: 'Italic', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+U': { handler: () => { execCmd('underline'); setDirty(true); }, label: 'Underline', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+K': { handler: () => { const url = prompt('Enter URL:'); if (url) { execCmd('createLink', url); setDirty(true); } }, label: 'Insert link', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+E': { handler: () => { const sel = window.getSelection(); if (sel.rangeCount) { const r = sel.getRangeAt(0); const code = document.createElement('code'); try { r.surroundContents(code); setDirty(true); } catch(e) { /* selection spans elements */ } } }, label: 'Inline code', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Shift+X': { handler: () => { execCmd('strikeThrough'); setDirty(true); }, label: 'Strikethrough', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Shift+7': { handler: () => { execCmd('insertOrderedList'); setDirty(true); }, label: 'Ordered list', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Shift+8': { handler: () => { execCmd('insertUnorderedList'); setDirty(true); }, label: 'Unordered list', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Shift+9': { handler: () => { formatBlock('blockquote'); setDirty(true); }, label: 'Blockquote', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+S': { handler: () => saveHtml(), label: 'Save', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Shift+K': { handler: () => {
+      const tex = prompt('Enter TeX formula:');
+      if (tex) {
+        execCmd('insertHTML', `\\(${tex}\\)`);
+        setDirty(true);
+      }
+    }, label: 'Insert TeX formula', section: 'HTML Editor', allowInEditable: true },
+  }, { when: activeTab === 'Review' && role !== 'viewer' });
+
+  // Heading shortcuts
+  useHotkeys({
+    'Cmd+Alt+1': { handler: () => { formatBlock('h1'); setDirty(true); }, label: 'Heading 1', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Alt+2': { handler: () => { formatBlock('h2'); setDirty(true); }, label: 'Heading 2', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Alt+3': { handler: () => { formatBlock('h3'); setDirty(true); }, label: 'Heading 3', section: 'HTML Editor', allowInEditable: true },
+    'Cmd+Alt+4': { handler: () => { formatBlock('h4'); setDirty(true); }, label: 'Heading 4', section: 'HTML Editor', allowInEditable: true },
+  }, { when: activeTab === 'Review' && role !== 'viewer' });
+
+  // Navigation shortcuts - always active on this page
+  useHotkeys({
+    'Cmd+Shift+C': { handler: () => setShowAnnotations(s => !s), label: 'Toggle comments', section: 'Navigation' },
+    'Cmd+Shift+H': { handler: () => setShowVersions(s => !s), label: 'Version history', section: 'Navigation' },
+    'Alt+ArrowLeft': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx > 0) setActiveTab(TABS[idx - 1]); }, label: 'Previous tab', section: 'Navigation' },
+    'Alt+ArrowRight': { handler: () => { const idx = TABS.indexOf(activeTab); if (idx < TABS.length - 1) setActiveTab(TABS[idx + 1]); }, label: 'Next tab', section: 'Navigation' },
+    'Escape': { handler: () => { if (showShortcuts) setShowShortcuts(false); else if (showAnnotations) setShowAnnotations(false); else if (showVersions) setShowVersions(false); }, label: 'Close panel', section: 'General' },
+    '?': { handler: () => setShowShortcuts(s => !s), label: 'Keyboard shortcuts', section: 'General' },
+    'Cmd+/': { handler: () => setShowShortcuts(s => !s), label: 'Keyboard shortcuts', section: 'General', allowInEditable: true },
+  }, { when: true });
+
   const getContentForDraft = useCallback(() => {
     if (!sourceMode && editableRef.current) {
       return extractTexFromKatex(normalizeImageSrcs(editableRef.current.innerHTML));
@@ -783,19 +824,6 @@ export default function HtmlTextDetail() {
     loadPdfPreview();
     return () => { active = false; };
   }, [id, sourcePdfName]);
-
-  // Global ? shortcut for keyboard shortcuts overlay
-  useEffect(() => {
-    function handleShortcutKey(e) {
-      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setShowShortcuts((s) => !s);
-      }
-    }
-    window.addEventListener('keydown', handleShortcutKey);
-    return () => window.removeEventListener('keydown', handleShortcutKey);
-  }, []);
 
   function normalizeImageSrcs(html) {
     return html.replace(

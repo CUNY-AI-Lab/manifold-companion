@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import { AnnounceProvider } from './hooks/useAnnounce';
+import { AnnounceProvider } from './hooks/useAnnounce.jsx';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import LoginPage from './pages/LoginPage';
