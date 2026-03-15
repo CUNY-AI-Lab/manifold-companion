@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, updateUserThemePreference, getUserTokenUsage, setPasswordResetToken, getUserByResetToken, clearPasswordResetToken, BCRYPT_ROUNDS, getNotificationPreferences, updateNotificationPreferences } from '../db.js';
+import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, updateUserThemePreference, updateUserOnboarded, getUserTokenUsage, setPasswordResetToken, getUserByResetToken, clearPasswordResetToken, BCRYPT_ROUNDS, getNotificationPreferences, updateNotificationPreferences } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateEmail, validatePassword } from '../middleware/security.js';
 import { sendPasswordResetEmail } from '../services/email.js';
@@ -148,6 +148,7 @@ router.get('/me', async (req, res) => {
       token_allowance: user.token_allowance,
       token_usage: tokenUsage,
       theme_preference: user.theme_preference || 'system',
+      onboarded: user.onboarded || 0,
       storage_used: storageUsed,
     });
   } catch (err) {
@@ -192,9 +193,9 @@ router.post('/change-password', requireAuth, async (req, res) => {
 // ---- PUT /profile — update display name and/or theme for authenticated user
 router.put('/profile', requireAuth, (req, res) => {
   try {
-    const { display_name, theme_preference } = req.body || {};
-    if (display_name === undefined && theme_preference === undefined) {
-      return res.status(400).json({ error: 'display_name or theme_preference is required.' });
+    const { display_name, theme_preference, onboarded } = req.body || {};
+    if (display_name === undefined && theme_preference === undefined && onboarded === undefined) {
+      return res.status(400).json({ error: 'display_name, theme_preference, or onboarded is required.' });
     }
 
     const result = {};
@@ -212,6 +213,11 @@ router.put('/profile', requireAuth, (req, res) => {
       }
       updateUserThemePreference(req.user.id, theme_preference);
       result.theme_preference = theme_preference;
+    }
+
+    if (onboarded !== undefined) {
+      updateUserOnboarded(req.user.id, onboarded);
+      result.onboarded = onboarded ? 1 : 0;
     }
 
     res.json(result);

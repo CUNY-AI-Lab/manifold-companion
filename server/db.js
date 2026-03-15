@@ -224,6 +224,7 @@ function runMigrations() {
     'ALTER TABLE users ADD COLUMN password_reset_token TEXT',
     'ALTER TABLE users ADD COLUMN password_reset_expires_at TEXT',
     "ALTER TABLE users ADD COLUMN theme_preference TEXT NOT NULL DEFAULT 'system' CHECK(theme_preference IN ('system', 'light', 'dark'))",
+    'ALTER TABLE users ADD COLUMN onboarded INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -319,6 +320,10 @@ export function updateUserDisplayName(id, displayName) {
 
 export function updateUserThemePreference(id, themePreference) {
   return db.prepare('UPDATE users SET theme_preference = ? WHERE id = ?').run(themePreference, id);
+}
+
+export function updateUserOnboarded(id, onboarded) {
+  db.prepare('UPDATE users SET onboarded = ? WHERE id = ?').run(onboarded ? 1 : 0, id);
 }
 
 export function updateUserTokenAllowance(id, allowance) {

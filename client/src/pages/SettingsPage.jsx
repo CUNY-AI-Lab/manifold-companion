@@ -123,7 +123,7 @@ function ProfileSection({ user }) {
     setSaving(true);
     setFeedback(null);
     try {
-      await updateProfile(name.trim());
+      await updateProfile({ display_name: name.trim() });
       setFeedback({ type: 'success', message: 'Display name updated.' });
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Failed to save.' });

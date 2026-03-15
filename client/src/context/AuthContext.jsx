@@ -93,9 +93,9 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const updateProfile = useCallback(async (displayName) => {
-    const data = await api.put('/api/auth/profile', { display_name: displayName });
-    setUser((prev) => prev ? { ...prev, display_name: data.display_name } : prev);
+  const updateProfile = useCallback(async (fields) => {
+    const data = await api.put('/api/auth/profile', fields);
+    setUser((prev) => prev ? { ...prev, ...data } : prev);
     return data;
   }, []);
 
