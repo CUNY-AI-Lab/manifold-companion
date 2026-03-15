@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 
 function timeAgo(dateStr) {
@@ -244,6 +244,15 @@ export default function NotificationBell() {
               ))
             )}
           </div>
+
+          {/* See all link */}
+          <Link
+            to="/notifications"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-center text-xs font-medium text-cail-blue hover:text-cail-navy hover:bg-gray-50 border-t border-gray-100 transition-colors"
+          >
+            See all notifications
+          </Link>
         </div>
       )}
     </div>

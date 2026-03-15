@@ -10,6 +10,7 @@ import TextRoute from './pages/TextRoute';
 import AdminPanel from './pages/AdminPanel';
 import SearchPage from './pages/SearchPage';
 import AboutPage from './pages/AboutPage';
+import NotificationsPage from './pages/NotificationsPage';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/texts/:id" element={<ProtectedRoute><TextRoute /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
           <Route path="/about" element={<ProtectedRoute><AboutPage /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
         </Routes>
       </main>

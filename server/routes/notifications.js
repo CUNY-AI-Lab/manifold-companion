@@ -20,7 +20,8 @@ router.use(requireAuth);
 router.get('/', (req, res) => {
   try {
     const includeRead = req.query.all === '1';
-    const notifications = getNotifications(req.user.id, 50, includeRead);
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const notifications = getNotifications(req.user.id, limit, includeRead);
     const unread = getUnreadCount(req.user.id);
     res.json({ notifications, unread });
   } catch (err) {
