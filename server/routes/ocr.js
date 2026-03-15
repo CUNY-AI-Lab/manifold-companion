@@ -20,6 +20,7 @@ import {
 } from '../db.js';
 import { getTextDir } from '../services/storage.js';
 import { ocrPage, generateSummary } from '../services/bedrock.js';
+import { notifyOcrComplete } from '../services/notify.js';
 
 const router = Router();
 
@@ -161,6 +162,13 @@ router.get('/texts/:id/ocr', aiLimiter, checkTokenQuota, async (req, res) => {
         errors,
         total: pages.length,
       });
+
+      // Notify project members that OCR is complete
+      try {
+        notifyOcrComplete(text.id, text.name, project.id, project.name, req.user.id);
+      } catch (notifyErr) {
+        console.error('OCR notification error:', notifyErr.message);
+      }
 
       // Generate summary in background (non-blocking)
       if (fullText.length > 0) {

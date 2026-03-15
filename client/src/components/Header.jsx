@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BASE } from '../api/client';
 import SearchBar from './SearchBar';
+import NotificationBell from './NotificationBell';
 
 function ManifoldLogo({ className = '' }) {
   return (
@@ -179,9 +180,10 @@ export default function Header() {
             </button>
           </nav>
 
-          {/* Right: Search + User + Logout (desktop) */}
+          {/* Right: Search + Notifications + User + Logout (desktop) */}
           <div className="hidden md:flex items-center gap-4">
             <SearchBar compact />
+            <NotificationBell />
             <span className="text-sm text-gray-500">{user?.display_name || user?.email}</span>
             <button
               onClick={logout}
@@ -191,20 +193,23 @@ export default function Header() {
             </button>
           </div>
 
-          {/* Mobile hamburger */}
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
-            aria-label="Toggle menu"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {menuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
+          {/* Mobile: notifications + hamburger */}
+          <div className="md:hidden flex items-center gap-1">
+            <NotificationBell />
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+              aria-label="Toggle menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {menuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Mobile menu */}

@@ -399,7 +399,7 @@ export default function TextDetail() {
   // Collaboration state
   const [role, setRole] = useState('viewer');
   const [showVersions, setShowVersions] = useState(false);
-  const [showAnnotations, setShowAnnotations] = useState(false);
+  const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
 
   // OCR Settings modal state
   const [showOcrSettings, setShowOcrSettings] = useState(false);

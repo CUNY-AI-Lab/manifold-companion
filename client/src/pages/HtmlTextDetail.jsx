@@ -618,7 +618,7 @@ export default function HtmlTextDetail() {
   });
   const [role, setRole] = useState('viewer');
   const [showVersions, setShowVersions] = useState(false);
-  const [showAnnotations, setShowAnnotations] = useState(false);
+  const [showAnnotations, setShowAnnotations] = useState(() => searchParams.get('annotations') === '1');
 
   // Details tab state
   const [summary, setSummary] = useState('');

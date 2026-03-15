@@ -23,6 +23,7 @@ import exportRoutes from './routes/export.js';
 import sharesRoutes from './routes/shares.js';
 import annotationRoutes from './routes/annotations.js';
 import usersRoutes from './routes/users.js';
+import notificationRoutes from './routes/notifications.js';
 import { startCleanupCron } from './services/cleanup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -122,6 +123,7 @@ app.use('/api', exportRoutes);
 app.use('/api/projects/:projectId/shares', sharesRoutes);
 app.use('/api', annotationRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Serve React app in production
 const clientDist = join(__dirname, '..', 'client', 'dist');

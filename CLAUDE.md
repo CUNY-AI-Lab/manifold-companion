@@ -59,6 +59,8 @@ Configuration via `.env` in project root (symlinked to `server/.env` because `do
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` -- Seeds initial admin user at startup (idempotent; only creates if not exists)
 - `TRUST_PROXY` -- Set `true` when behind Nginx (enables correct rate limiting and secure cookies)
 - `COOKIE_SECURE` -- Set `true` for HTTPS deployments (auto-enabled in production)
+- `SES_FROM_EMAIL` -- SES verified sender address (default `manifold-companion@cuny.qzz.io`)
+- `APP_URL` -- Public app URL for email links (default `https://tools.cuny.qzz.io/manifold-companion`)
 
 ## Architecture
 
@@ -106,6 +108,7 @@ All route modules except auth apply `requireAuth` at the router level. Admin rou
 /api                               → server/routes/llm.js          (summary, translation, PDF page parsing, PDF cleanup)
 /api                               → server/routes/export.js       (ZIP export)
 /api                               → server/routes/annotations.js  (inline annotations/comments with replies)
+/api/notifications                 → server/routes/notifications.js (bell notifications, preferences)
 ```
 
 ### Access Control (server/middleware/access.js)
@@ -121,7 +124,7 @@ Role hierarchy: `owner > editor > viewer`. The `getUserProjectRole()` DB functio
 
 ### Database (server/db.js)
 
-Ten tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `project_shares`, `text_versions`, `annotations`, `api_usage_logs`. Key conventions:
+Twelve tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `project_shares`, `text_versions`, `annotations`, `api_usage_logs`, `notifications`, `notification_preferences`. Key conventions:
 
 - **`__compiled__` sentinel**: A page with `filename = '__compiled__'` stores user-edited full text. Must be filtered out from display queries (`pages.filter(p => p.filename !== '__compiled__')`). Referenced across `db.js`, `texts.js`, `ocr.js`, `llm.js`, `export.js`, and `TextDetail.jsx`.
 - **Project type**: `projects.project_type` is `image_to_markdown` or `pdf_to_html`; it is set at creation and used by the client routers to choose the correct UI.
@@ -134,6 +137,7 @@ Ten tables: `users`, `projects`, `texts`, `pages`, `metadata`, `settings`, `proj
 - **Version history**: `text_versions` table stores content snapshots with `content_type` (`compiled`, `html`, `page`), user attribution, and timestamp. Auto-pruned to 50 versions per text+type. Versions are created automatically when saving text content (before overwrite).
 - **Annotations**: `annotations` table supports threaded comments with `parent_id` for replies, `anchor_type` (`range`, `point`, `global`), and `anchor_data` (JSON with CSS selectors or paragraph offsets). Supports resolve/unresolve workflow with `resolved_by` and `resolved_at`. The `mentions` column (JSON array of user IDs) stores @mention data per annotation.
 - **@Mentions**: `getProjectMembers(projectId)` returns owner + shared users for autocomplete. `GET /api/texts/:id/mentions/users` serves the member list. Annotations and replies accept `mentions` array, validated against project membership. Client renders `@Name` as highlighted blue spans.
+- **Notifications**: `notifications` table stores in-app notifications with `user_id`, `type`, `title`, `body`, `link`, `read` (0/1), and `created_at`. Types: `ocr_complete`, `account_approved`, `project_shared`, `comment_reply`, `comment_mention`. `notification_preferences` table stores per-user email toggles (`email_ocr_complete`, `email_project_shared`, `email_comment_reply`, `email_comment_mention`) defaulting to 1 (enabled).
 - **Display names**: `users.display_name` (nullable TEXT). Shown in annotations, shares, version history. Falls back to email when null.
 - **Token allowances**: `users.token_allowance` (default 5,000,000) and `users.token_usage_reset_at` (timestamp). Quota is enforced by `checkTokenQuota` middleware on all AI routes.
 - **API usage logs**: `api_usage_logs` table records every AI API call with `user_id`, `project_id`, `text_id`, `endpoint`, `model`, `tokens_in`, `tokens_out`, and `created_at`. Indexed on `(user_id, created_at)` and `(project_id)`. Token usage is calculated as `SUM(tokens_in + tokens_out)` since `token_usage_reset_at`.
@@ -169,6 +173,15 @@ The entire PDF-to-HTML pipeline uses OpenRouter (`server/services/openrouter.js`
 - `extractFiguresFromPdf()` — extracts embedded figures using `pdftohtml -xml` (requires poppler-utils)
 - `convertHtmlTexToMathML()` — export-time TeX→MathML conversion using temml
 - `callWithRetry()` — exponential backoff on 429/5xx responses
+
+### Notifications (server/services/notify.js + server/services/email.js)
+
+Two-layer notification system: in-app (always) + email (AWS SES, per user preferences).
+
+- **Dispatcher** (`notify.js`): `notifyOcrComplete()`, `notifyAccountApproved()`, `notifyProjectShared()`, `notifyCommentReply()`, `notifyMention()`. Each creates an in-app notification via `createNotification()` and conditionally sends email based on `shouldEmail()` checking `notification_preferences`.
+- **Email** (`email.js`): Uses `@aws-sdk/client-sesv2` with SES v2 API. Domain `cuny.qzz.io` is DKIM-verified. Branded HTML email template with app links.
+- **Triggers**: wired into `ocr.js` (after SSE complete), `admin.js` (status → approved), `shares.js` (after share created), `annotations.js` (replies and @mentions).
+- **Known issue**: CUNY institutional email addresses (`@gc.cuny.edu`, `@gradcenter.cuny.edu`) silently drop emails sent from `cuny.qzz.io` — SES reports successful delivery but emails never arrive (not even in spam). Gmail and other providers work fine. This appears to be CUNY's mail gateway policy.
 
 Note: `bedrock.js` still contains vestigial PDF functions (`parsePdfPageToHtml`, `cleanupPdfHtml`, `repairFormulasToMathMl`) from the original pipeline. These are **dead code** — all PDF routes in `llm.js` import from `openrouter.js`.
 
@@ -212,7 +225,8 @@ data/{userId}/{projectId}/{textId}/{filename}
 - **Collaboration UI**: `SharePanel.jsx` (portal modal) for owners to add/remove/update shares by email. `ProjectView.jsx` and `PdfProjectView.jsx` show role-based UI (hide edit/delete for viewers, share button for owners).
 - **Version history**: `VersionHistory.jsx` (portal modal) shows version list with GitHub-style diff view (Myers algorithm, HTML-aware line splitting) and revert. Accessible via "History" button in the Review tab of both editors.
 - **Annotations**: `AnnotationSidebar.jsx` (slide-out panel) for threaded comments with replies, resolve/unresolve, delete, and @mentions. Type `@` in comment/reply textarea to see project member autocomplete dropdown. Mentions stored as user ID arrays and rendered as highlighted spans. Accessible via "Comments" button in the Review tab.
-- **Tab deep linking**: Both `TextDetail.jsx` and `HtmlTextDetail.jsx` read a `?tab=` query param on mount to set the initial active tab (used by search results to open directly to Review).
+- **Notifications UI**: `NotificationBell.jsx` in Header shows bell icon with unread count badge, dropdown notification list with per-type icons, mark-read on click (navigates to `link`), mark-all-read, and a gear icon to toggle email preferences. Polls `/api/notifications/unread-count` every 30 seconds. Comment/mention notification links include `?annotations=1` to auto-open the annotations sidebar.
+- **Tab deep linking**: Both `TextDetail.jsx` and `HtmlTextDetail.jsx` read `?tab=` and `?annotations=1` query params on mount to set the initial active tab and auto-open the annotations sidebar (used by search results and notification links).
 - **Admin panel** (`AdminPanel.jsx`): Three-tab layout — Users (inline name editing, bulk approval, token allowance controls, usage reset), Usage (period selector, summary cards, per-endpoint/user/project breakdowns), Backups (create/download/delete database+file backups). Backup download uses `BASE` prefix for subpath compatibility.
 - **Registration**: `RegisterPage.jsx` includes optional display name field. `AuthContext` exposes `updateProfile()` for name changes.
 

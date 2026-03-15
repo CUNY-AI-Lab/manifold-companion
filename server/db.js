@@ -179,6 +179,28 @@ function createSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_api_usage_user ON api_usage_logs(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_api_usage_project ON api_usage_logs(project_id);
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      link TEXT,
+      read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      user_id INTEGER PRIMARY KEY,
+      email_ocr_complete INTEGER NOT NULL DEFAULT 1,
+      email_project_shared INTEGER NOT NULL DEFAULT 1,
+      email_comment_reply INTEGER NOT NULL DEFAULT 1,
+      email_comment_mention INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 }
 
@@ -969,4 +991,63 @@ export function getUsageStats(days = 30) {
 
 export function getDatabase() {
   return db;
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+export function createNotification(userId, type, title, body = null, link = null) {
+  return db.prepare(
+    'INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)'
+  ).run(userId, type, title, body, link);
+}
+
+export function getNotifications(userId, limit = 30, includeRead = false) {
+  const readClause = includeRead ? '' : 'AND read = 0';
+  return db.prepare(`
+    SELECT * FROM notifications
+    WHERE user_id = ? ${readClause}
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(userId, limit);
+}
+
+export function getUnreadCount(userId) {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND read = 0').get(userId);
+  return row?.count || 0;
+}
+
+export function markNotificationRead(notificationId, userId) {
+  return db.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').run(notificationId, userId);
+}
+
+export function markAllNotificationsRead(userId) {
+  return db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0').run(userId);
+}
+
+export function getNotificationPreferences(userId) {
+  let prefs = db.prepare('SELECT * FROM notification_preferences WHERE user_id = ?').get(userId);
+  if (!prefs) {
+    db.prepare('INSERT OR IGNORE INTO notification_preferences (user_id) VALUES (?)').run(userId);
+    prefs = db.prepare('SELECT * FROM notification_preferences WHERE user_id = ?').get(userId);
+  }
+  return prefs;
+}
+
+export function updateNotificationPreferences(userId, updates) {
+  const allowed = ['email_ocr_complete', 'email_project_shared', 'email_comment_reply', 'email_comment_mention'];
+  const sets = [];
+  const values = [];
+  for (const key of allowed) {
+    if (key in updates) {
+      sets.push(`${key} = ?`);
+      values.push(updates[key] ? 1 : 0);
+    }
+  }
+  if (sets.length === 0) return;
+  // Ensure row exists
+  db.prepare('INSERT OR IGNORE INTO notification_preferences (user_id) VALUES (?)').run(userId);
+  values.push(userId);
+  db.prepare(`UPDATE notification_preferences SET ${sets.join(', ')} WHERE user_id = ?`).run(...values);
 }

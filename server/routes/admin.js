@@ -11,6 +11,7 @@ import bcrypt from 'bcrypt';
 import { requireAdmin } from '../middleware/auth.js';
 import { validatePassword } from '../middleware/security.js';
 import { sanitizeFilename } from '../middleware/security.js';
+import { notifyAccountApproved } from '../services/notify.js';
 import {
   getAllUsers,
   getUserById,
@@ -125,6 +126,14 @@ router.put('/users/bulk-status', (req, res) => {
     }
 
     bulkUpdateUserStatus(ids, status);
+
+    // Notify each user if bulk-approved
+    if (status === 'approved') {
+      for (const uid of ids) {
+        try { notifyAccountApproved(uid); } catch (e) { console.error('Bulk approval notification error:', e.message); }
+      }
+    }
+
     res.json({ updated: ids.length });
   } catch (err) {
     console.error('PUT /users/bulk-status error:', err);
@@ -157,6 +166,11 @@ router.put('/users/:id/status', (req, res) => {
     }
 
     updateUserStatus(targetId, status);
+
+    // Notify user if their account was just approved
+    if (status === 'approved' && target.status !== 'approved') {
+      try { notifyAccountApproved(targetId); } catch (e) { console.error('Approval notification error:', e.message); }
+    }
 
     // Return updated user
     const updated = getUserById(targetId);

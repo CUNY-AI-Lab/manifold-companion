@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { verifyProjectAccess } from '../middleware/access.js';
+import { notifyProjectShared } from '../services/notify.js';
 import {
   getUserByEmail,
   createProjectShare,
@@ -56,6 +57,12 @@ router.post('/', (req, res) => {
 
     try {
       const shareId = createProjectShare(result.project.id, targetUser.id, role || 'viewer');
+
+      // Notify the shared user
+      try {
+        notifyProjectShared(result.project.id, result.project.name, targetUser.id, role || 'viewer', req.user.id);
+      } catch (e) { console.error('Share notification error:', e.message); }
+
       res.status(201).json({ id: shareId, user_id: targetUser.id, email: targetUser.email, role: role || 'viewer' });
     } catch (err) {
       if (err.message?.includes('UNIQUE constraint')) {

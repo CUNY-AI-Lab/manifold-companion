@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { verifyTextAccess } from '../middleware/access.js';
+import { notifyCommentReply, notifyMention } from '../services/notify.js';
 import {
   createAnnotation,
   getAnnotationsByText,
@@ -100,6 +101,11 @@ router.post('/texts/:id/annotations', (req, res) => {
       parent_id ? Number(parent_id) : null,
       validMentions
     );
+
+    // Notify mentioned users
+    if (validMentions.length > 0) {
+      try { notifyMention(validMentions, body.trim(), req.user.id, result.text.id, result.text.name); } catch (e) { console.error('Mention notification error:', e.message); }
+    }
 
     const annotation = getAnnotationById(id);
     res.status(201).json({ annotation });
@@ -256,6 +262,14 @@ router.post('/texts/:id/annotations/:annotId/replies', (req, res) => {
       parent.id,
       validMentions
     );
+
+    // Notify parent comment author of the reply
+    try { notifyCommentReply(parent, body.trim(), req.user.id, result.text.id, result.text.name); } catch (e) { console.error('Reply notification error:', e.message); }
+
+    // Notify mentioned users
+    if (validMentions.length > 0) {
+      try { notifyMention(validMentions, body.trim(), req.user.id, result.text.id, result.text.name); } catch (e) { console.error('Mention notification error:', e.message); }
+    }
 
     const reply = getAnnotationById(id);
     res.status(201).json({ annotation: reply });
