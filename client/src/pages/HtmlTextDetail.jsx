@@ -177,6 +177,7 @@ function TBtn({ onClick, title, children, active, className: extra }) {
       type="button"
       onMouseDown={(e) => { e.preventDefault(); onClick(); }}
       title={title}
+      aria-label={title}
       className={`px-2 py-1.5 rounded text-sm font-medium transition hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-cail-dark dark:hover:text-slate-200 ${
         active ? 'bg-cail-blue/10 text-cail-blue' : 'text-gray-600 dark:text-slate-400'
       } ${extra || ''}`}
@@ -286,7 +287,7 @@ function FormattingToolbar({ onDirty, editableRef }) {
   }
 
   return (
-    <div className="border-b border-gray-200 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-700/50 rounded-t-xl">
+    <div role="toolbar" aria-label="Formatting" className="border-b border-gray-200 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-700/50 rounded-t-xl">
       <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5">
         {/* Block type */}
         <select
@@ -1002,10 +1003,14 @@ export default function HtmlTextDetail() {
 
       {/* Tab bar */}
       <div className="border-b border-gray-200 dark:border-slate-700 mb-4">
-        <nav className="flex gap-1 -mb-px overflow-x-auto">
+        <nav role="tablist" aria-label="Editor tabs" className="flex gap-1 -mb-px overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              aria-controls={`tabpanel-${tab.toLowerCase()}`}
+              id={`tab-${tab.toLowerCase()}`}
               onClick={() => {
                 if (dirty && activeTab === 'Review' && tab !== 'Review') {
                   if (!window.confirm('You have unsaved changes. Switch tabs anyway?')) return;
@@ -1027,7 +1032,7 @@ export default function HtmlTextDetail() {
 
       {/* ======================== REVIEW TAB ======================== */}
       {activeTab === 'Review' && (
-        <div>
+        <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase()}`} aria-labelledby={`tab-${activeTab.toLowerCase()}`} tabIndex={0}>
           {draftBanner && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
               <span className="text-sm text-amber-800">
@@ -1234,6 +1239,9 @@ export default function HtmlTextDetail() {
                     ref={editableRef}
                     contentEditable={role !== 'viewer'}
                     suppressContentEditableWarning
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-label="Document editor"
                     onInput={handleEditableInput}
                     onKeyDown={(e) => {
                       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -1255,7 +1263,7 @@ export default function HtmlTextDetail() {
 
       {/* ======================== DETAILS TAB ======================== */}
       {activeTab === 'Details' && (
-        <div className="space-y-8">
+        <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase()}`} aria-labelledby={`tab-${activeTab.toLowerCase()}`} tabIndex={0} className="space-y-8">
           {/* Summary */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
             <h3 className="font-display font-semibold text-lg text-cail-dark mb-4">Summary</h3>

@@ -148,7 +148,9 @@ export default function NotificationBell() {
       <button
         onClick={handleOpen}
         className="relative p-2 rounded-full text-gray-500 dark:text-slate-400 hover:text-cail-dark dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-        aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ''}`}
+        aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
+        aria-expanded={open}
+        aria-haspopup="true"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -162,7 +164,7 @@ export default function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200/80 dark:border-slate-700/80 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+        <div role="menu" className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200/80 dark:border-slate-700/80 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-150">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
             <h3 className="font-display font-semibold text-sm text-cail-dark dark:text-slate-200">Notifications</h3>
@@ -220,6 +222,7 @@ export default function NotificationBell() {
               notifications.map((notif) => (
                 <button
                   key={notif.id}
+                  role="menuitem"
                   onClick={() => handleClick(notif)}
                   className={`w-full text-left px-4 py-3 flex gap-3 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors ${!notif.read ? 'bg-cail-blue/[0.03]' : ''}`}
                 >

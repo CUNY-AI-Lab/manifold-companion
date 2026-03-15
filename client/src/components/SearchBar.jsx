@@ -89,6 +89,7 @@ export default function SearchBar({ compact = false, onSelect }) {
           placeholder="Search texts..."
           autoFocus={compact}
           maxLength={200}
+          data-search-input
           className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl text-cail-dark dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
         />
         {loading && (
@@ -99,9 +100,9 @@ export default function SearchBar({ compact = false, onSelect }) {
       </div>
 
       {open && results.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg">
+        <ul role="listbox" className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg">
           {results.slice(0, 3).map((r) => (
-            <li key={r.id}>
+            <li key={r.id} role="option">
               <button
                 onClick={() => handleSelect(r)}
                 className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors border-b border-gray-100 dark:border-slate-700"

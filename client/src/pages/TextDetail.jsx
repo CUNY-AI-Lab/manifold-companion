@@ -979,10 +979,14 @@ export default function TextDetail() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-slate-700 mb-6">
-        <nav className="flex gap-1 -mb-px overflow-x-auto">
+        <nav role="tablist" aria-label="Editor tabs" className="flex gap-1 -mb-px overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              aria-controls={`tabpanel-${tab.toLowerCase().replace(/\s+/g, '-')}`}
+              id={`tab-${tab.toLowerCase().replace(/\s+/g, '-')}`}
               onClick={() => {
                 if (hasUnsaved && activeTab === 'Review' && tab !== 'Review') {
                   if (!window.confirm('You have unsaved changes. Switch tabs anyway?')) return;
@@ -1005,7 +1009,7 @@ export default function TextDetail() {
       {/* PAGES TAB */}
       {/* ============================================================ */}
       {activeTab === 'Pages' && (
-        <div>
+        <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} aria-labelledby={`tab-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} tabIndex={0}>
           <div className="flex items-center gap-4 mb-6">
             {role !== 'viewer' && (
               <>
@@ -1200,7 +1204,7 @@ export default function TextDetail() {
       {/* FULL TEXT TAB — Read-only rendered view (Task 7) */}
       {/* ============================================================ */}
       {activeTab === 'Full Text' && (
-        <div>
+        <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} aria-labelledby={`tab-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} tabIndex={0}>
           <div className="flex items-center gap-3 mb-4">
             <button
               onClick={copyFullText}
@@ -1236,7 +1240,7 @@ export default function TextDetail() {
       {/* REVIEW TAB — with sidebar (Task 4) and toolbar (Task 5) */}
       {/* ============================================================ */}
       {activeTab === 'Review' && (
-        <div>
+        <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} aria-labelledby={`tab-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} tabIndex={0}>
           {visiblePages.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
               <p className="text-sm text-gray-500 dark:text-slate-400">No pages to review.</p>
@@ -1414,6 +1418,7 @@ export default function TextDetail() {
                     value={pageText}
                     onChange={(e) => setPageText(e.target.value)}
                     readOnly={role === 'viewer'}
+                    aria-label="Markdown editor"
                     className={`w-full flex-1 px-4 py-3 rounded-b-2xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm font-mono resize-none ${role === 'viewer' ? 'bg-gray-50 dark:bg-slate-900 cursor-not-allowed' : 'bg-white dark:bg-slate-800'} dark:text-slate-200`}
                     placeholder="OCR text for this page..."
                   />
@@ -1428,7 +1433,7 @@ export default function TextDetail() {
       {/* TRANSLATION TAB (Task 6) */}
       {/* ============================================================ */}
       {activeTab === 'Translation' && (
-        <div>
+        <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} aria-labelledby={`tab-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} tabIndex={0}>
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Target Language</label>
@@ -1504,7 +1509,7 @@ export default function TextDetail() {
       {/* DETAILS TAB — Summary + Metadata only */}
       {/* ============================================================ */}
       {activeTab === 'Details' && (
-        <div className="space-y-8">
+        <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} aria-labelledby={`tab-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} tabIndex={0} className="space-y-8">
           {/* Summary section */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
             <h3 className="font-display font-semibold text-lg text-cail-dark mb-4">Summary</h3>

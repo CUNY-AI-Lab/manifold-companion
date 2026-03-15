@@ -438,7 +438,7 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh,
       )}
 
       <div className="mt-3 flex items-center gap-3 text-xs">
-        <button onClick={toggleReplies} className="text-cail-blue hover:underline">
+        <button onClick={toggleReplies} aria-expanded={showReplies} className="text-cail-blue hover:underline">
           {showReplies ? 'Hide replies' : 'Replies'}
         </button>
         {canEdit && !editing && (
@@ -573,7 +573,7 @@ export default function AnnotationSidebar({ textId, open, onClose, role }) {
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full sm:max-w-md bg-cail-cream dark:bg-slate-900 h-full shadow-xl flex flex-col animate-slide-in-right">
+      <div role="complementary" aria-label="Comments" className="relative w-full sm:max-w-md bg-cail-cream dark:bg-slate-900 h-full shadow-xl flex flex-col animate-slide-in-right">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-cail-blue/10 dark:border-slate-700">
           <h2 className="text-lg font-display font-semibold text-cail-navy dark:text-slate-200">Annotations</h2>
