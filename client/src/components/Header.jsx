@@ -182,7 +182,7 @@ export default function Header() {
           {/* Right: Search + User + Logout (desktop) */}
           <div className="hidden md:flex items-center gap-4">
             <SearchBar compact />
-            <span className="text-sm text-gray-500">{user?.email}</span>
+            <span className="text-sm text-gray-500">{user?.display_name || user?.email}</span>
             <button
               onClick={logout}
               className="px-4 py-1.5 rounded-full text-sm font-medium text-white bg-cail-blue hover:bg-cail-navy transition-colors"
@@ -231,7 +231,7 @@ export default function Header() {
               About
             </button>
             <div className="border-t border-gray-100 pt-3 mt-3 px-4">
-              <p className="text-sm text-gray-500 mb-2">{user?.email}</p>
+              <p className="text-sm text-gray-500 mb-2">{user?.display_name || user?.email}</p>
               <button
                 onClick={() => { logout(); setMenuOpen(false); }}
                 className="w-full px-4 py-2 rounded-full text-sm font-medium text-white bg-cail-blue hover:bg-cail-navy transition-colors"

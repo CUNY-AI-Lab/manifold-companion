@@ -8,6 +8,7 @@ import { readFile } from 'fs/promises';
 import sharp from 'sharp';
 import { requireAuth } from '../middleware/auth.js';
 import { verifyTextAccess } from '../middleware/access.js';
+import { checkTokenQuota } from '../middleware/tokenQuota.js';
 import { aiLimiter } from '../middleware/rateLimits.js';
 import {
   getPagesByText,
@@ -15,6 +16,7 @@ import {
   savePageOCR,
   setTextStatus,
   setTextSummary,
+  logApiUsage,
 } from '../db.js';
 import { getTextDir } from '../services/storage.js';
 import { ocrPage, generateSummary } from '../services/bedrock.js';
@@ -71,7 +73,7 @@ function compileFullText(textId) {
 // ---------------------------------------------------------------------------
 
 // ---- GET /texts/:id/ocr — SSE stream for OCR processing -----------------
-router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
+router.get('/texts/:id/ocr', aiLimiter, checkTokenQuota, async (req, res) => {
   try {
     const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -123,9 +125,11 @@ router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
       try {
         const filePath = join(dir, page.filename);
         const base64 = await prepareImage(filePath);
-        const ocrText = await ocrPage(base64, settings);
+        const ocrResult = await ocrPage(base64, settings);
+        const ocrText = ocrResult.text;
 
         savePageOCR(text.id, page.filename, ocrText);
+        logApiUsage(req.user.id, 'ocr', settings.model || process.env.BEDROCK_OCR_MODEL, project.id, text.id, ocrResult.usage.tokensIn, ocrResult.usage.tokensOut);
         processed++;
 
         sendEvent('progress', {
@@ -161,8 +165,9 @@ router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
       // Generate summary in background (non-blocking)
       if (fullText.length > 0) {
         generateSummary(fullText, text.source_language || 'en')
-          .then((summary) => {
-            setTextSummary(text.id, summary);
+          .then((summaryResult) => {
+            setTextSummary(text.id, summaryResult.text);
+            logApiUsage(req.user.id, 'summary', process.env.BEDROCK_TEXT_MODEL, project.id, text.id, summaryResult.usage.tokensIn, summaryResult.usage.tokensOut);
           })
           .catch((err) => {
             console.error('Background summary generation failed:', err.message);
@@ -183,7 +188,7 @@ router.get('/texts/:id/ocr', aiLimiter, async (req, res) => {
 });
 
 // ---- POST /texts/:id/ocr-single — re-OCR a single page ------------------
-router.post('/texts/:id/ocr-single', aiLimiter, async (req, res) => {
+router.post('/texts/:id/ocr-single', aiLimiter, checkTokenQuota, async (req, res) => {
   try {
     const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -209,9 +214,11 @@ router.post('/texts/:id/ocr-single', aiLimiter, async (req, res) => {
     const settings = getTextSettings(text.id) || {};
 
     const base64 = await prepareImage(filePath);
-    const ocrText = await ocrPage(base64, settings);
+    const ocrResult = await ocrPage(base64, settings);
+    const ocrText = ocrResult.text;
 
     savePageOCR(text.id, page.filename, ocrText);
+    logApiUsage(req.user.id, 'ocr', settings.model || process.env.BEDROCK_OCR_MODEL, project.id, text.id, ocrResult.usage.tokensIn, ocrResult.usage.tokensOut);
 
     res.json({
       filename: page.filename,

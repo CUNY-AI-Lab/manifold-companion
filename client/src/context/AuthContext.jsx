@@ -21,8 +21,14 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const register = useCallback(async (email, password) => {
-    const data = await api.post('/api/auth/register', { email, password });
+  const register = useCallback(async (email, password, name) => {
+    const data = await api.post('/api/auth/register', { email, password, name });
+    return data;
+  }, []);
+
+  const updateProfile = useCallback(async (displayName) => {
+    const data = await api.put('/api/auth/profile', { display_name: displayName });
+    setUser((prev) => prev ? { ...prev, display_name: data.display_name } : prev);
     return data;
   }, []);
 
@@ -32,7 +38,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

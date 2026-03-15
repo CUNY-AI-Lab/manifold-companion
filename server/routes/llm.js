@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { verifyTextAccess } from '../middleware/access.js';
+import { checkTokenQuota } from '../middleware/tokenQuota.js';
 import { aiLimiter, formulaRepairLimiter, pdfVisionLimiter } from '../middleware/rateLimits.js';
 import { ALLOWED_LANGUAGES } from './texts.js';
 import {
@@ -15,6 +16,7 @@ import {
   updateText,
   saveTextHtml,
   getTextHtml,
+  logApiUsage,
 } from '../db.js';
 import { generateSummary, translateText } from '../services/bedrock.js';
 import { cleanupPdfHtml, parsePdfPageToHtml, repairFormulasToMathMl, extractFiguresFromPdf } from '../services/openrouter.js';
@@ -63,7 +65,7 @@ router.get('/texts/:id/summary', (req, res) => {
 });
 
 // ---- POST /texts/:id/summary — generate summary via Bedrock -------------
-router.post('/texts/:id/summary', aiLimiter, async (req, res) => {
+router.post('/texts/:id/summary', aiLimiter, checkTokenQuota, async (req, res) => {
   try {
     const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -73,12 +75,14 @@ router.post('/texts/:id/summary', aiLimiter, async (req, res) => {
       return res.status(400).json({ error: 'No OCR text available. Run OCR first.' });
     }
 
-    const summary = await generateSummary(
+    const summaryResult = await generateSummary(
       fullText,
       result.text.source_language || 'en'
     );
+    const summary = summaryResult.text;
 
     setTextSummary(result.text.id, summary);
+    logApiUsage(req.user.id, 'summary', process.env.BEDROCK_TEXT_MODEL, result.project.id, result.text.id, summaryResult.usage.tokensIn, summaryResult.usage.tokensOut);
     res.json({ summary });
   } catch (err) {
     console.error('POST /texts/:id/summary error:', err);
@@ -128,7 +132,7 @@ router.get('/texts/:id/translation', (req, res) => {
 });
 
 // ---- POST /texts/:id/translation — generate translation via Bedrock -----
-router.post('/texts/:id/translation', aiLimiter, async (req, res) => {
+router.post('/texts/:id/translation', aiLimiter, checkTokenQuota, async (req, res) => {
   try {
     const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -150,11 +154,13 @@ router.post('/texts/:id/translation', aiLimiter, async (req, res) => {
 
     const sourceLang = result.text.source_language || 'auto-detect';
 
-    const translation = await translateText(fullText, sourceLang, targetLanguage);
+    const translateResult = await translateText(fullText, sourceLang, targetLanguage);
+    const translation = translateResult.text;
 
     // Save translation and language info
     setTextTranslation(result.text.id, translation);
     updateText(result.text.id, { target_language: targetLanguage });
+    logApiUsage(req.user.id, 'translation', process.env.BEDROCK_TEXT_MODEL, result.project.id, result.text.id, translateResult.usage.tokensIn, translateResult.usage.tokensOut);
 
     res.json({
       translation,
@@ -219,7 +225,7 @@ router.post('/texts/:id/formula-repair', formulaRepairLimiter, async (req, res) 
   }
 });
 
-router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, async (req, res) => {
+router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, checkTokenQuota, async (req, res) => {
   try {
     const result = verifyTextAccess(Number(req.params.id), req.user.id, 'editor');
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -262,8 +268,13 @@ router.post('/texts/:id/pdf-parse-page', pdfVisionLimiter, async (req, res) => {
       figureAssets
     );
 
+    // Log usage
+    if (parsed.usage) {
+      logApiUsage(req.user.id, 'pdf-parse', process.env.OPENROUTER_PDF_MODEL || 'gemini-3-flash', result.project.id, result.text.id, parsed.usage.tokensIn, parsed.usage.tokensOut);
+    }
+
     // Include figure info in response so the client knows what was extracted
-    res.json({ ...parsed, figureAssets });
+    res.json({ html: parsed.html, unresolvedFormulaCount: parsed.unresolvedFormulaCount, figureAssets });
   } catch (err) {
     console.error('POST /texts/:id/pdf-parse-page error:', err);
     res.status(500).json({ error: 'Internal server error.' });

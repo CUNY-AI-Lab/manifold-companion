@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
-import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, BCRYPT_ROUNDS } from '../db.js';
+import { createUser, getUserByEmail, getUserById, updateUserLogin, updateUserPassword, updateUserDisplayName, getUserTokenUsage, BCRYPT_ROUNDS } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateEmail, validatePassword } from '../middleware/security.js';
 
@@ -13,7 +13,7 @@ const router = Router();
 // ---- POST /register -------------------------------------------------------
 router.post('/register', async (req, res) => {
   try {
-    const { email, password } = req.body || {};
+    const { email, password, name } = req.body || {};
 
     // Validate inputs
     if (!email || !password) {
@@ -36,7 +36,8 @@ router.post('/register', async (req, res) => {
 
     // Hash password and create user
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const userId = createUser(email.toLowerCase().trim(), passwordHash);
+    const displayName = name ? String(name).trim().slice(0, 100) : null;
+    const userId = createUser(email.toLowerCase().trim(), passwordHash, displayName);
 
     res.status(201).json({
       message: 'Account created. Awaiting admin approval.',
@@ -87,6 +88,7 @@ router.post('/login', async (req, res) => {
       res.json({
         id: user.id,
         email: user.email,
+        display_name: user.display_name || null,
         role: user.role,
         status: user.status,
       });
@@ -132,11 +134,15 @@ router.get('/me', (req, res) => {
       return res.status(401).json({ error: 'Account is not approved.' });
     }
 
+    const tokenUsage = getUserTokenUsage(user.id);
     res.json({
       id: user.id,
       email: user.email,
+      display_name: user.display_name || null,
       role: user.role,
       status: user.status,
+      token_allowance: user.token_allowance,
+      token_usage: tokenUsage,
     });
   } catch (err) {
     console.error('GET /me error:', err);
@@ -173,6 +179,22 @@ router.post('/change-password', requireAuth, async (req, res) => {
     res.json({ message: 'Password changed successfully.' });
   } catch (err) {
     console.error('POST /change-password error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- PUT /profile — update display name for authenticated user ----------
+router.put('/profile', requireAuth, (req, res) => {
+  try {
+    const { display_name } = req.body || {};
+    if (display_name === undefined) {
+      return res.status(400).json({ error: 'display_name is required.' });
+    }
+    const trimmed = String(display_name || '').trim().slice(0, 100);
+    updateUserDisplayName(req.user.id, trimmed || null);
+    res.json({ display_name: trimmed || null });
+  } catch (err) {
+    console.error('PUT /profile error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

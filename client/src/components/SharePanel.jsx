@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 
@@ -9,6 +9,9 @@ export default function SharePanel({ projectId, open, onClose }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('viewer');
   const [adding, setAdding] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestDebounce = useRef(null);
 
   const fetchShares = useCallback(async () => {
     setLoading(true);
@@ -99,14 +102,49 @@ export default function SharePanel({ projectId, open, onClose }) {
 
         <form onSubmit={handleAdd} className="mb-6">
           <div className="flex gap-2">
-            <input
-              type="email"
-              placeholder="User email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
-            />
+            <div className="flex-1 min-w-0 relative">
+              <input
+                type="text"
+                placeholder="Search by name or email"
+                value={email}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEmail(val);
+                  clearTimeout(suggestDebounce.current);
+                  if (val.trim().length >= 2) {
+                    suggestDebounce.current = setTimeout(async () => {
+                      try {
+                        const data = await api.get(`/api/users/search?q=${encodeURIComponent(val.trim())}`);
+                        setSuggestions(data.users || []);
+                        setShowSuggestions(true);
+                      } catch { setSuggestions([]); }
+                    }, 250);
+                  } else {
+                    setSuggestions([]);
+                    setShowSuggestions(false);
+                  }
+                }}
+                onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cail-blue focus:border-transparent"
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                  {suggestions.map((u) => (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        onClick={() => { setEmail(u.email); setShowSuggestions(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors"
+                      >
+                        <p className="text-sm font-medium text-cail-dark truncate">{u.display_name || u.email}</p>
+                        {u.display_name && <p className="text-xs text-gray-400 truncate">{u.email}</p>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
@@ -138,9 +176,14 @@ export default function SharePanel({ projectId, open, onClose }) {
                 key={share.id}
                 className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-2xl"
               >
-                <span className="text-sm text-cail-dark truncate min-w-0 flex-1">
-                  {share.email}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm text-cail-dark truncate block">
+                    {share.display_name || share.email}
+                  </span>
+                  {share.display_name && (
+                    <span className="text-xs text-gray-400 truncate block">{share.email}</span>
+                  )}
+                </div>
                 <select
                   value={share.role}
                   onChange={(e) => handleUpdateRole(share.id, e.target.value)}

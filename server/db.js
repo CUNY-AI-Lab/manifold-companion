@@ -164,6 +164,21 @@ function createSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_annotations_lookup
       ON annotations(text_id, resolved, created_at);
+
+    CREATE TABLE IF NOT EXISTS api_usage_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      endpoint TEXT NOT NULL,
+      model TEXT,
+      project_id INTEGER,
+      text_id INTEGER,
+      tokens_in INTEGER NOT NULL DEFAULT 0,
+      tokens_out INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_usage_user ON api_usage_logs(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_api_usage_project ON api_usage_logs(project_id);
   `);
 }
 
@@ -180,6 +195,9 @@ function runMigrations() {
     'ALTER TABLE texts ADD COLUMN source_pdf_name TEXT',
     'ALTER TABLE texts ADD COLUMN pdf_meta TEXT',
     'ALTER TABLE texts ADD COLUMN formula_repair_status TEXT',
+    'ALTER TABLE users ADD COLUMN display_name TEXT',
+    'ALTER TABLE users ADD COLUMN token_allowance INTEGER NOT NULL DEFAULT 5000000',
+    'ALTER TABLE users ADD COLUMN token_usage_reset_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) { /* column already exists */ }
@@ -211,11 +229,11 @@ function seedAdmin() {
 // User Functions
 // ---------------------------------------------------------------------------
 
-export function createUser(email, passwordHash) {
+export function createUser(email, passwordHash, displayName = null) {
   const stmt = db.prepare(
-    'INSERT INTO users (email, password_hash) VALUES (?, ?)'
+    'INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)'
   );
-  const result = stmt.run(email, passwordHash);
+  const result = stmt.run(email, passwordHash, displayName || null);
   return result.lastInsertRowid;
 }
 
@@ -254,7 +272,37 @@ export function updateUserPassword(id, passwordHash) {
 }
 
 export function getAllUsers() {
-  return db.prepare('SELECT id, email, role, status, storage_used_bytes, last_login_at, created_at FROM users').all();
+  return db.prepare('SELECT id, email, display_name, role, status, storage_used_bytes, token_allowance, token_usage_reset_at, last_login_at, created_at FROM users').all();
+}
+
+export function updateUserDisplayName(id, displayName) {
+  return db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(displayName, id);
+}
+
+export function updateUserTokenAllowance(id, allowance) {
+  return db.prepare('UPDATE users SET token_allowance = ? WHERE id = ?').run(allowance, id);
+}
+
+export function resetUserTokenUsage(id) {
+  return db.prepare("UPDATE users SET token_usage_reset_at = datetime('now') WHERE id = ?").run(id);
+}
+
+export function bulkUpdateUserStatus(userIds, status) {
+  const placeholders = userIds.map(() => '?').join(',');
+  const txn = db.transaction(() => {
+    db.prepare(`UPDATE users SET status = ? WHERE id IN (${placeholders})`).run(status, ...userIds);
+  });
+  txn();
+}
+
+export function searchUsers(query) {
+  const pattern = `%${query}%`;
+  return db.prepare(`
+    SELECT id, email, display_name FROM users
+    WHERE status = 'approved' AND (email LIKE ? OR display_name LIKE ?)
+    ORDER BY display_name ASC, email ASC
+    LIMIT 10
+  `).all(pattern, pattern);
 }
 
 export function deleteUser(id) {
@@ -686,7 +734,7 @@ export function createProjectShare(projectId, userId, role = 'viewer') {
 
 export function getProjectShares(projectId) {
   return db.prepare(`
-    SELECT ps.id, ps.user_id, u.email, ps.role, ps.created_at
+    SELECT ps.id, ps.user_id, u.email, u.display_name, ps.role, ps.created_at
     FROM project_shares ps
     JOIN users u ON u.id = ps.user_id
     WHERE ps.project_id = ?
@@ -722,7 +770,7 @@ export function getProjectShareById(shareId) {
 
 export function getSharedProjectsByUser(userId) {
   return db.prepare(`
-    SELECT p.*, ps.role AS share_role, u.email AS owner_email
+    SELECT p.*, ps.role AS share_role, u.email AS owner_email, u.display_name AS owner_display_name
     FROM projects p
     JOIN project_shares ps ON ps.project_id = p.id
     JOIN users u ON u.id = p.user_id
@@ -766,7 +814,7 @@ export function createTextVersion(textId, contentType, content, userId, pageFile
 
 export function getTextVersions(textId, contentType, limit = 50) {
   return db.prepare(`
-    SELECT tv.id, tv.content_type, tv.page_filename, tv.user_id, u.email AS user_email, tv.created_at
+    SELECT tv.id, tv.content_type, tv.page_filename, tv.user_id, u.email AS user_email, u.display_name AS user_display_name, tv.created_at
     FROM text_versions tv
     JOIN users u ON u.id = tv.user_id
     WHERE tv.text_id = ? AND tv.content_type = ?
@@ -794,7 +842,7 @@ export function createAnnotation(textId, userId, anchorType, anchorData, body, p
 export function getAnnotationsByText(textId, includeResolved = false) {
   const resolvedClause = includeResolved ? '' : 'AND a.resolved = 0';
   return db.prepare(`
-    SELECT a.*, u.email AS user_email,
+    SELECT a.*, u.email AS user_email, u.display_name AS user_display_name,
       (SELECT COUNT(*) FROM annotations r WHERE r.parent_id = a.id) AS reply_count
     FROM annotations a
     JOIN users u ON u.id = a.user_id
@@ -805,7 +853,7 @@ export function getAnnotationsByText(textId, includeResolved = false) {
 
 export function getAnnotationById(id) {
   return db.prepare(`
-    SELECT a.*, u.email AS user_email
+    SELECT a.*, u.email AS user_email, u.display_name AS user_display_name
     FROM annotations a
     JOIN users u ON u.id = a.user_id
     WHERE a.id = ?
@@ -836,10 +884,70 @@ export function deleteAnnotation(id) {
 
 export function getAnnotationReplies(parentId) {
   return db.prepare(`
-    SELECT a.*, u.email AS user_email
+    SELECT a.*, u.email AS user_email, u.display_name AS user_display_name
     FROM annotations a
     JOIN users u ON u.id = a.user_id
     WHERE a.parent_id = ?
     ORDER BY a.created_at ASC
   `).all(parentId);
+}
+
+// ---------------------------------------------------------------------------
+// API Usage Logging
+// ---------------------------------------------------------------------------
+
+export function logApiUsage(userId, endpoint, model, projectId, textId, tokensIn, tokensOut) {
+  return db.prepare(
+    'INSERT INTO api_usage_logs (user_id, endpoint, model, project_id, text_id, tokens_in, tokens_out) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(userId, endpoint, model || null, projectId || null, textId || null, tokensIn || 0, tokensOut || 0);
+}
+
+export function getUserTokenUsage(userId) {
+  const user = db.prepare('SELECT token_usage_reset_at FROM users WHERE id = ?').get(userId);
+  const resetAt = user?.token_usage_reset_at || '1970-01-01';
+  const row = db.prepare(
+    'SELECT COALESCE(SUM(tokens_in + tokens_out), 0) AS total FROM api_usage_logs WHERE user_id = ? AND created_at > ?'
+  ).get(userId, resetAt);
+  return row?.total || 0;
+}
+
+export function getUsageStats(days = 30) {
+  const since = `datetime('now', '-${Math.min(days, 365)} days')`;
+
+  const byEndpoint = db.prepare(`
+    SELECT endpoint, COUNT(*) AS calls, SUM(tokens_in) AS tokens_in, SUM(tokens_out) AS tokens_out
+    FROM api_usage_logs WHERE created_at > ${since}
+    GROUP BY endpoint ORDER BY calls DESC
+  `).all();
+
+  const byUser = db.prepare(`
+    SELECT a.user_id, u.email, u.display_name, u.storage_used_bytes, u.token_allowance,
+      COUNT(*) AS calls, SUM(a.tokens_in + a.tokens_out) AS total_tokens
+    FROM api_usage_logs a
+    JOIN users u ON u.id = a.user_id
+    WHERE a.created_at > ${since}
+    GROUP BY a.user_id ORDER BY total_tokens DESC
+  `).all();
+
+  const byProject = db.prepare(`
+    SELECT a.project_id, p.name AS project_name, u.email AS owner_email,
+      COUNT(*) AS calls, SUM(a.tokens_in + a.tokens_out) AS total_tokens
+    FROM api_usage_logs a
+    JOIN projects p ON p.id = a.project_id
+    JOIN users u ON u.id = p.user_id
+    WHERE a.created_at > ${since} AND a.project_id IS NOT NULL
+    GROUP BY a.project_id ORDER BY calls DESC
+    LIMIT 20
+  `).all();
+
+  const totals = db.prepare(`
+    SELECT COUNT(*) AS total_calls, COALESCE(SUM(tokens_in + tokens_out), 0) AS total_tokens
+    FROM api_usage_logs WHERE created_at > ${since}
+  `).get();
+
+  return { byEndpoint, byUser, byProject, totals };
+}
+
+export function getDatabase() {
+  return db;
 }

@@ -54,10 +54,15 @@ async function callOpenRouter(messages, { temperature = 0, maxTokens = 4096 } = 
 
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content || '';
-  return text
+  const usage = {
+    tokensIn: data.usage?.prompt_tokens || 0,
+    tokensOut: data.usage?.completion_tokens || 0,
+  };
+  const cleaned = text
     .replace(/<thinking>[\s\S]*?<\/thinking>\s*/gi, '')
     .replace(/<think>[\s\S]*?<\/think>\s*/gi, '')
     .trim();
+  return { text: cleaned, usage };
 }
 
 // ---------------------------------------------------------------------------
@@ -283,8 +288,9 @@ export async function parsePdfPageToHtml(pdfBase64, pageNumber, totalPages, text
     },
   ];
 
-  const raw = await callWithRetry(() => callOpenRouter(messages, { maxTokens: 4096 }));
-  let html = postprocessHtml(extractHtmlFromResponse(raw), pageNumber);
+  const result = await callWithRetry(() => callOpenRouter(messages, { maxTokens: 4096 }));
+  let totalUsage = { tokensIn: result.usage.tokensIn, tokensOut: result.usage.tokensOut };
+  let html = postprocessHtml(extractHtmlFromResponse(result.text), pageNumber);
 
   if (!/^<section\b/i.test(html)) {
     html = `<section data-page="${pageNumber}">\n${html}\n</section>`;
@@ -311,8 +317,10 @@ export async function parsePdfPageToHtml(pdfBase64, pageNumber, totalPages, text
       },
     ];
 
-    const fallbackRaw = await callWithRetry(() => callOpenRouter(fallbackMessages, { maxTokens: 4096 }));
-    const fallbackHtml = postprocessHtml(extractHtmlFromResponse(fallbackRaw), pageNumber);
+    const fallbackResult = await callWithRetry(() => callOpenRouter(fallbackMessages, { maxTokens: 4096 }));
+    totalUsage.tokensIn += fallbackResult.usage.tokensIn;
+    totalUsage.tokensOut += fallbackResult.usage.tokensOut;
+    const fallbackHtml = postprocessHtml(extractHtmlFromResponse(fallbackResult.text), pageNumber);
     if (stripHtmlText(fallbackHtml).length > stripHtmlText(html).length) {
       html = /^<section\b/i.test(fallbackHtml)
         ? fallbackHtml
@@ -320,7 +328,7 @@ export async function parsePdfPageToHtml(pdfBase64, pageNumber, totalPages, text
     }
   }
 
-  return { html, unresolvedFormulaCount: 0 };
+  return { html, unresolvedFormulaCount: 0, usage: totalUsage };
 }
 
 // ---------------------------------------------------------------------------

@@ -3,21 +3,30 @@
 // ---------------------------------------------------------------------------
 
 import { Router } from 'express';
-import { rmSync } from 'fs';
+import { rmSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, createReadStream } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { execFileSync } from 'child_process';
 import bcrypt from 'bcrypt';
 import { requireAdmin } from '../middleware/auth.js';
 import { validatePassword } from '../middleware/security.js';
+import { sanitizeFilename } from '../middleware/security.js';
 import {
   getAllUsers,
   getUserById,
   getUserByEmail,
   updateUserStatus,
   updateUserRole,
+  updateUserDisplayName,
+  updateUserTokenAllowance,
+  resetUserTokenUsage,
+  bulkUpdateUserStatus,
   deleteUser,
   createUser,
   getProjectsByUser,
+  getUsageStats,
+  getUserTokenUsage,
+  getDatabase,
   BCRYPT_ROUNDS,
 } from '../db.js';
 
@@ -52,7 +61,7 @@ router.get('/users', (req, res) => {
 // ---- POST /users — create a new user (admin) -----------------------------
 router.post('/users', async (req, res) => {
   try {
-    const { email, password, role, status } = req.body || {};
+    const { email, password, role, status, name } = req.body || {};
 
     if (!email || !email.trim()) {
       return res.status(400).json({ error: 'Email is required.' });
@@ -73,7 +82,8 @@ router.post('/users', async (req, res) => {
     const userStatus = validStatuses.includes(status) ? status : 'approved';
 
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const userId = createUser(email.trim().toLowerCase(), hash);
+    const displayName = name ? String(name).trim().slice(0, 100) : null;
+    const userId = createUser(email.trim().toLowerCase(), hash, displayName);
 
     // Set role and status (createUser defaults to 'user' and 'pending')
     if (userRole !== 'user') {
@@ -91,6 +101,33 @@ router.post('/users', async (req, res) => {
     });
   } catch (err) {
     console.error('POST /admin/users error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- PUT /users/bulk-status — bulk approve/disable users ------------------
+// NOTE: Must come before /users/:id routes to avoid matching "bulk-status" as :id
+router.put('/users/bulk-status', (req, res) => {
+  try {
+    const { userIds, status } = req.body || {};
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: 'userIds array is required.' });
+    }
+    if (!status || !['approved', 'disabled'].includes(status)) {
+      return res.status(400).json({ error: "Status must be 'approved' or 'disabled'." });
+    }
+
+    // Filter out self
+    const ids = userIds.map(Number).filter((id) => id !== req.user.id && Number.isFinite(id));
+    if (ids.length === 0) {
+      return res.status(400).json({ error: 'No valid user IDs to update.' });
+    }
+
+    bulkUpdateUserStatus(ids, status);
+    res.json({ updated: ids.length });
+  } catch (err) {
+    console.error('PUT /users/bulk-status error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
@@ -177,6 +214,177 @@ router.delete('/users/:id', (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('DELETE /users/:id error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- PUT /users/:id/name — update display name ---------------------------
+router.put('/users/:id/name', (req, res) => {
+  try {
+    const targetId = Number(req.params.id);
+    const target = getUserById(targetId);
+    if (!target) return res.status(404).json({ error: 'User not found.' });
+
+    const { name } = req.body || {};
+    const trimmed = String(name || '').trim().slice(0, 100);
+    updateUserDisplayName(targetId, trimmed || null);
+    res.json({ ok: true, display_name: trimmed || null });
+  } catch (err) {
+    console.error('PUT /users/:id/name error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- PUT /users/:id/token-allowance — set token cap -----------------------
+router.put('/users/:id/token-allowance', (req, res) => {
+  try {
+    const targetId = Number(req.params.id);
+    const target = getUserById(targetId);
+    if (!target) return res.status(404).json({ error: 'User not found.' });
+
+    const { allowance } = req.body || {};
+    if (!Number.isFinite(allowance) || allowance < 0) {
+      return res.status(400).json({ error: 'allowance must be a non-negative number.' });
+    }
+
+    updateUserTokenAllowance(targetId, Math.round(allowance));
+    res.json({ ok: true, token_allowance: Math.round(allowance) });
+  } catch (err) {
+    console.error('PUT /users/:id/token-allowance error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /users/:id/reset-usage — reset token usage counter ---------------
+router.post('/users/:id/reset-usage', (req, res) => {
+  try {
+    const targetId = Number(req.params.id);
+    const target = getUserById(targetId);
+    if (!target) return res.status(404).json({ error: 'User not found.' });
+
+    resetUserTokenUsage(targetId);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /users/:id/reset-usage error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- GET /usage — usage dashboard stats -----------------------------------
+router.get('/usage', (req, res) => {
+  try {
+    const days = Math.min(Number(req.query.days) || 30, 365);
+    const stats = getUsageStats(days);
+
+    // Add current token usage for each user
+    stats.byUser = stats.byUser.map((u) => ({
+      ...u,
+      current_usage: getUserTokenUsage(u.user_id),
+    }));
+
+    res.json(stats);
+  } catch (err) {
+    console.error('GET /usage error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- POST /backups — create a backup -------------------------------------
+router.post('/backups', (req, res) => {
+  try {
+    const dataDir = join(__dirname, '..', '..', 'data');
+    const backupDir = join(dataDir, 'backups');
+    mkdirSync(backupDir, { recursive: true });
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const dbBackupPath = join(backupDir, `manifold-${ts}.db`);
+
+    // Use better-sqlite3's backup API for safe hot copy
+    const database = getDatabase();
+    database.backup(dbBackupPath);
+
+    // Tar the data directory (excluding backups) using execFileSync for safety
+    const tarName = `backup-${ts}.tar.gz`;
+    const tarPath = join(backupDir, tarName);
+    execFileSync('tar', ['czf', tarPath, '--exclude=backups', '-C', join(dataDir, '..'), 'data'], {
+      timeout: 120000,
+    });
+
+    // Clean up the .db copy (it's inside the tar now)
+    try { unlinkSync(dbBackupPath); } catch { /* ignore */ }
+
+    const info = statSync(tarPath);
+    res.json({
+      filename: tarName,
+      size: info.size,
+      created_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('POST /backups error:', err);
+    res.status(500).json({ error: 'Backup failed: ' + err.message });
+  }
+});
+
+// ---- GET /backups — list available backups --------------------------------
+router.get('/backups', (req, res) => {
+  try {
+    const backupDir = join(__dirname, '..', '..', 'data', 'backups');
+    if (!existsSync(backupDir)) return res.json({ backups: [] });
+
+    const files = readdirSync(backupDir)
+      .filter((f) => f.endsWith('.tar.gz'))
+      .map((f) => {
+        const info = statSync(join(backupDir, f));
+        return { filename: f, size: info.size, created_at: info.mtime.toISOString() };
+      })
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+    res.json({ backups: files });
+  } catch (err) {
+    console.error('GET /backups error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- GET /backups/:filename — download a backup ---------------------------
+router.get('/backups/:filename', (req, res) => {
+  try {
+    const filename = sanitizeFilename(req.params.filename);
+    if (!filename.endsWith('.tar.gz')) {
+      return res.status(400).json({ error: 'Invalid backup filename.' });
+    }
+
+    const filePath = join(__dirname, '..', '..', 'data', 'backups', filename);
+    if (!existsSync(filePath)) {
+      return res.status(404).json({ error: 'Backup not found.' });
+    }
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/gzip');
+    createReadStream(filePath).pipe(res);
+  } catch (err) {
+    console.error('GET /backups/:filename error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ---- DELETE /backups/:filename — delete a backup --------------------------
+router.delete('/backups/:filename', (req, res) => {
+  try {
+    const filename = sanitizeFilename(req.params.filename);
+    if (!filename.endsWith('.tar.gz')) {
+      return res.status(400).json({ error: 'Invalid backup filename.' });
+    }
+
+    const filePath = join(__dirname, '..', '..', 'data', 'backups', filename);
+    if (!existsSync(filePath)) {
+      return res.status(404).json({ error: 'Backup not found.' });
+    }
+
+    unlinkSync(filePath);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /backups/:filename error:', err);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

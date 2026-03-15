@@ -11,9 +11,17 @@ function formatTime(ts) {
   return d.toLocaleDateString();
 }
 
-function initials(email) {
-  if (!email) return '?';
-  const parts = email.split('@')[0].split(/[._-]/);
+function displayName(item) {
+  return item.user_display_name || item.user_email;
+}
+
+function initials(item) {
+  const name = item.user_display_name || item.user_email || '?';
+  if (name.includes('@')) {
+    const parts = name.split('@')[0].split(/[._-]/);
+    return parts.map(p => p[0]?.toUpperCase() || '').join('').slice(0, 2);
+  }
+  const parts = name.trim().split(/\s+/);
   return parts.map(p => p[0]?.toUpperCase() || '').join('').slice(0, 2);
 }
 
@@ -81,10 +89,10 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh 
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="w-8 h-8 rounded-full bg-cail-navy text-white flex items-center justify-center text-xs font-display font-semibold">
-            {initials(annotation.user_email)}
+            {initials(annotation)}
           </span>
           <div>
-            <span className="text-sm font-medium text-cail-dark">{annotation.user_email}</span>
+            <span className="text-sm font-medium text-cail-dark">{displayName(annotation)}</span>
             <span className="text-xs text-gray-400 ml-2">{formatTime(annotation.created_at)}</span>
           </div>
         </div>
@@ -116,9 +124,9 @@ function AnnotationItem({ annotation, textId, role, currentUserEmail, onRefresh 
             <div key={r.id} className="mb-2">
               <div className="flex items-center gap-1">
                 <span className="w-6 h-6 rounded-full bg-cail-teal/20 text-cail-teal flex items-center justify-center text-[10px] font-display font-semibold">
-                  {initials(r.user_email)}
+                  {initials(r)}
                 </span>
-                <span className="text-xs font-medium text-cail-dark">{r.user_email}</span>
+                <span className="text-xs font-medium text-cail-dark">{displayName(r)}</span>
                 <span className="text-[10px] text-gray-400">{formatTime(r.created_at)}</span>
               </div>
               <p className="text-xs text-cail-dark mt-0.5 whitespace-pre-wrap">{r.body}</p>

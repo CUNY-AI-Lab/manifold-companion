@@ -139,8 +139,8 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
                       <p className="text-sm font-medium text-cail-dark truncate">
                         {formatTimestamp(v.created_at)}
                       </p>
-                      {v.email && (
-                        <p className="text-xs text-gray-500 truncate">{v.email}</p>
+                      {(v.user_display_name || v.user_email) && (
+                        <p className="text-xs text-gray-500 truncate">{v.user_display_name || v.user_email}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2 ml-3 shrink-0">

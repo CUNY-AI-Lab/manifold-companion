@@ -206,6 +206,32 @@ function extractText(responseBody, modelId) {
              .trim();
 }
 
+/**
+ * Extract token usage from a Bedrock response body.
+ */
+function extractUsage(responseBody, modelId) {
+  const parsed = JSON.parse(responseBody);
+  // OpenAI-compatible format
+  if (isQwenModel(modelId) || isOpenAIModel(modelId)) {
+    return {
+      tokensIn: parsed.usage?.prompt_tokens || 0,
+      tokensOut: parsed.usage?.completion_tokens || 0,
+    };
+  }
+  // Nova format
+  if (isNovaModel(modelId)) {
+    return {
+      tokensIn: parsed.usage?.inputTokens || 0,
+      tokensOut: parsed.usage?.outputTokens || 0,
+    };
+  }
+  // Claude format
+  return {
+    tokensIn: parsed.usage?.input_tokens || 0,
+    tokensOut: parsed.usage?.output_tokens || 0,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -239,9 +265,11 @@ export async function ocrPage(base64Image, settings = {}) {
   const response = await client.send(command);
   const responseBody = new TextDecoder().decode(response.body);
   const rawText = extractText(responseBody, modelId);
+  const usage = extractUsage(responseBody, modelId);
 
   // Post-processing: collapse repetition loops
-  return deduplicateOCR(rawText);
+  const text = deduplicateOCR(rawText);
+  return { text, usage };
 }
 
 /**
@@ -327,7 +355,9 @@ export async function generateSummary(fullText, language = 'en') {
 
   const response = await client.send(command);
   const responseBody = new TextDecoder().decode(response.body);
-  return extractText(responseBody, modelId);
+  const text = extractText(responseBody, modelId);
+  const usage = extractUsage(responseBody, modelId);
+  return { text, usage };
 }
 
 /**
@@ -365,6 +395,8 @@ export async function translateText(text, sourceLang, targetLang) {
   }
 
   const translated = [];
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
   for (const chunk of chunks) {
     const body = buildTextBody(systemPrompt, chunk, modelId, 0.3, 4096);
 
@@ -378,9 +410,12 @@ export async function translateText(text, sourceLang, targetLang) {
     const response = await client.send(command);
     const responseBody = new TextDecoder().decode(response.body);
     translated.push(extractText(responseBody, modelId));
+    const usage = extractUsage(responseBody, modelId);
+    totalTokensIn += usage.tokensIn;
+    totalTokensOut += usage.tokensOut;
   }
 
-  return translated.join(separator);
+  return { text: translated.join(separator), usage: { tokensIn: totalTokensIn, tokensOut: totalTokensOut } };
 }
 
 function extractJsonObject(text) {

@@ -5,6 +5,7 @@ import { ManifoldLogo } from '../components/Header';
 
 export default function RegisterPage() {
   const { user, register } = useAuth();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -26,8 +27,9 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const data = await register(email, password);
+      const data = await register(email, password, name);
       setSuccess(data.message || 'Account created. Awaiting admin approval.');
+      setName('');
       setEmail('');
       setPassword('');
       setConfirm('');
@@ -62,6 +64,21 @@ export default function RegisterPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+              Full Name <span className="text-gray-400">(optional)</span>
+            </label>
+            <input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={100}
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm"
+              placeholder="Your name"
+            />
+          </div>
+
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
               Email
