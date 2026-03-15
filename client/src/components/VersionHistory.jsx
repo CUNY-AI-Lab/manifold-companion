@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 function formatTimestamp(iso) {
   const d = new Date(iso);
@@ -145,6 +146,8 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
   const [diffLines, setDiffLines] = useState([]);
   const [diffLoading, setDiffLoading] = useState(false);
   const [reverting, setReverting] = useState(false);
+  const modalRef = useRef(null);
+  useFocusTrap(modalRef, open);
 
   const fetchVersions = useCallback(async () => {
     setLoading(true);
@@ -231,16 +234,22 @@ export default function VersionHistory({ textId, contentType, open, onClose, onR
       <div className="absolute inset-0 bg-black/40" />
 
       {/* Panel */}
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-800 shadow-2xl rounded-l-2xl flex flex-col animate-slide-in">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="version-history-title"
+        className="relative w-full max-w-2xl bg-white dark:bg-slate-800 shadow-2xl rounded-l-2xl flex flex-col animate-slide-in"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700">
-          <h2 className="text-lg font-display font-semibold text-cail-navy dark:text-slate-200">
+          <h2 id="version-history-title" className="text-lg font-display font-semibold text-cail-navy dark:text-slate-200">
             Version History
           </h2>
           <button
             onClick={onClose}
             className="text-gray-400 dark:text-slate-500 hover:text-cail-dark dark:hover:text-slate-200 transition-colors text-xl leading-none"
-            aria-label="Close"
+            aria-label="Close version history"
           >
             &times;
           </button>

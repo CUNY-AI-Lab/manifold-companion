@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 export default function SharePanel({ projectId, open, onClose }) {
   const [shares, setShares] = useState([]);
@@ -12,6 +13,8 @@ export default function SharePanel({ projectId, open, onClose }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestDebounce = useRef(null);
+  const modalRef = useRef(null);
+  useFocusTrap(modalRef, open);
 
   const fetchShares = useCallback(async () => {
     setLoading(true);
@@ -80,15 +83,19 @@ export default function SharePanel({ projectId, open, onClose }) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-panel-title"
         className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-display font-bold text-cail-navy dark:text-slate-200">Share Project</h2>
+          <h2 id="share-panel-title" className="text-xl font-display font-bold text-cail-navy dark:text-slate-200">Share Project</h2>
           <button
             onClick={onClose}
             className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 text-2xl leading-none"
-            aria-label="Close"
+            aria-label="Close share panel"
           >
             &times;
           </button>

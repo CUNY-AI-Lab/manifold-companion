@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 // ---------------------------------------------------------------------------
 // Split Modal — split a text into multiple new texts by page ranges
@@ -14,6 +15,8 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
   ]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const splitModalRef = useRef(null);
+  useFocusTrap(splitModalRef, true);
 
   // Filter out __compiled__ sentinel
   const realPages = pages.filter(p => p.filename !== '__compiled__');
@@ -119,14 +122,21 @@ export function SplitModal({ textId, pages, onClose, onSplit }) {
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div
+        ref={splitModalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="split-modal-title"
+        className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div>
-            <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Split Text</h2>
+            <h2 id="split-modal-title" className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Split Text</h2>
             <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{realPages.length} pages — assign each to a group</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} aria-label="Close split modal" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -219,6 +229,8 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const mergeModalRef = useRef(null);
+  useFocusTrap(mergeModalRef, true);
 
   function toggleText(textId) {
     setSelected(prev =>
@@ -268,14 +280,21 @@ export function MergeModal({ texts, onClose, onMerge, projectId }) {
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div
+        ref={mergeModalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="merge-modal-title"
+        className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div>
-            <h2 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Merge Texts</h2>
+            <h2 id="merge-modal-title" className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200">Merge Texts</h2>
             <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Combine multiple texts into one</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
+          <button onClick={onClose} aria-label="Close merge modal" className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
