@@ -1439,7 +1439,8 @@ export default function HtmlTextDetail() {
         <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase()}`} aria-labelledby={`tab-${activeTab.toLowerCase()}`} tabIndex={0} className="space-y-8">
           {/* Summary */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
-            <h3 className="font-display font-semibold text-lg text-cail-dark mb-4">Summary</h3>
+            <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-1">Summary</h3>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">AI-generated summaries may be inaccurate. Please review and edit before saving.</p>
             <textarea
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
@@ -1480,12 +1481,12 @@ export default function HtmlTextDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {DC_FIELDS.map((field) => (
                 <div key={field.key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{field.label}</label>
                   <input
                     type="text"
                     value={metadata[field.key] || ''}
                     onChange={(e) => setMetadata((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 text-sm focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-200 text-sm focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none"
                   />
                 </div>
               ))}

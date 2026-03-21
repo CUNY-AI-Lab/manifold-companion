@@ -1426,13 +1426,14 @@ export default function TextDetail() {
       {/* ============================================================ */}
       {activeTab === 'Translation' && (
         <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} aria-labelledby={`tab-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} tabIndex={0}>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">AI-generated translations may contain errors. Please review carefully before use.</p>
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Target Language</label>
               <select
                 value={targetLang}
                 onChange={(e) => setTargetLang(e.target.value)}
-                className="text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none"
+                className="text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-200 focus:border-cail-blue outline-none"
               >
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>{l.label}</option>
@@ -1504,12 +1505,13 @@ export default function TextDetail() {
         <div role="tabpanel" id={`tabpanel-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} aria-labelledby={`tab-${activeTab.toLowerCase().replace(/\s+/g, '-')}`} tabIndex={0} className="space-y-8">
           {/* Summary section */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
-            <h3 className="font-display font-semibold text-lg text-cail-dark mb-4">Summary</h3>
+            <h3 className="font-display font-semibold text-lg text-cail-dark dark:text-slate-200 mb-1">Summary</h3>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">AI-generated summaries may be inaccurate. Please review and edit before saving.</p>
             <textarea
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               rows={4}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm resize-y"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-200 focus:border-cail-blue focus:ring-2 focus:ring-cail-blue/20 outline-none transition text-sm resize-y"
               placeholder="Summary of this text..."
             />
             <div className="flex items-center gap-3 mt-3">
@@ -1545,14 +1547,14 @@ export default function TextDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {DC_FIELDS.map((field) => (
                 <div key={field.key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                     {field.label}
                   </label>
                   <input
                     type="text"
                     value={metadata[field.key] || ''}
                     onChange={(e) => setMetadata((m) => ({ ...m, [field.key]: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 focus:border-cail-blue outline-none text-sm"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-200 focus:border-cail-blue outline-none text-sm"
                   />
                 </div>
               ))}
