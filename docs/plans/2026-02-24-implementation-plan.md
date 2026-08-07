@@ -111,6 +111,7 @@ Run: `cd client && npm install`
 **Step 4: Create .env with Bedrock credentials**
 
 ```
+# Local development only; production uses the port in deploy/setup.sh.
 PORT=3000
 SESSION_SECRET=<generate-random-secret>
 AWS_REGION=us-east-1
@@ -478,7 +479,7 @@ app.use('/api/auth/register', rateLimit({ windowMs: 15*60*1000, max: 5 }));
 **Step 2: Test server starts**
 
 Run: `cd server && node index.js`
-Expected: Server starts on port 3000, database created, admin seeded.
+Expected: The local-development server starts on port 3000, database created, admin seeded.
 
 **Step 3: Commit**
 
@@ -985,25 +986,11 @@ Verify: `dist/` directory created with index.html and assets.
 Run: `cd server && NODE_ENV=production node index.js`
 Verify: serves client from dist, all routes work.
 
-**Step 3: Create a simple systemd service file for Debian**
+**Step 3: Use the checked-in systemd service file for Debian**
 
-Create `deploy/manifold-companion.service`:
-```ini
-[Unit]
-Description=CAIL OCR Manifold Companion
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/manifold-companion
-ExecStart=/usr/bin/node server/index.js
-Environment=NODE_ENV=production
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
+Install `deploy/manifold-companion.service` as-is. It is the single production
+service definition; `deploy/setup.sh` prepares its canonical working directory
+and prints instructions for the matching production `.env` port.
 
 **Step 4: Final commit**
 
