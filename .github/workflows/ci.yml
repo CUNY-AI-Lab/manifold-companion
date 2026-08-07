@@ -38,3 +38,6 @@ jobs:
       # broader check until that separate candidate work is reviewed.
       - name: Build client
         run: npm run build
+
+      - name: Check deployment contract
+        run: node --test deploy/deployment-contract.test.mjs

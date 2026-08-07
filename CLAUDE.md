@@ -35,7 +35,7 @@ There are no test or lint scripts configured.
 ## Monorepo Layout
 
 - **Root** -- npm workspace orchestrator
-- **`server/`** -- Express API (port 3000)
+- **`server/`** -- Express API (local development port 3000; production port 3003)
 - **`client/`** -- React + Vite SPA (Vite proxies `/api` → localhost:3000 in dev)
 - **`data/`** -- Runtime: SQLite DBs (`manifold.db`, `sessions.db`) and uploaded files (gitignored)
 - **`docs/`** -- Design documents and plans
@@ -53,7 +53,7 @@ There are no test or lint scripts configured.
 
 Configuration via `.env` in project root (symlinked to `server/.env` because `dotenv/config` reads from cwd):
 
-- `PORT` -- Server port (default 3000)
+- `PORT` -- Local-development server port (default 3000; production deployment uses 3003)
 - `SESSION_SECRET` -- Express session secret (must be ≥32 chars in production or server exits)
 - `AWS_REGION` -- AWS region for Bedrock
 - `BEDROCK_OCR_MODEL` -- Vision model ID for OCR (currently `qwen.qwen3-vl-235b-a22b`)
@@ -313,7 +313,8 @@ npm run dev    # base='/', everything at localhost:5173
 
 # 2. Build and push
 npm run build
-tar czf /tmp/manifold-companion.tar.gz --exclude='node_modules' --exclude='data' --exclude='.env' --exclude='.git' --exclude='.playwright-mcp' --exclude='*.png' .
+# Keep tracked runtime images in the archive; do not use a global `*.png` exclude.
+tar czf /tmp/manifold-companion.tar.gz --exclude='node_modules' --exclude='data' --exclude='.env' --exclude='.git' --exclude='.playwright-mcp' .
 sshpass -p '<password>' scp /tmp/manifold-companion.tar.gz smorello.adm@gc.cuny.edu@100.111.252.53:/data/manifold-companion/
 sshpass -p '<password>' ssh smorello.adm@gc.cuny.edu@100.111.252.53 \
   "cd /data/manifold-companion && tar xzf manifold-companion.tar.gz && rm manifold-companion.tar.gz"

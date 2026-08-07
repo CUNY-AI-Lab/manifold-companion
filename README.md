@@ -66,7 +66,7 @@ npm start
 ## Project Structure
 
 ```
-server/           Express API (port 3000)
+server/           Express API (local development port 3000; production port 3003)
   routes/         Route handlers (auth, projects, texts, ocr, llm, export, shares, annotations, notifications)
   services/       AI services (bedrock, openrouter), email, storage, cleanup
   middleware/     Auth, CSRF, rate limits, access control, upload validation
