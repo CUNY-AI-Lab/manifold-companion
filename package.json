@@ -11,6 +11,7 @@
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm run build",
+    "check": "cd server && node --test test/*.test.js && cd .. && node --test deploy/deployment-contract.test.mjs && npm run build",
     "start": "cd server && npm start"
   },
   "devDependencies": {

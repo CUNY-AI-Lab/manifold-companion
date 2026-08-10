@@ -28,9 +28,10 @@ npm run dev:server   # Start only the Express server with --watch
 npm run dev:client   # Start only the Vite dev server
 npm run build        # Build the client for production (outputs to client/dist/)
 npm start            # Start the production server (serves client/dist/ statically)
+bun run check        # Run server, deployment-contract, and client-build checks
 ```
 
-There are no test or lint scripts configured.
+There is no linter configured; `bun run check` is the repository verification command.
 
 ## Monorepo Layout
 
@@ -53,6 +54,7 @@ There are no test or lint scripts configured.
 
 Configuration via `.env` in project root (symlinked to `server/.env` because `dotenv/config` reads from cwd):
 
+- `HOST` -- TCP bind host (default `127.0.0.1`; wildcard addresses are rejected)
 - `PORT` -- Local-development server port (default 3000; production deployment uses 3003)
 - `SESSION_SECRET` -- Express session secret (must be ≥32 chars in production or server exits)
 - `AWS_REGION` -- AWS region for Bedrock
@@ -292,6 +294,7 @@ Class-based Tailwind dark mode (`dark` class on `<html>`). Three modes: system (
 **App dir**: `/data/manifold-companion/` (2TB storage drive)
 **Data dir**: `/data/manifold-companion/data/` (SQLite DBs + uploaded files)
 **Port**: `3003` (3000-3002 occupied by other services)
+**Host**: `127.0.0.1` (Nginx is the only public listener)
 **Service**: `manifold-companion.service` (systemd)
 
 ### Subpath Architecture

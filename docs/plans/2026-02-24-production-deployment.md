@@ -85,6 +85,7 @@ rsync -avz --exclude='node_modules' --exclude='data' --exclude='.env' \
 ### 2e. Create production `.env` on server
 ```
 PORT=3003
+HOST=127.0.0.1
 SESSION_SECRET=<generate-strong-random-secret>
 AWS_REGION=us-east-1
 BEDROCK_OCR_MODEL=qwen.qwen3-vl-235b-a22b

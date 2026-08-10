@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=smorello.adm@gc.cuny.edu
 WorkingDirectory=/data/manifold-companion
-ExecStart=/usr/bin/node server/index.js
+ExecStart=/usr/bin/env HOST=127.0.0.1 /usr/bin/node server/index.js
 Environment=NODE_ENV=production
 EnvironmentFile=/data/manifold-companion/.env
 Restart=always
