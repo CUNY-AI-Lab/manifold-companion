@@ -41,6 +41,8 @@ npm start
 
 | Variable | Description |
 |----------|-------------|
+| `HOST` | TCP bind host (defaults to loopback; wildcard addresses are rejected) |
+| `PORT` | Server port (3000 for local development; 3003 in production) |
 | `SESSION_SECRET` | Express session secret (>=32 chars in production) |
 | `AWS_REGION` | AWS region for Bedrock and SES |
 | `BEDROCK_OCR_MODEL` | Vision model ID for OCR |

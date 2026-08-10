@@ -33,9 +33,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Clean main exposes only the deterministic client production build.
-      # Server tests are not present on this source head; do not claim a
-      # broader check until that separate candidate work is reviewed.
+      - name: Test server
+        run: npm test --workspace server
+
       - name: Build client
         run: npm run build
 

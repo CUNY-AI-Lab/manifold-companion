@@ -21,13 +21,15 @@ function capture(source, pattern, label) {
 }
 
 test('deployment files share one production contract', async () => {
-  const [setup, service, nginx, claude, productionPlan, implementationPlan] = await Promise.all([
+  const [envExample, setup, service, nginx, claude, productionPlan, implementationPlan, server] = await Promise.all([
+    readRepoFile('.env.example'),
     readRepoFile('deploy/setup.sh'),
     readRepoFile('deploy/manifold-companion.service'),
     readRepoFile('deploy/nginx.conf'),
     readRepoFile('CLAUDE.md'),
     readRepoFile('docs/plans/2026-02-24-production-deployment.md'),
     readRepoFile('docs/plans/2026-02-24-implementation-plan.md'),
+    readRepoFile('server/index.js'),
   ]);
 
   const appDir = capture(setup, /^APP_DIR="([^"]+)"$/m, 'setup app directory');
@@ -45,9 +47,15 @@ test('deployment files share one production contract', async () => {
   assert.equal(serviceDir, appDir);
   assert.equal(serviceEnv, `${appDir}/.env`);
   assert.equal(serviceUser, setupUser);
+  assert.match(envExample, /^HOST=127\.0\.0\.1$/m);
+  assert.match(setup, /^echo "   HOST=127\.0\.0\.1"$/m);
+  assert.match(service, /^ExecStart=\/usr\/bin\/env HOST=127\.0\.0\.1 \/usr\/bin\/node server\/index\.js$/m);
+  assert.match(server, /resolveListenHost/);
+  assert.match(server, /app\.listen\(PORT, HOST/);
   assert.equal(setupPort, nginxPort);
   assert.equal(nginxPort, documentedPort);
   assert.match(productionPlan, /PORT=3003/);
+  assert.match(productionPlan, /HOST=127\.0\.0\.1/);
   assert.match(implementationPlan, /Local development only/);
 
   for (const [label, source] of [

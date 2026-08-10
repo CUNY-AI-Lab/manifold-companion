@@ -7,6 +7,7 @@ import connectSqlite3 from 'connect-sqlite3';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
+import { resolveListenHost } from './listen-host.js';
 
 import { initDatabase } from './db.js';
 import { DEFAULT_OCR_PROMPT } from './services/bedrock.js';
@@ -29,6 +30,8 @@ import { startCleanupCron } from './services/cleanup.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = resolveListenHost();
+const DISPLAY_HOST = HOST.includes(':') ? `[${HOST}]` : HOST;
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', 'data');
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -152,9 +155,9 @@ if (existsSync(clientDist)) {
 startCleanupCron();
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`\n  CAIL OCR Manifold Companion`);
   console.log(`  ──────────────────────────`);
-  console.log(`  Running at http://localhost:${PORT}`);
+  console.log(`  Running at http://${DISPLAY_HOST}:${PORT}`);
   console.log(`  Data directory: ${DATA_DIR}\n`);
 });
