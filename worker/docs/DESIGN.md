@@ -53,7 +53,7 @@ browser ──► Doorway (CUNY Login, Admission membership, CSRF-independent)
 | `src/logging.ts`, `scripts/check-logging.sh` | cail-log event catalog; CI gate against any other logging |
 | `src/sanitize/html.ts` | allowlist HTML sanitizer (no DOM), MathML subset |
 | `src/r2-keys.ts`, `src/files.ts` | R2 key layout; serving stored objects with explicit types |
-| `migrations/0001`..`0006` | schema (see section 3) |
+| `migrations/0001`..`0007` | schema (see section 3) |
 | `client/` | the browser app (React, Vite, Tailwind); `client/e2e/` the Playwright journeys |
 
 Request pipeline, in order, and why:
@@ -78,7 +78,7 @@ D1 schema is in `migrations/`. Everything is keyed on `subject` (`cail-` + 32 he
 | `invites` | `token_hash` (SHA-256, token never stored), `role` editor/viewer, `expires_at`, `revoked_at`, `redeemed_by`, `redeemed_at` |
 | `texts` | `name`, `status`, `sort_order`, `summary` (D1, capped), pointers `html_key`, `translation_key`, `source_pdf_key` + `*_bytes` |
 | `pages` | `filename`, `page_number`, `ocr_text` (one page, route-capped far below the row limit), `ocr_model`, `image_key`, `image_bytes` |
-| `text_versions` | `content_type` compiled/html/page, **`r2_key`**, `bytes`, `sha256`, `created_by` |
+| `text_versions` | `content_type` compiled/html/page, **`r2_key`**, `bytes`, `sha256`, `created_by`, `reason` (0007: the action that replaced this content: save, ocr, conversion, restore). Kept 50 per text and type, page versions 20 per page |
 | `metadata` | Dublin Core, one row per text |
 | `text_settings` | per-text prompt/model/`math_model`/temperature/max_tokens (legacy `settings`) |
 | `export_settings` | per-project JSON (legacy `projects.export_settings`) |

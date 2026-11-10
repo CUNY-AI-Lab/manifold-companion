@@ -4,10 +4,12 @@ import { API, api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
+import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
 import { runOcr, translateText } from '../lib/tasks';
+import { replaceWarning } from '../lib/versions';
 
 const LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'nl', 'pl', 'el', 'tr', 'he', 'uk', 'la'];
 
@@ -58,7 +60,7 @@ export default function ImageTextPage({ data, reload }) {
   const startOcr = async (overwrite) => {
     const targets = overwrite ? pages : pages.filter((p) => !p.ocr_text);
     if (targets.length === 0) return;
-    if (overwrite && !window.confirm('Run OCR again on every page? The current text of each page is saved as a version first.')) return;
+    if (overwrite && targets.some((p) => p.ocr_text) && !window.confirm(replaceWarning('Read every page again with the model? This replaces the text of every page.').replace('The current text', 'The current text of each page'))) return;
     const controller = new AbortController();
     setRun({ done: 0, total: targets.length, current: targets[0].filename, failures: [], controller });
     setError(null);
@@ -80,6 +82,7 @@ export default function ImageTextPage({ data, reload }) {
   };
 
   const ocrOne = async () => {
+    if (page.ocr_text && !window.confirm(replaceWarning(`Read page ${page.page_number} again with the model?${draft !== page.ocr_text ? ' Your unsaved changes to this page will be lost.' : ''}`))) return;
     setBusy('Reading this page');
     setConflict(null);
     try {
@@ -136,6 +139,7 @@ export default function ImageTextPage({ data, reload }) {
                 </div>
               ) : null}
               <SandboxedPreview markdown={draft} title={`Preview of page ${page.page_number}`} className="min-h-[14rem]" />
+              <VersionHistory key={page.id} textId={text.id} type="page" pageId={page.id} canRestore={canEdit} refreshKey={page.ocr_text} dirty={draft !== (page.ocr_text ?? '')} onRestored={reload} />
             </div>
           </div>
         ) : <p className="text-sm text-slate-500">No pages yet.{canEdit ? ' Upload photos, scans or a PDF; PDFs are turned into page images in your browser.' : ''}</p>}

@@ -6,9 +6,11 @@ import { brokenFormulas as brokenTex } from '../lib/math';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
+import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
 import { blobToDataUri, prepareImage } from '../lib/image';
 import { checkList, convertPdf } from '../lib/tasks';
+import { replaceWarning } from '../lib/versions';
 
 /** "1, 3-5" -> Set {1,3,4,5} */
 export function parsePages(spec) {
@@ -45,6 +47,7 @@ export default function HtmlTextPage({ data, reload }) {
   const done = useRef(new Map());
   const pageWarnings = useRef(new Map());
   const [checks, setChecks] = useState([]);
+  const [versionKey, setVersionKey] = useState(0);
   const figureInput = useRef(null);
 
   const loadHtml = () => api.get(`/api/texts/${text.id}/html`).then((r) => { setHtml(r.html_content); setSaved(r.html_content); }, setError);
@@ -59,6 +62,7 @@ export default function HtmlTextPage({ data, reload }) {
 
   const convert = async () => {
     if (!file) return;
+    if (saved && done.current.size === 0 && !window.confirm(replaceWarning('Convert this PDF and replace the current HTML?'))) return;
     controller.current = new AbortController();
     setError(null);
     try {
@@ -67,6 +71,7 @@ export default function HtmlTextPage({ data, reload }) {
       }
       const r = await convertPdf({ textId: text.id, file, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, warnings: pageWarnings.current, onProgress: setProgress });
       setChecks(checkList(r.warnings));
+      setVersionKey((k) => k + 1);
       done.current = new Map();
       pageWarnings.current = new Map();
       setHtml(r.html);
@@ -83,6 +88,7 @@ export default function HtmlTextPage({ data, reload }) {
       const r = await api.put(`/api/texts/${text.id}/html`, { html_content: html });
       if (r.sanitized) await loadHtml();
       else setSaved(html);
+      setVersionKey((k) => k + 1);
     } catch (e) { setError(e); }
   };
 
@@ -150,6 +156,7 @@ export default function HtmlTextPage({ data, reload }) {
         </div>
         <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />
       </div>
+      <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={html !== saved} onRestored={() => { loadHtml(); refresh(); }} />
       <CommentsPanel textId={text.id} canWrite={canEdit} />
     </div>
   );

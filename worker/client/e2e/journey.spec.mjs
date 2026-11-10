@@ -121,6 +121,49 @@ test('create project, upload, OCR, edit, invite, export', async ({ page, context
   expect(bobViolations).toEqual([]);
 });
 
+test('version history: edit a page, read it again with the model, restore the edit', async ({ page, context }) => {
+  await as(context, 'alice');
+  const violations = watchCsp(page);
+  const dialogs = [];
+  page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  await page.goto('/manifold-companion/');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Versions');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await page.getByLabel('New text name').fill('Letters');
+  await page.getByRole('button', { name: 'Add text' }).click();
+  await page.locator('input[type=file]').setInputFiles('e2e/fixtures/page.png');
+  await expect(page.getByRole('button', { name: /page\.jpg \(no text\)/ })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Read pages without text' }).click();
+  const text = page.getByLabel(/Text of page 1/);
+  await expect(text).toHaveValue(/Transcribed by the stub model\./, { timeout: 30_000 });
+
+  await text.fill('A careful hand correction.');
+  await page.getByRole('button', { name: 'Save page' }).click();
+  await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Read this page again' }).click();
+  await expect(text).toHaveValue(/Transcribed by the stub model\./, { timeout: 30_000 });
+  expect(dialogs.at(-1)).toMatch(/Read page 1 again with the model\? The current text will be saved as a version first/);
+
+  await page.getByRole('button', { name: 'Version history of this page' }).click();
+  const versions = page.getByRole('list', { name: 'Earlier versions, newest first' });
+  await expect(versions.getByRole('listitem')).toHaveCount(2);
+  await expect(versions.getByRole('listitem').first()).toContainText(/Before an OCR run by you/);
+  await expect(versions.getByRole('listitem').nth(1)).toContainText(/Before a manual save by you/);
+
+  await versions.getByRole('listitem').first().getByRole('button', { name: /^View/ }).click();
+  const old = page.frameLocator('iframe[title^="Version from"]');
+  await expect(old.getByText('A careful hand correction.')).toBeVisible();
+  await expect(page.locator('iframe[title^="Version from"]')).toHaveAttribute('sandbox', '');
+
+  await versions.getByRole('listitem').first().getByRole('button', { name: /^Restore/ }).click();
+  expect(dialogs.at(-1)).toMatch(/^Restore the version from .+\? The current text will be saved as a version first/);
+  await expect(text).toHaveValue('A careful hand correction.');
+  await expect(versions.getByRole('listitem')).toHaveCount(3);
+  await expect(versions.getByRole('listitem').first()).toContainText(/Before a restore by you/);
+  expect(violations).toEqual([]);
+});
+
 test('a lost session makes exactly one full-page navigation to the launch path', async ({ page, context, request }) => {
   const before = (await (await request.get('/__e2e/launches')).json()).launches;
   await as(context, 'none');

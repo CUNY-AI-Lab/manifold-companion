@@ -196,7 +196,10 @@ textRoutes.put("/:id/html", async (c) => {
     if (typeof body.formula_repair_status !== "string" || body.formula_repair_status.length > 40) throw E.badRequest("Invalid formula_repair_status.");
     extra.push({ sql: "formula_repair_status", value: body.formula_repair_status });
   }
-  const { bytes } = await writeContent(c.env, ctx.project, ctx.text, "html", clean, c.get("principal").subject, { extraSets: extra });
+  // The reason is a label on the version of the content being replaced (the client says whether this is a conversion).
+  const reason = body.reason === undefined ? "save" : body.reason;
+  if (reason !== "save" && reason !== "conversion") throw E.badRequest("reason must be save or conversion.");
+  const { bytes } = await writeContent(c.env, ctx.project, ctx.text, "html", clean, c.get("principal").subject, { extraSets: extra, reason });
   await reindexText(c.env, ctx.text.id, { html: clean });
   return c.json({ ok: true, html_bytes: bytes, sanitized: clean !== body.html_content });
 });
@@ -282,11 +285,18 @@ textRoutes.get("/:id/versions", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
   const type = c.req.query("type");
   if (type !== "compiled" && type !== "html" && type !== "page") throw E.badRequest("Type must be compiled, html, or page.");
+  // Page versions can be listed for one page (by its id, resolved to the file name they are keyed on).
+  const pageId = c.req.query("page");
+  let pageFilename: string | null = null;
+  if (pageId !== undefined) {
+    if (type !== "page") throw E.badRequest("page applies to type=page only.");
+    pageFilename = (await loadPage(c.env.DB, ctx.text.id, pageId)).filename;
+  }
   const rows = await c.env.DB.prepare(
-    `SELECT v.id, v.content_type, v.page_filename, v.bytes, v.created_by, p.display_name AS author_name, v.created_at
+    `SELECT v.id, v.content_type, v.page_filename, v.bytes, v.reason, v.created_by, p.display_name AS author_name, v.created_at
      FROM text_versions v LEFT JOIN profiles p ON p.subject = v.created_by
-     WHERE v.text_id = ?1 AND v.content_type = ?2 ORDER BY v.created_at DESC, v.rowid DESC LIMIT ?3`,
-  ).bind(ctx.text.id, type, CAPS.maxVersions).all();
+     WHERE v.text_id = ?1 AND v.content_type = ?2 AND (?4 IS NULL OR v.page_filename = ?4) ORDER BY v.created_at DESC, v.rowid DESC LIMIT ?3`,
+  ).bind(ctx.text.id, type, CAPS.maxVersions, pageFilename).all();
   return c.json({ versions: rows.results });
 });
 
@@ -320,12 +330,12 @@ textRoutes.post("/:id/versions/:versionId/revert", async (c) => {
   if (v.content_type === "page") {
     const page = v.page_filename ? await c.env.DB.prepare("SELECT * FROM pages WHERE text_id = ?1 AND filename = ?2").bind(ctx.text.id, v.page_filename).first<PageRow>() : null;
     if (!page) throw E.conflict("The page this version belongs to no longer exists.", "page_missing");
-    await writePageText(c.env, ctx.project, ctx.text.id, page, content, subject);
+    await writePageText(c.env, ctx.project, ctx.text.id, page, content, subject, undefined, "restore");
   } else if (v.content_type === "html") {
-    await writeContent(c.env, ctx.project, ctx.text, "html", prepareHtml(content), subject);
+    await writeContent(c.env, ctx.project, ctx.text, "html", prepareHtml(content), subject, { reason: "restore" });
     await reindexText(c.env, ctx.text.id);
   } else {
-    await writeContent(c.env, ctx.project, ctx.text, "compiled", content, subject);
+    await writeContent(c.env, ctx.project, ctx.text, "compiled", content, subject, { reason: "restore" });
     await reindexText(c.env, ctx.text.id);
   }
   return c.json({ ok: true });

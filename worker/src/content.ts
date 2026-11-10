@@ -27,6 +27,8 @@ export const CAPS = {
   documentBodyBytes: 6 * 1024 * 1024,
   maxTextsPerProject: 500,
   maxVersions: 50,
+  /** Page versions are kept per page, so re-reading a long text cannot push out other pages' history. */
+  maxPageVersions: 20,
 } as const;
 
 export const byteLength = (s: string): number => new TextEncoder().encode(s).byteLength;
@@ -105,13 +107,18 @@ export async function reindexText(env: Env, textId: string, hint: { html?: strin
 
 // ---- versions -------------------------------------------------------------
 
-/** Keep the newest MAX_VERSIONS per text+type; delete the rest, their objects, and release their bytes. */
-export async function pruneVersions(env: Env, project: ProjectRow, textId: string, contentType: "compiled" | "html" | "page"): Promise<void> {
-  const old = await env.DB.prepare(
-    "SELECT id, r2_key, bytes FROM text_versions WHERE text_id = ?1 AND content_type = ?2 ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?3",
-  )
-    .bind(textId, contentType, CAPS.maxVersions)
-    .all<{ id: string; r2_key: string; bytes: number }>();
+/** Why a version was saved: the action that replaced that content. */
+export type VersionReason = "save" | "ocr" | "conversion" | "restore";
+
+/** Keep the newest versions per text+type (per page for page versions); delete the rest, their objects, and release their bytes. */
+export async function pruneVersions(env: Env, project: ProjectRow, textId: string, contentType: "compiled" | "html" | "page", pageFilename: string | null = null): Promise<void> {
+  const old = contentType === "page"
+    ? await env.DB.prepare(
+      "SELECT id, r2_key, bytes FROM text_versions WHERE text_id = ?1 AND content_type = 'page' AND page_filename IS ?2 ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?3",
+    ).bind(textId, pageFilename, CAPS.maxPageVersions).all<{ id: string; r2_key: string; bytes: number }>()
+    : await env.DB.prepare(
+      "SELECT id, r2_key, bytes FROM text_versions WHERE text_id = ?1 AND content_type = ?2 ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?3",
+    ).bind(textId, contentType, CAPS.maxVersions).all<{ id: string; r2_key: string; bytes: number }>();
   if (old.results.length === 0) return;
   const owner = ownerOf(project);
   for (let i = 0; i < old.results.length; i += 80) {
@@ -137,6 +144,8 @@ const KIND_COLS = {
 export interface WriteOptions {
   /** Extra column assignments applied in the same atomic update (names are fixed by callers, never user input). */
   extraSets?: { sql: string; value: unknown }[];
+  /** Why the previous content is being replaced (stored on its version). */
+  reason?: VersionReason;
 }
 
 /**
@@ -169,9 +178,9 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
     if (versioned) {
       statements.push(
         env.DB.prepare(
-          `INSERT INTO text_versions (id, text_id, content_type, r2_key, bytes, created_by, created_at)
-           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND ${cols.key} IS ?4)`,
-        ).bind(newId(), text.id, kind, oldKey, oldBytes, authorSubject, now),
+          `INSERT INTO text_versions (id, text_id, content_type, r2_key, bytes, created_by, created_at, reason)
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND ${cols.key} IS ?4)`,
+        ).bind(newId(), text.id, kind, oldKey, oldBytes, authorSubject, now, opts.reason ?? "save"),
       );
     }
     statements.push(
@@ -210,7 +219,7 @@ export function prepareHtml(raw: unknown): string {
  * the swap is a compare-and-set on the old text. Used by hand edits, reverts
  * AND model OCR, so a model can never silently overwrite corrected text.
  */
-export async function writePageText(env: Env, project: ProjectRow, textId: string, page: { id: string; filename: string; ocr_text: string | null }, newText: string, authorSubject: string, ocrModel?: string): Promise<void> {
+export async function writePageText(env: Env, project: ProjectRow, textId: string, page: { id: string; filename: string; ocr_text: string | null }, newText: string, authorSubject: string, ocrModel?: string, reason: VersionReason = ocrModel ? "ocr" : "save"): Promise<void> {
   if (byteLength(newText) > CAPS.pageOcrBytes) throw E.tooLarge(`Page text is larger than ${CAPS.pageOcrBytes} bytes.`, "page_text_too_large");
   const old = page.ocr_text;
   const owner = ownerOf(project);
@@ -225,9 +234,9 @@ export async function writePageText(env: Env, project: ProjectRow, textId: strin
     if (vKey) {
       statements.push(
         env.DB.prepare(
-          `INSERT INTO text_versions (id, text_id, content_type, page_filename, r2_key, bytes, created_by, created_at)
-           SELECT ?1, ?2, 'page', ?3, ?4, ?5, ?6, ?7 WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?8 AND ocr_text IS ?9)`,
-        ).bind(newId(), textId, page.filename, vKey, snapBytes, authorSubject, now, page.id, old),
+          `INSERT INTO text_versions (id, text_id, content_type, page_filename, r2_key, bytes, created_by, created_at, reason)
+           SELECT ?1, ?2, 'page', ?3, ?4, ?5, ?6, ?7, ?10 WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?8 AND ocr_text IS ?9)`,
+        ).bind(newId(), textId, page.filename, vKey, snapBytes, authorSubject, now, page.id, old, reason),
       );
     }
     // A model write records which model produced the text; a human edit leaves the field as it was.
@@ -239,7 +248,7 @@ export async function writePageText(env: Env, project: ProjectRow, textId: strin
     if (snapBytes > 0) await releaseStorage(env.DB, owner, snapBytes);
     throw error;
   }
-  if (snapshot) await pruneVersions(env, project, textId, "page");
+  if (snapshot) await pruneVersions(env, project, textId, "page", page.filename);
   await env.DB.prepare("UPDATE texts SET updated_at = ?1 WHERE id = ?2").bind(now, textId).run();
   await touchProject(env.DB, project.id, now);
   await reindexText(env, textId);

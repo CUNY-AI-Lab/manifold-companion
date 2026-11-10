@@ -86,7 +86,7 @@ export async function convertPdf({ textId, file, mathPages = new Set(), allMath 
   onProgress?.({ stage: 'assemble', page: total, total });
   const assembled = `<article class="pdf-html-document">\n${[...done.entries()].sort((a, b) => a[0] - b[0]).map(([, h]) => h).join('\n')}\n</article>`;
   const { html } = await api.post(`/api/texts/${textId}/html/cleanup`, { html: assembled }, { signal });
-  await api.put(`/api/texts/${textId}/html`, { html_content: html, pdf_meta: { file_name: file.name, page_count: total, math_pages: allMath ? 'all' : [...mathPages], generated_at: new Date().toISOString() } });
+  await api.put(`/api/texts/${textId}/html`, { html_content: html, reason: 'conversion', pdf_meta: { file_name: file.name, page_count: total, math_pages: allMath ? 'all' : [...mathPages], generated_at: new Date().toISOString() } });
   return { html, total, warnings };
 }
 
