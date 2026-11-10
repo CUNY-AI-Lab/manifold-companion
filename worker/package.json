@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build:client": "npm --prefix ../client run build",
-    "deploy:dry-run": "wrangler deploy --dry-run --outdir .wrangler/dry-run"
+    "deploy:dry-run": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "check:logging": "bash scripts/check-logging.sh"
   },
   "dependencies": {
     "@cuny-ai-lab/cail-client": "6.3.0",

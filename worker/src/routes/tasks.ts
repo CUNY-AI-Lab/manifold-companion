@@ -14,6 +14,21 @@ import { DEFAULT_OCR_PROMPT, FORMULA_REPAIR_SYSTEM, HTML_PAGE_SYSTEM, htmlPageUs
 import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
 import { isUuid, nowIso } from "../util";
 import type { AppEnv } from "../app";
+import { logger, terminalFor } from "../logging";
+import type { MiddlewareHandler } from "hono";
+
+/** One model_task.completed event per model task request, with the route TEMPLATE only. */
+const logged = (template: string): MiddlewareHandler<AppEnv> => async (c, next) => {
+  const started = Date.now();
+  await next();
+  const status = c.res.status;
+  const err = c.error;
+  const code = err instanceof AppError ? err.code : err ? "internal_error" : status >= 400 ? (status === 409 ? "edit_conflict" : "error") : null;
+  const terminal = terminalFor(status, code);
+  const base = { request_id: c.get("requestId"), route: `/manifold-companion/api/texts${template}`, duration_ms: Date.now() - started, status };
+  if (terminal.outcome === "ok") logger(c.env).emit("model_task.completed", { ...base, terminal });
+  else logger(c.env).emit("model_task.completed", { ...base, terminal, ...(code ? { error_type: code } : {}) });
+};
 
 export const taskRoutes = new Hono<AppEnv>();
 const idOf = (c: { req: { param: (n: string) => string | undefined } }): string => c.req.param("id") as string;
@@ -46,7 +61,7 @@ const usageOf = (u: { prompt_tokens?: number; completion_tokens?: number; total_
 
 // ---- OCR one page ----------------------------------------------------------
 
-taskRoutes.post("/:id/pages/:pageId/ocr", async (c) => {
+taskRoutes.post("/:id/pages/:pageId/ocr", logged("/{id}/pages/{pageId}/ocr"), async (c) => {
   const principal = c.get("principal");
   const ctx = await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
   if (ctx.project.project_type !== "image_to_markdown") throw E.badRequest("OCR belongs to image_to_markdown projects.", "wrong_project_type");
@@ -104,7 +119,7 @@ taskRoutes.post("/:id/pages/:pageId/ocr", async (c) => {
 
 const IMAGE_DATA_URI = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
 
-taskRoutes.post("/:id/parse-page", async (c) => {
+taskRoutes.post("/:id/parse-page", logged("/{id}/parse-page"), async (c) => {
   const principal = c.get("principal");
   const ctx = await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
   if (ctx.project.project_type !== "pdf_to_html") throw E.badRequest("Page conversion belongs to pdf_to_html projects.", "wrong_project_type");
@@ -190,7 +205,7 @@ taskRoutes.put("/:id/summary", async (c) => {
   return c.json({ summary: body.summary });
 });
 
-taskRoutes.post("/:id/summary", async (c) => {
+taskRoutes.post("/:id/summary", logged("/{id}/summary"), async (c) => {
   const principal = c.get("principal");
   const ctx = await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
@@ -214,7 +229,7 @@ taskRoutes.post("/:id/summary", async (c) => {
 
 // ---- translation (the client drives chunking) -------------------------------
 
-taskRoutes.post("/:id/translate-chunk", async (c) => {
+taskRoutes.post("/:id/translate-chunk", logged("/{id}/translate-chunk"), async (c) => {
   const principal = c.get("principal");
   await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
@@ -247,7 +262,7 @@ taskRoutes.put("/:id/translation", async (c) => {
 // ---- formula repair --------------------------------------------------------
 // The legacy endpoint was a stub that returned []. This asks a text model to fix TeX that failed to render.
 
-taskRoutes.post("/:id/formula-repair", async (c) => {
+taskRoutes.post("/:id/formula-repair", logged("/{id}/formula-repair"), async (c) => {
   const principal = c.get("principal");
   const ctx = await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
   if (ctx.project.project_type !== "pdf_to_html") throw E.badRequest("Formula repair belongs to pdf_to_html projects.", "wrong_project_type");

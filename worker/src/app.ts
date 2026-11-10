@@ -14,6 +14,7 @@ import { searchRoutes } from "./routes/search";
 import { uploadRoutes } from "./routes/uploads";
 import { taskRoutes } from "./routes/tasks";
 import { modelRoutes } from "./routes/models";
+import { errorTypeName, logger } from "./logging";
 import { annotationRoutes } from "./routes/annotations";
 import { notificationRoutes } from "./routes/notifications";
 
@@ -66,7 +67,10 @@ api.use("*", async (c, next) => {
 // 3. Identity: both Doorway legs, config first.
 api.use("*", async (c, next) => {
   const auth = await authenticate(c.req.raw, c.env);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) {
+    logger(c.env).emit("auth.rejected", { request_id: c.get("requestId"), status: auth.response.status, error_type: auth.code, http_method: c.req.method as "GET" });
+    return auth.response;
+  }
   c.set("principal", auth.principal);
   // First sight of a subject creates its (empty) profile. Idempotent, one cheap statement.
   await c.env.DB.prepare("INSERT OR IGNORE INTO profiles (subject) VALUES (?1)").bind(auth.principal.subject).run();
@@ -119,7 +123,7 @@ app.onError((error, c) => {
   const requestId = c.get("requestId");
   if (error instanceof AppError) return errorResponse(error, requestId);
   // Class only, never the message, which can quote request content.
-  console.error(JSON.stringify({ event: "manifold_companion.unhandled_error", request_id: requestId, error_type: error instanceof Error ? error.name : typeof error }));
+  logger(c.env).emit("manifold_companion.unhandled_error", { request_id: requestId, error_type: errorTypeName(error), http_method: c.req.method as "GET" });
   return errorResponse(new AppError({ code: "internal_error", message: "Internal server error.", status: 500 }), requestId);
 });
 

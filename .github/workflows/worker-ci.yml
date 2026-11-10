@@ -63,6 +63,10 @@ jobs:
         working-directory: worker
         run: npm run typecheck
 
+      - name: Logging goes through cail-log only
+        working-directory: worker
+        run: npm run check:logging
+
       - name: Test (workerd, D1 and R2 via Miniflare)
         working-directory: worker
         run: npm test

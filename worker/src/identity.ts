@@ -24,7 +24,7 @@ export interface Principal {
   credential: { kind: "jwt"; token: string };
 }
 
-export type AuthResult = { ok: true; principal: Principal } | { ok: false; response: Response };
+export type AuthResult = { ok: true; principal: Principal } | { ok: false; response: Response; code: CailAuthErrorCode };
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
 
@@ -76,22 +76,22 @@ export async function authenticate(request: Request, env: Env, now?: number): Pr
     loadCachedVerifierConfig(env, APP_AUDIENCE, now),
     loadCachedVerifierConfig(env, CAIL_GATEWAY_AUDIENCE, now),
   ]);
-  if (!appLoaded.ok || !gatewayLoaded.ok) return { ok: false, response: identityUnavailableResponse() };
+  if (!appLoaded.ok || !gatewayLoaded.ok) return { ok: false, response: identityUnavailableResponse(), code: "identity_unavailable" };
 
   const appToken = request.headers.get(IDENTITY_HEADER);
-  if (appToken === null || appToken === "") return { ok: false, response: authRequiredResponse() };
+  if (appToken === null || appToken === "") return { ok: false, response: authRequiredResponse(), code: "authentication_required" };
 
   const identity = await verifyIdentityJwt(appToken, appLoaded.config);
-  if (identity === null) return { ok: false, response: invalidCredentialResponse() };
+  if (identity === null) return { ok: false, response: invalidCredentialResponse(), code: "invalid_credential" };
 
   const keyring = readIdentityKeyring(request.headers);
-  if (keyring === null) return { ok: false, response: invalidCredentialResponse() };
+  if (keyring === null) return { ok: false, response: invalidCredentialResponse(), code: "invalid_credential" };
   // A verified app leg WITHOUT its Gateway leg is a Doorway route-policy fault (the route lost
   // gatewayIdentity), not a lost session: authentication_required would send the browser to the
   // launch path, Doorway would return it here with the same headers, and it would loop.
-  if (keyring.gatewayJwt === undefined) return { ok: false, response: invalidCredentialResponse() };
+  if (keyring.gatewayJwt === undefined) return { ok: false, response: invalidCredentialResponse(), code: "invalid_credential" };
   const gatewayIdentity = await verifyKeyringGatewayJwt(keyring, gatewayLoaded.config, identity.subject);
-  if (gatewayIdentity === null) return { ok: false, response: invalidCredentialResponse() };
+  if (gatewayIdentity === null) return { ok: false, response: invalidCredentialResponse(), code: "invalid_credential" };
 
   return { ok: true, principal: { subject: identity.subject, credential: { kind: "jwt", token: keyring.gatewayJwt } } };
 }
