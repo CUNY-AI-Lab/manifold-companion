@@ -33,10 +33,11 @@ async function seed(request) {
   const pageId = (await up.json()).page.id;
   await post(`/texts/${text.id}/pages/${pageId}`, { text: 'Dear friend,\n\nThe value is \\(x^2\\).' });
   await post(`/texts/${text.id}/pages/${pageId}`, { text: 'Dear friend,\n\nThe value is \\(x^3\\).' });
+  const invite = (await post(`/projects/${image.id}/invites`, { role: 'editor' })).invite;
   const pdf = (await post('/projects', { name: 'Maths a11y', project_type: 'pdf_to_html' })).project;
   const htext = (await post(`/projects/${pdf.id}/texts`, { name: 'Chapter 7' })).text;
   await post(`/texts/${htext.id}/html`, { html_content: '<section data-page="1"><h2>Identities</h2><p>\\(\\sin^2\\theta + \\cos^2\\theta = 1\\)</p></section>' }, 'PUT');
-  return { image: image.id, text: text.id, pdf: pdf.id, htext: htext.id };
+  return { image: image.id, text: text.id, pdf: pdf.id, htext: htext.id, inviteToken: invite.token };
 }
 
 let ids;
@@ -47,6 +48,13 @@ test.beforeAll(async ({ browser }) => {
   await page.goto('/manifold-companion/');
   ids = await seed(page.request);
   await context.close();
+  // A second member (bob) to show in the share dialog; dave stays without projects for the first-run screen.
+  const other = await browser.newContext();
+  await other.addCookies([{ name: 'e2e_as', value: 'bob', url: ORIGIN }]);
+  const op = await other.newPage();
+  await op.goto(`/manifold-companion/invite#t=${ids.inviteToken}`);
+  await expect(op.getByText('you are a editor')).toBeVisible();
+  await other.close();
 });
 
 for (const [size, viewport] of Object.entries(VIEWPORTS)) {
@@ -96,6 +104,12 @@ for (const [size, viewport] of Object.entries(VIEWPORTS)) {
       await page.getByRole('button', { name: 'Share' }).click();
       await expect(page.getByRole('dialog')).toBeVisible();
       found.push(...(await violations(page, 'share dialog')));
+      // The confirmation dialog, on top of the share dialog (bob is a member to transfer to).
+      const memberRow = page.getByRole('dialog').getByRole('listitem').filter({ has: page.getByRole('button', { name: 'Make owner' }) }).first();
+      await memberRow.getByRole('button', { name: 'Make owner' }).click();
+      await expect(page.getByRole('alertdialog')).toBeVisible();
+      found.push(...(await violations(page, 'confirm dialog')));
+      await page.keyboard.press('Escape');
       await context.close();
       // First run: a person with no projects sees the welcome and the rules.
       const fresh = await browser.newContext({ viewport, colorScheme: scheme, reducedMotion: 'reduce' });

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import useFocusTrap from '../hooks/useFocusTrap';
 import { api } from '../api/client';
 import { ErrorNote } from './ui';
+import { useConfirm } from './ConfirmDialog';
 
 /** Owner-only: invite links (role, expiry, single use), members, revoke and remove. */
-export default function SharePanel({ projectId, onClose }) {
+export default function SharePanel({ projectId, onClose, onTransferred }) {
   const dialog = useRef(null);
   useFocusTrap(dialog, true, onClose);
   const [members, setMembers] = useState([]);
@@ -13,6 +14,8 @@ export default function SharePanel({ projectId, onClose }) {
   const [days, setDays] = useState(7);
   const [created, setCreated] = useState(null);
   const [error, setError] = useState(null);
+  const [status, setStatus] = useState('');
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -63,11 +66,29 @@ export default function SharePanel({ projectId, onClose }) {
         ) : null}
         <ErrorNote error={error} onDismiss={() => setError(null)} />
         <h3 className="mt-5 text-sm">Members</h3>
+        <p className="sr-only" role="status">{status}</p>
         <ul className="rowlist mt-1 text-sm">
           {members.map((m) => (
             <li key={m.subject} className="flex items-center justify-between py-2">
               <span>{m.display_name || 'Unnamed member'} <span className="text-slate-500 dark:text-slate-400">({m.role}{m.me ? ', you' : ''})</span></span>
-              {m.role !== 'owner' ? <button type="button" className="btn-danger" onClick={async () => { try { await api.del(`/api/projects/${projectId}/members/${m.subject}`); load(); } catch (e) { setError(e); } }}>Remove</button> : null}
+              {m.role !== 'owner' ? (
+                <span className="flex flex-wrap items-center gap-2">
+                  <label className="sr-only" htmlFor={`role-${m.subject}`}>Role of {m.display_name || 'this member'}</label>
+                  <select id={`role-${m.subject}`} className="field w-auto" value={m.role} onChange={async (e) => {
+                    try { await api.put(`/api/projects/${projectId}/members/${m.subject}`, { role: e.target.value }); setStatus(`${m.display_name || 'The member'} is now ${e.target.value === 'editor' ? 'an editor' : 'a viewer'}.`); load(); } catch (err) { setError(err); }
+                  }}>
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                  <button type="button" className="btn-quiet" onClick={async () => {
+                    const name = m.display_name || 'this member';
+                    const ok = await confirm({ title: 'Transfer ownership?', message: `${name} becomes the owner of this project. Its storage is counted against their allowance from now on, and only they can share it, transfer it again or delete it.\n\nYou stay on as an editor.`, confirmLabel: `Make ${name} the owner`, danger: true });
+                    if (!ok) return;
+                    try { await api.post(`/api/projects/${projectId}/transfer`, { subject: m.subject }); onTransferred?.(); } catch (err) { setError(err); }
+                  }}>Make owner</button>
+                  <button type="button" className="btn-danger" onClick={async () => { try { await api.del(`/api/projects/${projectId}/members/${m.subject}`); load(); } catch (e) { setError(e); } }}>Remove</button>
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>

@@ -13,9 +13,10 @@ function Bell() {
     return () => { live = false; clearInterval(t); };
   }, []);
   return (
-    <NavLink to="/notifications" className="relative text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200" aria-label={`Notifications, ${unread} unread`}>
+    <NavLink to="/notifications" className="relative text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200">
       Notifications
-      {unread > 0 ? <span className="ml-1 rounded-full bg-cail-link px-1.5 text-xs text-white">{unread}</span> : null}
+      {/* The visible count is part of the accessible name (WCAG 2.5.3, label in name). */}
+      {unread > 0 ? <span className="ml-1 rounded-full bg-cail-link px-1.5 text-xs text-white">{unread}<span className="sr-only"> unread</span></span> : null}
     </NavLink>
   );
 }

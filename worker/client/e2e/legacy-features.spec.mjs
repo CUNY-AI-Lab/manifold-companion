@@ -26,6 +26,9 @@ async function inviteAs(page, browser, projectId, role, who) {
   const context = await browser.newContext();
   await as(context, who);
   const other = await context.newPage();
+  await other.goto('/manifold-companion/');
+  const named = await other.request.fetch('/manifold-companion/api/profile', { method: 'PUT', headers, data: { display_name: who[0].toUpperCase() + who.slice(1) } });
+  expect(named.ok()).toBe(true);
   await other.goto(`/manifold-companion/invite#t=${token}`);
   await expect(other.getByText(`you are a ${role}`)).toBeVisible();
   return { context, page: other };
@@ -121,4 +124,41 @@ test('export sections: build a nested table of contents, save it, export it; a v
   await expect(vd.getByRole('button', { name: 'Save settings' })).toHaveCount(0);
   await expect(vd.getByText('your changes here are not saved')).toBeVisible();
   await viewer.context.close();
+});
+
+test('member roles and ownership transfer, with an accessible confirmation', async ({ page, context, browser }) => {
+  await as(context, 'alice');
+  const { projectUrl, projectId } = await newImageText(page, 'Shared project', 'Notes');
+  const bob = await inviteAs(page, browser, projectId, 'editor', 'bob');
+  const carol = await inviteAs(page, browser, projectId, 'viewer', 'carol');
+  await page.goto(projectUrl);
+  await page.getByRole('button', { name: 'Share' }).click();
+  const share = page.getByRole('dialog', { name: 'Share this project' });
+  await share.getByLabel('Role of Carol').selectOption('editor');
+  await expect(share.getByRole('listitem').filter({ hasText: 'Carol (editor' })).toHaveCount(1);
+
+  const bobRow = share.getByRole('listitem').filter({ hasText: 'Bob (editor' });
+  const makeOwner = bobRow.getByRole('button', { name: 'Make owner' });
+  await makeOwner.click();
+  const confirmDialog = page.getByRole('alertdialog', { name: 'Transfer ownership?' });
+  await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(confirmDialog).toHaveCount(0);
+  await expect(makeOwner).toBeFocused();
+  await expect(page.getByRole('heading', { name: /Shared project/ })).toBeVisible();
+
+  await makeOwner.click();
+  await confirmDialog.getByRole('button', { name: 'Make Bob the owner' }).click();
+  await expect(share).toHaveCount(0);
+  await expect(page.getByText('you are a editor')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Share' })).toHaveCount(0);
+
+  await bob.page.goto(projectUrl);
+  await expect(bob.page.getByText('you are the owner')).toBeVisible();
+  await expect(bob.page.getByRole('button', { name: 'Share' })).toBeVisible();
+  await carol.page.goto(projectUrl);
+  await expect(carol.page.getByText('you are a editor')).toBeVisible();
+  await bob.context.close();
+  await carol.context.close();
 });

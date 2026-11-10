@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import { useSession } from './api/session.jsx';
 import { AnnounceProvider } from './hooks/useAnnounce.jsx';
 import Header from './components/Header';
+import { ConfirmProvider } from './components/ConfirmDialog';
 import { DataNotice, ErrorNote, Spinner } from './components/ui';
 import Dashboard from './pages/Dashboard';
 import ProjectPage from './pages/ProjectPage';
@@ -25,6 +26,7 @@ export default function App() {
   }
   return (
     <AnnounceProvider>
+      <ConfirmProvider>
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:bg-white focus:px-4 focus:py-2">Skip to content</a>
       <div className="flex min-h-screen flex-col">
         <Header />
@@ -43,6 +45,7 @@ export default function App() {
         </main>
         <footer className="mx-auto w-full max-w-6xl px-4 pb-6"><DataNotice /></footer>
       </div>
+      </ConfirmProvider>
     </AnnounceProvider>
   );
 }

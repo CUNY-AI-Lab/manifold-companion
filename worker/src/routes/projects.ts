@@ -3,7 +3,8 @@ import { requireRole } from "../authz";
 import { optionalString, readJsonObject, requiredString } from "../body";
 import { limits } from "../env";
 import { E } from "../errors";
-import { deleteProject } from "../storage";
+import { deleteProject, projectBytesSql } from "../storage";
+import { notify } from "../notify";
 import { addDays, isSubject, newId, nowIso } from "../util";
 import { projectInviteRoutes as inviteRoutes } from "./project-invites";
 import { projectTextRoutes } from "./project-texts";
@@ -142,6 +143,62 @@ projectRoutes.delete("/:id/members/:subject", async (c) => {
   const res = await c.env.DB.prepare("DELETE FROM project_members WHERE project_id = ?1 AND subject = ?2 AND role != 'owner'").bind(project.id, target).run();
   if (res.meta.changes !== 1) throw E.notFound("Member not found.");
   return c.json({ removed: true });
+});
+
+// Owners change a member between editor and viewer. The owner's own role only
+// changes through a transfer.
+projectRoutes.put("/:id/members/:subject", async (c) => {
+  const { subject } = c.get("principal");
+  const target = c.req.param("subject");
+  if (!isSubject(target)) throw E.notFound("Member not found.");
+  const { project } = await requireRole(c.env.DB, subject, c.req.param("id"), "owner");
+  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
+  if (body.role !== "editor" && body.role !== "viewer") throw E.badRequest("role must be editor or viewer.");
+  if (target === project.owner_subject) throw E.conflict("The owner's role changes only by transferring ownership.", "owner_role_fixed");
+  const res = await c.env.DB.prepare("UPDATE project_members SET role = ?3 WHERE project_id = ?1 AND subject = ?2 AND role != 'owner'").bind(project.id, target, body.role).run();
+  if (res.meta.changes !== 1) throw E.notFound("Member not found.");
+  return c.json({ member: { subject: target, role: body.role } });
+});
+
+// Transfer ownership to an existing member. One D1 transaction: the project
+// row's owner moves only if the new owner is a member, has room for the
+// project's bytes in their storage and is under their project limit; the
+// bytes move from the old owner's account to the new one's (computed in the
+// same transaction, so a concurrent upload cannot make them drift); the old
+// owner stays on as an editor.
+projectRoutes.post("/:id/transfer", async (c) => {
+  const { subject } = c.get("principal");
+  const lim = limits(c.env);
+  const { project } = await requireRole(c.env.DB, subject, c.req.param("id"), "owner");
+  const body = await readJsonObject(c.req.raw, lim.maxJsonBytes);
+  const target = body.subject;
+  if (typeof target !== "string" || !isSubject(target)) throw E.badRequest("subject must name a member.");
+  if (target === project.owner_subject) throw E.conflict("You already own this project.", "already_owner");
+  const member = await c.env.DB.prepare("SELECT role FROM project_members WHERE project_id = ?1 AND subject = ?2").bind(project.id, target).first<{ role: Role }>();
+  if (!member) throw E.notFound("Member not found.");
+  const bytes = projectBytesSql("?1");
+  const [moved] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE projects SET owner_subject = ?2, updated_at = ?6
+       WHERE id = ?1 AND owner_subject = ?3
+         AND EXISTS (SELECT 1 FROM project_members WHERE project_id = ?1 AND subject = ?2 AND role != 'owner')
+         AND (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ${bytes} <= ?4
+         AND (SELECT COUNT(*) FROM projects WHERE owner_subject = ?2) < ?5`,
+    ).bind(project.id, target, subject, lim.storageQuotaBytes, lim.maxProjectsPerPerson, nowIso()),
+    c.env.DB.prepare(`UPDATE profiles SET storage_bytes = storage_bytes + ${bytes} WHERE subject = ?2 AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2`).bind(project.id, target),
+    c.env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${bytes}) WHERE subject = ?3 AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2`).bind(project.id, target, subject),
+    c.env.DB.prepare("UPDATE project_members SET role = 'editor' WHERE project_id = ?1 AND subject = ?3 AND role = 'owner' AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2").bind(project.id, target, subject),
+    c.env.DB.prepare("UPDATE project_members SET role = 'owner' WHERE project_id = ?1 AND subject = ?2 AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2").bind(project.id, target),
+  ]);
+  if (moved?.meta.changes !== 1) {
+    const room = await c.env.DB.prepare(`SELECT (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ${bytes} <= ?3 AS fits, (SELECT COUNT(*) FROM projects WHERE owner_subject = ?2) < ?4 AS under FROM projects WHERE id = ?1`).bind(project.id, target, lim.storageQuotaBytes, lim.maxProjectsPerPerson).first<{ fits: number; under: number }>();
+    if (room && !room.fits) throw E.conflict("The new owner does not have enough storage left for this project.", "transfer_quota_exceeded");
+    if (room && !room.under) throw E.conflict("The new owner already owns as many projects as allowed.", "transfer_project_limit");
+    throw E.conflict("The project changed while transferring. Reload and try again.", "transfer_conflict");
+  }
+  const who = await c.env.DB.prepare("SELECT display_name FROM profiles WHERE subject = ?1").bind(subject).first<{ display_name: string | null }>();
+  await notify(c.env.DB, [target], subject, { type: "project_shared", title: `${who?.display_name || "Someone"} made you the owner of "${project.name.slice(0, 80)}"`, link: `/projects/${project.id}` });
+  return c.json({ owner: target, previous_owner_role: "editor" });
 });
 
 projectRoutes.route("/:id/invites", inviteRoutes);

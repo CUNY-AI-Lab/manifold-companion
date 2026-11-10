@@ -220,7 +220,7 @@ export default function ProjectPage() {
           <button className="btn-quiet" type="button" onClick={async () => { try { const me = (await api.get(`/api/projects/${id}/members`)).members.find((m) => m.me); await api.del(`/api/projects/${id}/members/${me.subject}`); navigate('/'); } catch (e) { setError(e); } }}>Leave project</button>
         )}
       </div>
-      {panel === 'share' ? <SharePanel projectId={id} onClose={() => setPanel(null)} /> : null}
+      {panel === 'share' ? <SharePanel projectId={id} onClose={() => setPanel(null)} onTransferred={() => { setPanel(null); load(); refresh(); }} /> : null}
       {panel === 'export' ? <ExportPanel project={project} texts={texts} onClose={() => setPanel(null)} /> : null}
     </div>
   );
