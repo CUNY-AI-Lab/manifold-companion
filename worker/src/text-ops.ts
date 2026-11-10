@@ -79,7 +79,6 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
     const cap = limits(env);
     let order = base?.m ?? 0;
     const statements: D1PreparedStatement[] = [];
-    const textStatementAt: number[] = [];
     let textsLeft = targets.length;
     let pagesLeft = all.length;
     for (const target of targets) {
@@ -89,7 +88,6 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
       // "existing + still to add <= cap" against the state it sees. Concurrent operations
       // are serialized by D1, so exactly the ones that fit succeed and a refused one leaves no
       // partial rows behind to starve the others.
-      textStatementAt.push(statements.length);
       statements.push(
         env.DB.prepare(
           "INSERT INTO texts (id, project_id, name, status, sort_order, created_at, updated_at) SELECT ?1,?2,?3,?4,?5,?6,?6 WHERE (SELECT COUNT(*) FROM texts WHERE project_id = ?2) + ?7 <= ?8",
@@ -116,12 +114,28 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
         );
       }
     }
-    const inserts = statements.length;
     // Committed only if THIS batch wrote every new page (their ids are unique to this request).
     statements.push(...commitReservation(env.DB, reservation, `(SELECT COUNT(*) FROM pages WHERE id IN (SELECT value FROM json_each(?2))) = ?3`, JSON.stringify(pageIds), pageIds.length));
-    const results = (await env.DB.batch(statements)).slice(0, inserts);
-    if (textStatementAt.some((i) => results[i]?.meta.changes !== 1)) throw E.conflict(`A project can hold at most ${cap.maxTextsPerProject} texts.`, "text_limit_reached");
-    if (results.some((r) => r.meta.changes !== 1)) throw E.conflict(`A project can hold at most ${cap.maxProjectPages} pages.`, "page_limit_reached");
+    // All or nothing: if a racing request took the room between the checks above and
+    // this batch, some conditional inserts wrote nothing. This last statement then
+    // breaks the counter's CHECK (storage_bytes >= 0), which fails the statement and so
+    // rolls the whole batch back; no partial texts are left for a cleanup that an
+    // interrupted Worker might never run.
+    statements.push(
+      env.DB.prepare(
+        `UPDATE profiles SET storage_bytes = -1 WHERE subject = ${ownerSql("?1")}
+           AND ((SELECT COUNT(*) FROM texts WHERE id IN (SELECT value FROM json_each(?2))) != ?3
+             OR (SELECT COUNT(*) FROM pages WHERE id IN (SELECT value FROM json_each(?4))) != ?5)`,
+      ).bind(project.id, JSON.stringify(created.map((t) => t.id)), created.length, JSON.stringify(pageIds), pageIds.length),
+    );
+    try {
+      await env.DB.batch(statements);
+    } catch (error) {
+      if (!/CHECK constraint failed/i.test(String((error as Error)?.message ?? error))) throw error;
+      const texts = await env.DB.prepare("SELECT COUNT(*) AS n FROM texts WHERE project_id = ?1").bind(project.id).first<{ n: number }>();
+      if ((texts?.n ?? 0) + targets.length > cap.maxTextsPerProject) throw E.conflict(`A project can hold at most ${cap.maxTextsPerProject} texts.`, "text_limit_reached");
+      throw E.conflict(`A project can hold at most ${cap.maxProjectPages} pages.`, "page_limit_reached");
+    }
   } catch (error) {
     for (const t of created) await env.DB.prepare("DELETE FROM texts WHERE id = ?1").bind(t.id).run().catch(() => undefined);
     if (writtenKeys.length) await env.FILES.delete(writtenKeys).catch(() => undefined);

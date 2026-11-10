@@ -185,12 +185,13 @@ export async function storageDrift(): Promise<{ subject: string; counter: number
 /** R2 keys the rows point at, and objects nothing points at (outside a tombstoned prefix). */
 export async function objectDrift(): Promise<{ dangling: string[]; orphans: string[] }> {
   const { env: e } = await import("cloudflare:workers");
-  const refs = await e.DB.prepare(
-    `SELECT image_key AS k FROM pages WHERE image_key IS NOT NULL UNION ALL SELECT image_key FROM figures UNION ALL SELECT r2_key FROM text_versions
-     UNION ALL SELECT html_key FROM texts WHERE html_key IS NOT NULL UNION ALL SELECT compiled_key FROM texts WHERE compiled_key IS NOT NULL
-     UNION ALL SELECT translation_key FROM texts WHERE translation_key IS NOT NULL UNION ALL SELECT source_pdf_key FROM texts WHERE source_pdf_key IS NOT NULL`,
-  ).all<{ k: string }>();
-  const referenced = new Set(refs.results.map((r) => r.k));
+  const referenced = new Set<string>();
+  for (const sql of [
+    "SELECT image_key AS k FROM pages", "SELECT image_key AS k FROM figures", "SELECT r2_key AS k FROM text_versions",
+    "SELECT html_key AS k FROM texts", "SELECT compiled_key AS k FROM texts", "SELECT translation_key AS k FROM texts", "SELECT source_pdf_key AS k FROM texts",
+  ]) {
+    for (const r of (await e.DB.prepare(sql).all<{ k: string | null }>()).results) if (r.k) referenced.add(r.k);
+  }
   const stored = new Set<string>();
   let cursor: string | undefined;
   for (;;) {
