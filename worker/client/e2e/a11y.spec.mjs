@@ -11,7 +11,10 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa']
 const VIEWPORTS = { desktop: { width: 1280, height: 900 }, phone: { width: 390, height: 844 } };
 
 async function violations(page, label) {
-  const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+  // Legacy mode runs axe in the page without opening a helper page for frames: the
+  // preview frames are sandbox="" (no script), so axe cannot enter them anyway, and the
+  // helper page intermittently failed with Target.createTarget "Not supported".
+  const result = await new AxeBuilder({ page }).withTags(TAGS).setLegacyMode(true).analyze();
   return result.violations.map((v) => ({ where: label, id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 5).map((n) => `${n.target.join(' ')}: ${n.failureSummary?.split('\n').slice(0, 2).join(' ')}`) }));
 }
 
@@ -60,6 +63,7 @@ test.beforeAll(async ({ browser }) => {
 for (const [size, viewport] of Object.entries(VIEWPORTS)) {
   for (const scheme of ['light', 'dark']) {
     test(`axe WCAG A/AA: every screen, ${size}, ${scheme}`, async ({ browser }) => {
+      test.setTimeout(360_000); // about 20 screens and open states, a few seconds of axe each
       const context = await browser.newContext({ viewport, colorScheme: scheme, reducedMotion: 'reduce' });
       await context.addCookies([{ name: 'e2e_as', value: 'carol', url: ORIGIN }]);
       const page = await context.newPage();
@@ -89,6 +93,12 @@ for (const [size, viewport] of Object.entries(VIEWPORTS)) {
       await page.getByRole('button', { name: /^View/ }).first().click();
       await expect(page.locator('iframe[title^="Version from"]')).toBeVisible();
       found.push(...(await violations(page, 'version history open')));
+      await page.getByRole('button', { name: /^Notifications/ }).click();
+      await expect(page.getByRole('region', { name: 'Recent notifications' })).toBeVisible();
+      found.push(...(await violations(page, 'notification menu open')));
+      await page.keyboard.press('Escape');
+      await page.getByLabel('Show resolved comments').check();
+      found.push(...(await violations(page, 'comments with resolved shown')));
       await page.getByRole('button', { name: 'Dublin Core metadata' }).click();
       await expect(page.getByRole('button', { name: 'Save metadata' })).toBeVisible();
       found.push(...(await violations(page, 'metadata panel open')));

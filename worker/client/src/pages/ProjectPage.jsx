@@ -9,6 +9,40 @@ import { RetentionBanner } from './Dashboard';
 import * as toc from '../lib/toc';
 import { useConfirm } from '../components/ConfirmDialog';
 
+/**
+ * Actions on the selected texts: set their status, delete them (after a
+ * confirmation), or (image texts) merge them into a new text that copies
+ * their pages in this order; the originals stay.
+ */
+function BulkBar({ project, texts, onDone, onError, onClear }) {
+  const confirm = useConfirm();
+  const [status, setStatus] = useState('reviewed');
+  const [name, setName] = useState('');
+  const ids = texts.map((t) => t.id);
+  const n = texts.length;
+  const run = async (fn) => { try { onDone(await fn()); } catch (e) { onError(e); } };
+  return (
+    <section aria-labelledby="bulk-title" className="sticky bottom-2 z-30 mt-3 flex flex-wrap items-end gap-3 rounded-md border border-slate-300 bg-white p-3 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800">
+      <h2 id="bulk-title" className="w-full text-sm">{n} text{n === 1 ? '' : 's'} selected</h2>
+      <label><span className="label">Status</span>
+        <select className="field w-auto" value={status} onChange={(e) => setStatus(e.target.value)}><option value="pending">pending</option><option value="ocrd">read (OCR done)</option><option value="reviewed">reviewed</option></select>
+      </label>
+      <button type="button" className="btn-quiet" onClick={() => run(async () => { const r = await api.post(`/api/projects/${project.id}/texts/bulk-status`, { textIds: ids, status }); return `${r.updated} text${r.updated === 1 ? '' : 's'} set to ${status}.`; })}>Set status</button>
+      {project.project_type === 'image_to_markdown' && n >= 2 ? (
+        <>
+          <label><span className="label">Name of the merged text</span><input className="field" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} /></label>
+          <button type="button" className="btn-quiet" disabled={!name.trim()} onClick={() => run(async () => { const { text } = await api.post(`/api/projects/${project.id}/texts/merge`, { textIds: ids, name: name.trim() }); return `Merged into ${text.name}; the original texts are kept.`; })}>Merge into a new text</button>
+        </>
+      ) : null}
+      <button type="button" className="btn-danger" onClick={async () => {
+        if (!(await confirm({ title: `Delete ${n} text${n === 1 ? '' : 's'}?`, message: `Delete ${texts.map((t) => `“${t.name}”`).join(', ')}, with their pages, files and versions, for every member? This cannot be undone.`, confirmLabel: 'Delete selected', danger: true }))) return;
+        run(async () => { const r = await api.post(`/api/projects/${project.id}/texts/bulk-delete`, { textIds: ids }); return `${r.deleted} text${r.deleted === 1 ? '' : 's'} deleted.`; });
+      }}>Delete selected</button>
+      <button type="button" className="btn-quiet" onClick={onClear}>Clear selection</button>
+    </section>
+  );
+}
+
 /** A pending ownership offer made to me for this project: accept (after a confirmation) or decline. */
 function TransferOffer({ projectId, onAccepted }) {
   const confirm = useConfirm();
@@ -181,6 +215,7 @@ export default function ProjectPage() {
   const [total, setTotal] = useState(0);
   const [moved, setMoved] = useState('');
   const focusMoved = useMoveFocus([texts]);
+  const [chosen, setChosen] = useState([]);
   const [name, setName] = useState('');
   const [panel, setPanel] = useState(null);
   const [error, setError] = useState(null);
@@ -227,6 +262,7 @@ export default function ProjectPage() {
         {texts.length === 0 ? <li className="p-4 text-sm text-slate-500 dark:text-slate-400">{canEdit ? 'No texts yet. Add one below, then upload its pages.' : 'No texts yet.'}</li> : null}
         {texts.map((t) => (
           <li key={t.id} className="flex flex-wrap items-center gap-3 p-4">
+            {canEdit ? <input type="checkbox" aria-label={`Select ${t.name}`} checked={chosen.includes(t.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, t.id] : chosen.filter((x) => x !== t.id))} /> : null}
             {canEdit && texts.length > 1 ? <MoveButtons label={t.name} index={texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
             <span className="text-xs text-slate-500 dark:text-slate-400">{project.project_type === 'pdf_to_html' ? (t.has_html ? 'converted' : 'not converted yet') : `${t.page_count} pages, ${t.status}`}</span>
@@ -234,6 +270,7 @@ export default function ProjectPage() {
           </li>
         ))}
       </ul>
+      {canEdit && chosen.length ? <BulkBar project={project} texts={texts.filter((t) => chosen.includes(t.id))} onDone={(msg) => { setChosen([]); setMoved(msg); load(); refresh(); }} onError={setError} onClear={() => setChosen([])} /> : null}
       <p className="sr-only" role="status">{moved}</p>
       {canEdit && texts.length > 1 ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Texts export in this order. Use the arrows to move a text up or down.</p> : null}
       {canEdit ? (

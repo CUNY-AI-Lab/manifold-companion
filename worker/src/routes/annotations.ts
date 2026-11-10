@@ -97,6 +97,42 @@ async function create(c: { env: AppEnv["Bindings"]; get: (k: "principal") => { s
   return id;
 }
 
+/**
+ * A comment on a stretch of text (W3C text-quote plus text-position selector):
+ * the quoted text, up to 64 characters on either side, the offsets where it was,
+ * and for image texts the page it is on. Only these keys, only these types, all
+ * bounded; the client shows them as plain text and re-finds the quote itself.
+ */
+export const RANGE_LIMITS = { quote: 1000, context: 64, offset: 10_000_000 } as const;
+async function rangeAnchor(db: D1Database, textId: string, raw: unknown): Promise<Record<string, unknown>> {
+  const bad = (why: string) => E.badRequest(`A range comment needs ${why}.`, "anchor_invalid");
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw bad("anchor_data");
+  const a = raw as Record<string, unknown>;
+  const str = (k: string, max: number, min = 0): string => {
+    const v = a[k] ?? "";
+    if (typeof v !== "string" || v.length > max || v.length < min) throw bad(`${k} as text of at most ${max} characters`);
+    return v;
+  };
+  const int = (k: string): number => {
+    const v = a[k];
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > RANGE_LIMITS.offset) throw bad(`${k} as a position`);
+    return v;
+  };
+  const quote = str("quote", RANGE_LIMITS.quote, 1);
+  if (quote.trim() === "") throw bad("a quote that is not only spaces");
+  const out: Record<string, unknown> = { quote, prefix: str("prefix", RANGE_LIMITS.context), suffix: str("suffix", RANGE_LIMITS.context), start: int("start"), end: int("end") };
+  if ((out.end as number) < (out.start as number)) throw bad("end at or after start");
+  if (a.page_id !== undefined && a.page_id !== null) {
+    if (typeof a.page_id !== "string" || !isUuid(a.page_id)) throw bad("page_id as a page of this text");
+    const page = await db.prepare("SELECT 1 AS x FROM pages WHERE id = ?1 AND text_id = ?2").bind(a.page_id, textId).first();
+    if (!page) throw bad("page_id as a page of this text");
+    out.page_id = a.page_id;
+  }
+  const extra = Object.keys(a).filter((k) => !["quote", "prefix", "suffix", "start", "end", "page_id"].includes(k));
+  if (extra.length) throw bad("only quote, prefix, suffix, start, end and page_id");
+  return out;
+}
+
 const linkFor = (textId: string) => `/texts/${textId}?tab=review&annotations=1`;
 
 annotationRoutes.get("/:id/mentions", async (c) => {
@@ -126,7 +162,9 @@ annotationRoutes.post("/:id/annotations", async (c) => {
   const text = bodyOf(body.body);
   if (typeof body.anchor_type !== "string" || !ANCHORS.has(body.anchor_type)) throw E.badRequest("Valid anchor_type is required (range, point, or global).");
   let anchorData: string | null = null;
-  if (body.anchor_data !== undefined && body.anchor_data !== null) {
+  if (body.anchor_type === "range") {
+    anchorData = JSON.stringify(await rangeAnchor(c.env.DB, ctx.text.id, body.anchor_data));
+  } else if (body.anchor_data !== undefined && body.anchor_data !== null) {
     if (typeof body.anchor_data !== "object" && typeof body.anchor_data !== "string") throw E.badRequest("anchor_data must be an object.", "anchor_invalid");
     anchorData = JSON.stringify(body.anchor_data);
     if (byteLength(anchorData) > ANNOTATION_LIMITS.anchorBytes) throw E.tooLarge(`anchor_data can be at most ${ANNOTATION_LIMITS.anchorBytes} bytes.`, "anchor_too_large");

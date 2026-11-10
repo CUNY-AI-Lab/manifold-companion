@@ -52,6 +52,7 @@ export default function HtmlTextPage({ data, reload }) {
   const [checks, setChecks] = useState([]);
   const [versionKey, setVersionKey] = useState(0);
   const figureInput = useRef(null);
+  const source = useRef(null);
 
   const loadHtml = () => api.get(`/api/texts/${text.id}/html`).then((r) => { setHtml(r.html_content); setSaved(r.html_content); }, setError);
   const loadFigures = async () => {
@@ -141,7 +142,7 @@ export default function HtmlTextPage({ data, reload }) {
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
           <label className="label" htmlFor="html-source">HTML (sanitized when saved). Write formulas as TeX in \( \) or \[ \]: the preview renders them with KaTeX, and the export converts them to MathML.</label>
-          <textarea id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} />
+          <textarea ref={source} id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} />
           {canEdit ? (
             <div className="flex flex-wrap gap-2">
               <button className="btn-primary" type="button" onClick={save} disabled={html === saved}>Save HTML</button>
@@ -161,7 +162,7 @@ export default function HtmlTextPage({ data, reload }) {
       </div>
       <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={html !== saved} onRestored={() => { loadHtml(); refresh(); }} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
-      <CommentsPanel textId={text.id} canWrite={canEdit} />
+      <CommentsPanel textId={text.id} canWrite={canEdit} source={html === null ? null : { text: html, pageId: null, textareaRef: source }} />
     </div>
   );
 }

@@ -11,9 +11,41 @@ import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
 import { runOcr, translateText } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
+import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
 
 const LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'nl', 'pl', 'el', 'tr', 'he', 'uk', 'la'];
+
+function SplitPanel({ text, pages }) {
+  const [open, setOpen] = useState(false);
+  const [spec, setSpec] = useState('');
+  const [done, setDone] = useState(null);
+  const [error, setError] = useState(null);
+  const groups = splitGroups(spec, pages.length);
+  return (
+    <section aria-labelledby="split-title" className="mt-6 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      <h2 id="split-title" className="m-0 text-base">
+        <button type="button" className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={open} onClick={() => setOpen((o) => !o)}><span>Split into several texts</span><span aria-hidden="true">{open ? '−' : '+'}</span></button>
+      </h2>
+      {open ? (
+        <form className="space-y-2 border-t border-slate-200 px-4 py-3 text-sm dark:border-slate-700" onSubmit={async (e) => {
+          e.preventDefault();
+          setError(null);
+          try {
+            const { texts } = await api.post(`/api/texts/${text.id}/split`, { splits: groups.map((g, i) => ({ name: `${text.name}, part ${i + 1}`, pages: g })) });
+            setDone(texts);
+          } catch (err) { setError(err); }
+        }}>
+          <ErrorNote error={error} onDismiss={() => setError(null)} />
+          <label className="block"><span className="label">New texts start at pages</span><input className="field max-w-xs" placeholder="e.g. 4, 9" value={spec} onChange={(e) => { setSpec(e.target.value); setDone(null); }} /></label>
+          <p className="text-xs text-slate-600 dark:text-slate-300">{groups.length > 1 ? `Makes ${groups.length} new texts: ${groups.map((g, i) => `part ${i + 1} (pages ${g[0]}${g.length > 1 ? `–${g[g.length - 1]}` : ''})`).join(', ')}. Pages, images and text are copied; this text stays as it is.` : 'Give at least one page number after the first.'}</p>
+          <button className="btn-quiet" type="submit" disabled={groups.length < 2}>Split</button>
+          {done ? <p role="status">Created {done.map((t, i) => <span key={t.id}>{i ? ', ' : ''}<Link to={`/texts/${t.id}`}>{t.name}</Link></span>)}.</p> : null}
+        </form>
+      ) : null}
+    </section>
+  );
+}
 
 export default function ImageTextPage({ data, reload }) {
   const { refresh } = useSession();
@@ -31,6 +63,7 @@ export default function ImageTextPage({ data, reload }) {
   const [translation, setTranslation] = useState(null);
   const [langs, setLangs] = useState({ source: text.source_language || 'auto-detect', target: text.target_language || 'en' });
   const fileInput = useRef(null);
+  const pageText = useRef(null);
   const [moved, setMoved] = useState('');
   const focusMoved = useMoveFocus([pages]);
   // Keep a valid selection as pages arrive or are deleted.
@@ -154,7 +187,7 @@ export default function ImageTextPage({ data, reload }) {
             <img src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} className="max-h-[70vh] w-full rounded-md border border-slate-200 object-contain dark:border-slate-700" />
             <div className="flex flex-col gap-2">
               <label className="label" htmlFor="page-text">Text of page {page.page_number}{page.ocr_model ? `, read by ${page.ocr_model}` : ''}</label>
-              <textarea id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => setDraft(e.target.value)} />
+              <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => setDraft(e.target.value)} />
               {conflict ? <details className="text-sm"><summary>Model text that was not saved (the page was edited meanwhile)</summary><pre className="whitespace-pre-wrap">{conflict}</pre><button type="button" className="btn-quiet mt-1" onClick={() => setDraft(conflict)}>Use the model text</button></details> : null}
               {canEdit ? (
                 <div className="flex flex-wrap gap-2">
@@ -192,8 +225,9 @@ export default function ImageTextPage({ data, reload }) {
           {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
         </div>
       </section>
+      {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
       <MetadataPanel textId={text.id} canEdit={canEdit} />
-      <CommentsPanel textId={text.id} canWrite={canEdit} />
+      <CommentsPanel textId={text.id} canWrite={canEdit} source={page ? { text: draft, pageId: page.id, textareaRef: pageText } : null} pages={pages} onGoToPage={setSelected} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { canonicalTestSubject } from "@cuny-ai-lab/cail-identity/testing";
-import { ALICE, BOB, CAROL, addMember, api, call, createProject, createText, invite, json, redeem } from "./helpers";
+import { ALICE, BOB, CAROL, addMember, api, call, createProject, createText, invite, json, redeem, seedPage } from "./helpers";
 import { MAX_NOTIFICATIONS_PER_PERSON, notify } from "../src/notify";
 
 const DAVE = canonicalTestSubject("dave");
@@ -18,7 +18,7 @@ async function team() {
   return { pid, tid };
 }
 const comment = async (tid: string, as = ALICE, extra: Record<string, unknown> = {}) => {
-  const res = await post(`/texts/${tid}/annotations`, { anchor_type: "range", anchor_data: { start: 1, end: 4 }, body: "Look here", ...extra }, as);
+  const res = await post(`/texts/${tid}/annotations`, { anchor_type: "range", anchor_data: { quote: "ook", prefix: "L", suffix: " here", start: 1, end: 4 }, body: "Look here", ...extra }, as);
   return { res, id: res.status === 201 ? ((await json(res)).annotation.id as string) : "" };
 };
 
@@ -28,7 +28,7 @@ describe("annotations follow the legacy roles", () => {
     const { id } = await comment(tid, BOB);
     const list = await json(await call(api(`/texts/${tid}/annotations`), { as: CAROL }));
     expect(list.annotations).toHaveLength(1);
-    expect(list.annotations[0]).toMatchObject({ body: "Look here", author_name: "Bob", anchor_data: { start: 1, end: 4 }, mine: false, resolved: false, reply_count: 0 });
+    expect(list.annotations[0]).toMatchObject({ body: "Look here", author_name: "Bob", anchor_data: { quote: "ook", prefix: "L", suffix: " here", start: 1, end: 4 }, mine: false, resolved: false, reply_count: 0 });
     expect(JSON.stringify(list)).not.toMatch(/email|@/);
     expect((await comment(tid, CAROL)).res.status).toBe(403);
     expect((await post(`/texts/${tid}/annotations/${id}/replies`, { body: "r" }, CAROL)).status).toBe(403);
@@ -77,10 +77,40 @@ describe("annotations follow the legacy roles", () => {
     const { tid } = await team();
     expect((await comment(tid, ALICE, { body: "x".repeat(10_001) })).res.status).toBe(400);
     expect((await comment(tid, ALICE, { body: "   " })).res.status).toBe(400);
-    const big = await comment(tid, ALICE, { anchor_data: { selector: "x".repeat(5000) } });
+    const big = await comment(tid, ALICE, { anchor_type: "point", anchor_data: { selector: "x".repeat(5000) } });
     expect(big.res.status).toBe(413);
     expect((await json(big.res)).error.code).toBe("anchor_too_large");
     expect((await comment(tid, ALICE, { anchor_type: "evil" })).res.status).toBe(400);
+  });
+});
+
+describe("range anchors are validated as data, never stored as given", () => {
+  it("only the known keys, types and bounds; the page must belong to the text", async () => {
+    const { pid, tid } = await team();
+    const ok = await comment(tid, ALICE, { anchor_data: { quote: "<img src=x onerror=alert(1)>", prefix: "", suffix: "", start: 0, end: 28 } });
+    expect(ok.res.status).toBe(201);
+    expect((await json(await call(api(`/texts/${tid}/annotations/${ok.id}`)))).annotation.anchor_data.quote).toBe("<img src=x onerror=alert(1)>"); // stored as text; shown as text
+    const other = await createText(ALICE, pid, "Other");
+    const page = { id: await seedPage(other) };
+    const bad = [
+      { start: 1, end: 4 }, // no quote
+      { quote: "   ", start: 0, end: 3 },
+      { quote: "x".repeat(1001), start: 0, end: 1001 },
+      { quote: "x", prefix: "p".repeat(65), start: 0, end: 1 },
+      { quote: "x", start: 5, end: 2 },
+      { quote: "x", start: -1, end: 1 },
+      { quote: "x", start: 0.5, end: 1 },
+      { quote: "x", start: 0, end: 1, page_id: "nope" },
+      { quote: "x", start: 0, end: 1, page_id: page!.id }, // a page of another text
+      { quote: "x", start: 0, end: 1, html: "<b>" }, // unknown key
+      ["quote"],
+      "quote",
+    ];
+    for (const anchor_data of bad) {
+      const r = await comment(tid, ALICE, { anchor_data });
+      expect(r.res.status, JSON.stringify(anchor_data).slice(0, 60)).toBe(400);
+      expect((await json(r.res)).error.code).toBe("anchor_invalid");
+    }
   });
 });
 

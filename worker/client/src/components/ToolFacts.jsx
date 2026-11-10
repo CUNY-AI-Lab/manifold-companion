@@ -29,6 +29,7 @@ export function LegacyDifferences() {
     <ul className="list-disc space-y-1 pl-5">
       <li>Figures are not extracted from PDFs automatically. Add each figure image by hand with “Add a figure image”, then reference it by file name.</li>
       <li>HTML is edited as source next to a live preview, instead of the earlier rich editor. The preview shows formulas as they will look.</li>
+      <li>Ownership moves only when the new owner accepts the offer.</li>
       <li>Sign-in is CUNY Login through the CAIL portal; there are no separate accounts or passwords.</li>
       <li>Notifications are in the app only; there are no emails.</li>
       <li>Models come from the CAIL catalog; each page model can be chosen per run.</li>

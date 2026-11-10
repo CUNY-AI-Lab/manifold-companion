@@ -197,3 +197,122 @@ test('destructive actions ask in an in-app dialog: Cancel keeps, Escape keeps, t
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   expect(nativeDialogs).toBe(0);
 });
+
+test('comments on a stretch of text: anchor, find after edits, detach, edit, resolve; the notification menu', async ({ page, context, browser }) => {
+  await as(context, 'alice');
+  const { projectId, textUrl } = await newImageText(page, 'Comments project', 'Letter');
+  await page.locator('input[type=file]').setInputFiles({ name: 'c.png', mimeType: 'image/png', buffer: readFileSync('e2e/fixtures/page.png') });
+  await expect(page.getByRole('button', { name: /c\.jpg/ })).toBeVisible({ timeout: 30_000 });
+  const text = page.getByLabel(/Text of page 1/);
+  const save = async (value) => { await text.fill(value); await page.getByRole('button', { name: 'Save page' }).click(); await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled(); };
+  await save('Alpha beta gamma <b>bold</b> delta.');
+  const select = async (word) => text.evaluate((el, w) => { const i = el.value.indexOf(w); el.focus(); el.setSelectionRange(i, i + w.length); }, word);
+  const selected = () => text.evaluate((el) => el.value.slice(el.selectionStart, el.selectionEnd));
+
+  await select('beta');
+  await page.getByRole('button', { name: 'Comment on the selected text' }).click();
+  await expect(page.getByText('On “beta”')).toBeVisible();
+  await page.getByLabel('New comment').fill('Check this word');
+  await page.getByRole('button', { name: 'Post comment' }).click();
+  const comments = page.getByRole('region', { name: 'Comments' }).or(page.locator('section[aria-labelledby="comments-title"]'));
+  const item = comments.getByRole('listitem').filter({ hasText: 'Check this word' });
+  await expect(item.locator('blockquote')).toContainText('“beta”');
+
+  // The quote shows as text, never as markup.
+  await select('<b>bold</b>');
+  await page.getByRole('button', { name: 'Comment on the selected text' }).click();
+  await page.getByLabel('New comment').fill('Markup in the quote');
+  await page.getByRole('button', { name: 'Post comment' }).click();
+  const markup = comments.getByRole('listitem').filter({ hasText: 'Markup in the quote' });
+  await expect(markup.locator('blockquote')).toContainText('<b>bold</b>');
+  await expect(markup.locator('blockquote b')).toHaveCount(0);
+
+  await select('gamma');
+  await item.getByRole('button', { name: 'Show in text' }).click();
+  expect(await selected()).toBe('beta');
+  await save('Intro. Alpha beta gamma <b>bold</b> delta.');
+  await item.getByRole('button', { name: 'Show in text' }).click();
+  expect(await selected()).toBe('beta');
+  await save('Intro. Alpha BETA gamma <b>bold</b> delta.');
+  await expect(item).toContainText('Detached: the commented text was changed or removed.');
+  await expect(item.getByRole('button', { name: 'Show in text' })).toHaveCount(0);
+
+  await item.getByRole('button', { name: 'Edit' }).click();
+  await item.getByLabel('Edit your comment').fill('Check this word, again');
+  await item.getByRole('button', { name: 'Save comment' }).click();
+  const edited = comments.getByRole('listitem').filter({ hasText: 'Check this word, again' });
+  await expect(edited).toBeVisible();
+  await edited.getByRole('button', { name: 'Resolve' }).click();
+  await expect(edited).toHaveCount(0);
+  await page.getByLabel('Show resolved comments').check();
+  await expect(edited).toContainText('Resolved');
+  await edited.getByRole('button', { name: 'Reopen' }).click();
+  await expect(edited.getByRole('button', { name: 'Resolve' })).toBeVisible();
+
+  // Bob replies; Alice sees it in the notification menu.
+  const bob = await inviteAs(page, browser, projectId, 'editor', 'bob');
+  await bob.page.goto(textUrl);
+  const bobItem = bob.page.locator('section[aria-labelledby="comments-title"]').getByRole('listitem').filter({ hasText: 'Markup in the quote' });
+  await bobItem.getByRole('button', { name: /^Replies/ }).click();
+  await bob.page.getByLabel('Reply').fill('Seen it');
+  await bob.page.getByRole('button', { name: 'Post reply' }).click();
+  await expect(bobItem).toContainText('Seen it');
+  await bob.context.close();
+
+  await page.goto('/manifold-companion/');
+  const bell = page.getByRole('button', { name: /^Notifications/ });
+  await expect(bell).toHaveAccessibleName(/Notifications \d+ unread/);
+  await bell.click();
+  await expect(bell).toHaveAttribute('aria-expanded', 'true');
+  const menu = page.getByRole('region', { name: 'Recent notifications' });
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(bell).toBeFocused();
+  await bell.click();
+  await menu.getByRole('button', { name: /Bob replied to your comment/ }).click();
+  await expect(page).toHaveURL(/\/texts\//);
+  await expect(page.getByRole('heading', { name: 'Letter' })).toBeVisible();
+  await expect(bell).toHaveAccessibleName(/^Notifications( \d+ unread)?$/);
+});
+
+test('split a text, merge texts, set status and delete in bulk (with confirmation)', async ({ page, context }) => {
+  await as(context, 'alice');
+  const { projectUrl } = await newImageText(page, 'Bulk project', 'Book');
+  const png = readFileSync('e2e/fixtures/page.png');
+  await page.locator('input[type=file]').setInputFiles(['p1', 'p2', 'p3'].map((n) => ({ name: `${n}.png`, mimeType: 'image/png', buffer: png })));
+  await expect(page.getByRole('button', { name: /^3\. p3\.jpg/ })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Split into several texts' }).click();
+  await page.getByLabel('New texts start at pages').fill('3');
+  await expect(page.getByText('Makes 2 new texts: part 1 (pages 1–2), part 2 (pages 3)')).toBeVisible();
+  await page.getByRole('button', { name: 'Split', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Created' })).toContainText('Book, part 1, Book, part 2');
+
+  await page.goto(projectUrl);
+  await expect(page.locator('a.doc-title')).toHaveText(['Book', 'Book, part 1', 'Book, part 2']);
+  await expect(page.getByRole('listitem').filter({ hasText: 'Book, part 1' })).toContainText('2 pages');
+  await page.getByLabel('Select Book, part 1').check();
+  await page.getByLabel('Select Book, part 2').check();
+  const bar = page.getByRole('region', { name: '2 texts selected' });
+  await bar.getByLabel('Name of the merged text').fill('Rejoined');
+  await bar.getByRole('button', { name: 'Merge into a new text' }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: 'Rejoined' })).toContainText('3 pages');
+
+  await page.getByLabel('Select Book', { exact: true }).check();
+  await page.getByLabel('Select Rejoined').check();
+  const bar2 = page.getByRole('region', { name: '2 texts selected' });
+  await bar2.getByLabel('Status').selectOption('reviewed');
+  await bar2.getByRole('button', { name: 'Set status' }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: 'Rejoined' })).toContainText('reviewed');
+  await expect(page.getByRole('listitem').filter({ hasText: /^Book3 pages/ }).or(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Book', exact: true }) }))).toContainText('reviewed');
+
+  await page.getByLabel('Select Book, part 1').check();
+  await page.getByLabel('Select Book, part 2').check();
+  await page.getByRole('region', { name: '2 texts selected' }).getByRole('button', { name: 'Delete selected' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Delete 2 texts?' });
+  await expect(dialog).toContainText('“Book, part 1”, “Book, part 2”');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('a.doc-title')).toHaveCount(4);
+  await page.getByRole('region', { name: '2 texts selected' }).getByRole('button', { name: 'Delete selected' }).click();
+  await dialog.getByRole('button', { name: 'Delete selected' }).click();
+  await expect(page.locator('a.doc-title')).toHaveText(['Book', 'Rejoined']);
+});

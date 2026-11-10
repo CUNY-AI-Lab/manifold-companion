@@ -1,6 +1,6 @@
 # Handoff: Manifold Companion on the CAIL stack
 
-State on 2026-11-10, branch `cail-stack` (local commits only; nothing pushed or deployed). Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
+State on 2026-11-10. **Live**: `be19329` deployed by the coordinator (version `6a1805df…`, tag `mc-be19329`) behind the Doorway mount (cail-tools-admission #383, merged), migrations 0001-0007 applied to the real D1, accepted by the owner on 2026-11-10. Later commits are on branch `cail-stack` (pushed, CI green), not yet deployed; they add migrations 0008 and 0009, both additive. Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
 
 ## 1. Run it
 
@@ -58,14 +58,22 @@ The uncommitted model-task draft was kept and repaired (type error, conflict han
 | Version history | `0ba0466` | history panel, read-only view, restore; version reasons (migration 0007); per-page pruning | 438 |
 | Reordering | `9ca3728` | move pages and texts; export follows | 442 |
 | Accessibility, help | `3d5959c` | axe WCAG 2.2 A/AA in e2e, contrast and dialog focus fixes, keyboard walk, first-run welcome, Help page | 442 |
-| Release runbook, canary | `86026a8` | Gateway-binding guard test, readiness probes the catalog through the binding, health route (public at first; now behind sign-in), 15-minute self-check, required secret | 452 |
+| Release runbook, canary | `86026a8`, `68c0d58` | Gateway-binding guard test, readiness probes the catalog through the binding, health route (public at first; now behind sign-in), 15-minute self-check, required secret | 452 |
+| **Deployed: `be19329`** | | | |
+| Dublin Core metadata | `08e059b` | per-text DC panel (legacy fields, partial-update semantics), project details for owners | 456 |
+| Export sections | `a900a57` | nested TOC editor, saved per project by editors, validated server-side | 457 |
+| Member roles, transfer | `fe3574a`, `0f14d0d`, `cbaefde` | role change; ownership transfer as an offer the member accepts (migration 0008), nonce-guarded single batch; in-app confirmation dialogs everywhere | 471 |
+| Storage reservations | `8af8bf1` | explicit reservations (migration 0009), committed in the row's batch; daily recount to the invariant (DESIGN 6) | 472 |
+| Anchored comments, notification menu, split/merge/bulk | this commit | comments on a text range with re-anchoring and detach, edit own, resolved view; header notification menu; split, merge, bulk status and delete UI | 473 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
 ## 4. Not built, stubbed, or different from legacy
 
 API complete, no UI yet in `worker/client` (the legacy UI had these):
-- split and merge; bulk status/delete; Dublin Core metadata editing; per-text saved settings (prompt, temperature, max tokens; models are chosen per run instead); the compiled full-text editor for image texts (`POST /save`); export TOC sections and nesting (the panel exports a flat list); comment anchoring to text ranges, editing a comment, and viewing resolved comments; notification dropdown (a page instead); member role change (no API either: remove and re-invite).
+- per-text saved settings (prompt, temperature, max tokens; models are chosen per run instead); the compiled full-text editor for image texts (`POST /save`).
+
+Not built yet (owner's list of 2026-11-10, in order): moving texts between projects (bulk "move"; needs R2 copies, a storage move between owners and tombstones); drag-and-drop upload, keyboard shortcuts, unsaved-draft protection with local recovery, pagination beyond 50 texts, HEIC verification under the page CSP; client-side figure extraction from PDFs; the rich-text editor. See the end of this file for the plan.
 
 Replaced or reduced:
 - Rich HTML editing (contenteditable with KaTeX, find and replace, colours) is replaced by an HTML source editor next to a sandboxed preview. Deliberate for safety; a richer editor must still never render stored HTML in the app origin.
@@ -73,13 +81,13 @@ Replaced or reduced:
 - Native-PDF model input is gone (the Gateway rejects PDF parts): pages are rasterised with pdf.js in the browser; the text layer goes along as a hint.
 - No server-side bulk OCR or SSE: the browser drives one page per request with Cancel.
 - Email notifications, the OCR-complete notification, admin users and usage, backups, token ledger and allowances, usage breakdown, password and account flows: removed by decision.
-- Keyboard shortcuts, autosaved drafts, drag-and-drop and pagination beyond 50 texts per project: not carried over. The About page is replaced by a short Help page (`/help`) and a first-run welcome on the dashboard.
+- The About page is replaced by a short Help page (`/help`) and a first-run welcome on the dashboard.
 
 Unverified client risks: `heic2any` under `script-src 'self'` (no HEIC fixture was run; if it needs eval, HEIC uploads fail with an error and other formats are unaffected); very large PDFs (each page is rendered and held as one JPEG at a time).
 
-## 5. Infrastructure that does not exist yet (section 6 creates it)
+## 5. Infrastructure (provisioned and live)
 
-Provisioned 2026-11-10 in the CUNY AI Lab account: D1 `cail-manifold-companion` (`67481a76-aaf2-4035-b261-04e37d099246`, in `wrangler.jsonc`; `test/config.test.ts` fails if a placeholder comes back) and R2 `cail-manifold-companion-files`. The migration rehearsal on a scratch remote D1 passed (0001-0007, 15 tables plus `d1_migrations`, matching the snapshot), and FTS5 works on remote D1. Still to do: migrations on the real database, the `CAIL_IDENTITY_JWKS` secret and first deploy (6.1-6.2), and the Doorway mount (draft PR #383 in `cail-tools-admission`, mergeable once this Worker is deployed). Nothing has been deployed.
+Provisioned 2026-11-10 in the CUNY AI Lab account: D1 `cail-manifold-companion` (`67481a76-aaf2-4035-b261-04e37d099246`, in `wrangler.jsonc`; `test/config.test.ts` fails if a placeholder comes back) and R2 `cail-manifold-companion-files`. The migration rehearsal on a scratch remote D1 passed (0001-0007, 15 tables plus `d1_migrations`, matching the snapshot), and FTS5 works on remote D1. Done by the coordinator on 2026-11-10: migrations 0001-0007 applied to the real D1, the JWKS secret set, `be19329` deployed with tag `mc-be19329`, the self-check cron ran clean, the Doorway mount (cail-tools-admission #383) merged, anonymous `/manifold-companion/api/session` returns 401 with `/launch/manifold-companion`. Before deploying a later commit, apply its new migrations first (0008, 0009: both additive, so the running version keeps working against the newer schema and a rollback stays safe).
 
 ## 6. Release runbook (in order; receiver first)
 
@@ -254,3 +262,12 @@ Flags: `--tasks ocr,html,math,summary,translate,repair`, `--models`, `--pages`, 
 - Never edit an applied migration; add a new one and regenerate `test/schema.snapshot.json` deliberately (empty it to `{}`, run the migrations test, review the printed snapshot). No migration may mention FTS5.
 - Deletion is rows first with a tombstone, then R2.
 - No AI attribution in commits, code or docs (repository `CLAUDE.md`).
+
+## 9. Remaining work from the owner's list of 2026-11-10
+
+Done on `cail-stack` (see section 3): Dublin Core metadata, export sections, member roles and consented ownership transfer, in-app confirmation dialogs, anchored comments with the notification menu, split/merge/bulk status and delete. Not done yet, in the agreed order, with the design each needs:
+
+1. **Bulk "move" of texts to another project.** Copy R2 objects under the target project's prefix (keys embed the project id), reserve the bytes on the target owner (a storage reservation committed in the batch that re-parents the rows), release them from the source owner in the same batch, tombstone the source prefix; both projects must be the caller's with editor rights. Not started.
+2. **Smaller legacy items** (owner's item 8): per-text saved settings UI (`/texts/:id/settings` exists), the compiled-text editor for image texts (`POST /texts/:id/save` exists; the export already prefers it), drag-and-drop upload, keyboard shortcuts, unsaved-draft protection (beforeunload plus a local draft of the current text only, cleared on save), pagination beyond 50 texts, HEIC under the page CSP (verify `heic2any` needs no eval; otherwise reject HEIC with a clear message). Not started.
+3. **Figure extraction** (item 7): client-side with pdf.js (operator-list images for embedded rasters; crop of the rendered page for vector figures), user-confirmed crop, upload through the figure route (reserved quota), attach to `<figure class="needs-image">` placeholders. Not started.
+4. **Rich-text editor** (item 6): schema-based (ProseMirror or Tiptap) over sanitized HTML, math as atom nodes holding TeX, round-trip tests on the eval outputs and legacy samples, source view kept as a toggle, CSP unchanged unless inline styles are unavoidable. Not started.
