@@ -118,8 +118,9 @@ export async function reserveStorage(env: Env, projectId: string, bytes: number)
  * wrote the row (placeholders in `rowExistsSql` start at ?2), in this order:
  *   1. if the reservation is gone, charge the project's owner for the bytes.
  *      It is gone only if the request outlived RESERVATION_TTL_MS and the
- *      recount dropped it (and its bytes) meanwhile; uploads have no read
- *      deadline, so a slow client can do that. Without this the row would be
+ *      recount dropped it (and its bytes) meanwhile. Upload bodies have a read
+ *      deadline far below the TTL (src/body.ts readDeadlineMs), so this is a
+ *      backstop for a request stalled elsewhere; without it the row would be
  *      stored and never paid for.
  *   2. delete the reservation: the counter already holds the bytes, now
  *      accounted by the row.

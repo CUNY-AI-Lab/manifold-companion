@@ -40,7 +40,7 @@ browser ──► Doorway (CUNY Login, Admission membership, CSRF-independent)
 | `src/env.ts` | `Env` type, config validation, limits (quota, per-file, page cap, retention), `BASE_PATH` |
 | `src/identity.ts` | pinned verifier config (cached, failures never cached) then both legs; forwards only the Gateway leg |
 | `src/csrf.ts` | exact-Origin check; absent Origin or Referer-only is rejected |
-| `src/errors.ts`, `src/body.ts` | stable error envelope (with `gatewayRequestId` when the Gateway answered); bounded streaming body reader |
+| `src/errors.ts`, `src/body.ts` | stable error envelope (with `gatewayRequestId` when the Gateway answered); bounded streaming body reader with a size-proportional read deadline |
 | `src/security.ts` | CSP, `nosniff`, referrer/permissions/HSTS, cache policy |
 | `src/app.ts` | middleware order, route mounting, SPA fallback, `onError` |
 | `src/authz.ts` | `requireRole` / `requireTextRole`: the only project authorization checks |
@@ -189,7 +189,7 @@ Three rules make it hold:
 | Path | What happens to the counter, and where |
 |---|---|
 | Reserve (before any bytes are read or written) | `reserveStorage(env, projectId, bytes)`: one batch inserts a `storage_reservations` row for the project's current owner only if counter + bytes <= quota, then raises the counter of that row's subject only if the row exists. Concurrent reservations serialize; none overshoots. TTL 1 h. A missing project is 404. |
-| Commit (the row is written) | `commitReservation`, appended to the batch that writes the row, both statements only if that batch wrote the row (page or figure id, new content key, version id, every new page id of a split/merge): (1) if the reservation is gone, charge the project's owner for the bytes (only the recount removes a live request's reservation, when the request outlived the 1 h TTL; uploads have no read deadline); (2) delete the reservation (the bytes move from "reserved" to "rows"). Used by page, figure and source-PDF upload, `writeContent` (HTML, compiled text, translation), `writePageText` (page-version snapshot), split and merge. |
+| Commit (the row is written) | `commitReservation`, appended to the batch that writes the row, both statements only if that batch wrote the row (page or figure id, new content key, version id, every new page id of a split/merge): (1) if the reservation is gone, charge the project's owner for the bytes (only the recount removes a live request's reservation, when the request outlived the 1 h TTL; upload bodies have a read deadline far below it, below, so this is a backstop); (2) delete the reservation (the bytes move from "reserved" to "rows"). Used by page, figure and source-PDF upload, `writeContent` (HTML, compiled text, translation), `writePageText` (page-version snapshot), split and merge. |
 | Release (the write failed) | `releaseReservation`: lowers the counter of the reservation's subject only if the reservation still exists, and deletes it, in one batch; a no-op after a commit or after the recount dropped it. |
 | Shrink or replace (rows now account for fewer bytes) | `releaseStatement(db, projectId, ...)` in the swapping batch, conditioned on the new key, from the project's current owner: smaller unversioned content (`writeContent`), the old source PDF on replace. |
 | Delete a page, figure, text or project; prune versions | `deleteRowAndRelease(db, projectId, ...)`, `deleteTextObjects`, `deleteProject`, `pruneVersions`: the release statement runs first in the deleting batch, only while the row still exists, computed from the rows themselves (`textBytesSql`, `projectBytesSql`) and applied to the project's current owner, so a replay releases nothing and a transfer in between cannot misdirect it. R2 objects go after the rows (tombstones). |
@@ -200,7 +200,9 @@ Three rules make it hold:
 
 Checked by `test/storage-property.test.ts` (seeded random batches of concurrent uploads, edits, deletes, splits, merges, content writes, transfers, recounts and a "delete my data", asserting the invariant, no leftover reservation, and that R2 holds exactly the objects rows name, after every batch), `test/storage-owner.test.ts` (each transfer interleaving held open deterministically) and `test/copy-atomic.test.ts`.
 
-Residual: a request that outlives its reservation and is committed after the recount is charged without a quota check (bounded by one request's bytes, at most 25 MB). While two Worker versions run side by side across the 06:17 recount (a deploy or rollback at that minute), an upload on the older version (which keeps no reservation) is not counted until the next recount.
+**Read deadline.** An upload holds its reservation while its body arrives, so the body has a deadline in proportion to the declared size (`src/body.ts` `readDeadlineMs`: 30 s of grace plus the size at 32 KiB/s, capped at 20 min; 10 MB gets about 6 min, a 25 MB PDF about 14 min). When it passes, the stream is cancelled, the answer is `408 upload_too_slow` (retryable) and the reservation is released at once. JSON bodies get the same rule for their cap. The cap is at most half the reservation TTL (tested), so a reservation is never dropped by the recount while its body is still being read.
+
+Residual: a request that outlives its reservation for another reason (stalled between the read and the commit for over half an hour) and is committed after the recount is charged without a quota check (bounded by one request's bytes, at most 25 MB). While two Worker versions run side by side across the 06:17 recount (a deploy or rollback at that minute), an upload on the older version (which keeps no reservation) is not counted until the next recount.
 
 ## 7. Retention
 

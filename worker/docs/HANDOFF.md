@@ -82,6 +82,8 @@ Reviewed and found sound: the transfer batch's nonce discipline (concurrent acce
 | Storage reservations | `8af8bf1` | explicit reservations (migration 0009), committed in the row's batch; daily recount to the invariant (DESIGN 6) | 472 |
 | Anchored comments, notification menu, split/merge/bulk | `c6a3c6f` | comments on a text range with re-anchoring and detach, edit own, resolved view; header notification menu; split, merge, bulk status and delete UI | 472 |
 | Pre-deploy review of the above | `bd829e4`..`ab2b78e` | section 2a | 510 |
+| **Deployed: `ddd17dc`** (tag `mc-ddd17dc`, migrations 0001-0010) | | | |
+| Upload read deadline | see git log | body reads end at a deadline in proportion to the declared size (DESIGN 6, "Read deadline"); a stalled upload is `408 upload_too_slow` and its reservation is released at once | 516 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 

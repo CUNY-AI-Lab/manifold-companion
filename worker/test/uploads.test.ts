@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { ALICE, BOB, CAROL, JPEG, PDF, PNG, WEBP, addMember, api, call, createProject, createText, json, legs, makeEnv, ORIGIN, storageOf, upload } from "./helpers";
-import { projectStorageBytes } from "../src/storage";
+import { ALICE, BOB, CAROL, JPEG, PDF, PNG, WEBP, addMember, api, call, createProject, createText, gatedUpload, json, legs, makeEnv, ORIGIN, storageDrift, storageOf, upload } from "./helpers";
+import { projectStorageBytes, RESERVATION_TTL_MS } from "../src/storage";
+import { READ_DEADLINE_CAP_MS, READ_GRACE_MS, readDeadlineMs } from "../src/body";
+import { limits, validateConfig, type Env } from "../src/env";
 import { projectPrefix } from "../src/r2-keys";
 import app from "../src/app";
 import { cleanFilename, sniffImage } from "../src/uploads";
@@ -247,5 +249,102 @@ describe("figure upload", () => {
     await call(api(`/projects/${pid}`), { method: "DELETE" });
     expect(await storageOf(ALICE)).toBe(0);
     expect(await r2Keys()).toEqual([]);
+  });
+});
+
+describe("upload read deadline", () => {
+  const reservations = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations").first<{ n: number }>())!.n;
+
+  it("is proportionate to the declared size and always ends well before the reservation would expire", () => {
+    expect(readDeadlineMs(0)).toBe(READ_GRACE_MS);
+    expect(readDeadlineMs(10 * 1024 * 1024)).toBe(READ_GRACE_MS + 320_000);
+    expect(readDeadlineMs(20 * 1024 * 1024)).toBeGreaterThan(readDeadlineMs(10 * 1024 * 1024));
+    expect(readDeadlineMs(10 ** 12)).toBe(READ_DEADLINE_CAP_MS);
+    // the largest accepted body (a 25 MB PDF) gets its full proportional time, under the cap
+    expect(readDeadlineMs(25 * 1024 * 1024)).toBeLessThan(READ_DEADLINE_CAP_MS);
+    // a read that ends at the deadline still leaves time to store and commit before the recount could drop the reservation
+    expect(READ_DEADLINE_CAP_MS * 2).toBeLessThanOrEqual(RESERVATION_TTL_MS);
+  });
+
+  it("a stalled upload is answered 408 and gives its reservation back at once", async () => {
+    const { pid, tid } = await imageText();
+    const quick = await makeEnv({ UPLOAD_READ_GRACE_MS: "60", UPLOAD_MIN_BYTES_PER_SECOND: "1000000000" });
+    const g = await gatedUpload(pageUrl(tid), JPEG(500), ALICE, { env: quick });
+    await g.reserved;
+    expect(await storageOf(ALICE)).toBe(500); // held while the body is awaited
+    const res = await g.done;
+    expect(res.status).toBe(408);
+    const body = await json(res);
+    expect(body.error.code).toBe("upload_too_slow");
+    expect(body.error.retryable).toBe(true);
+    expect(res.headers.get("x-should-retry")).toBe("true");
+    expect(await reservations()).toBe(0);
+    expect(await storageOf(ALICE)).toBe(0);
+    expect(await r2Keys(projectPrefix(pid))).toEqual([]);
+    expect(await storageDrift()).toEqual([]);
+    g.open(); // the late bytes go nowhere
+    expect((await json(await call(api(`/texts/${tid}/pages`)))).pages).toEqual([]);
+  });
+
+  it("bounds the whole body, not each chunk: a trickle that never stalls still ends at the deadline", async () => {
+    const { tid } = await imageText();
+    const quick = await makeEnv({ UPLOAD_READ_GRACE_MS: "150", UPLOAD_MIN_BYTES_PER_SECOND: "1000000000" });
+    const bytes = JPEG(400);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(c) {
+        await new Promise((r) => setTimeout(r, 40));
+        if (sent >= bytes.length) return c.close();
+        c.enqueue(bytes.slice(sent, sent + 10));
+        sent += 10;
+      },
+    }, { highWaterMark: 0 });
+    const request = new Request(`${ORIGIN}${pageUrl(tid)}?filename=t.jpg&size=400`, { method: "POST", headers: { ...(await legs(ALICE)), origin: ORIGIN, "content-type": "application/octet-stream" }, body, duplex: "half" } as RequestInit);
+    const started = Date.now();
+    const res = await app.fetch(request, quick);
+    expect(res.status).toBe(408);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(sent).toBeLessThan(400);
+    expect(await reservations()).toBe(0);
+    expect(await storageOf(ALICE)).toBe(0);
+  });
+
+  it("an upload that arrives within its deadline is stored as before", async () => {
+    const { tid } = await imageText();
+    // 200 ms of grace plus 1 ms per byte: 300 bytes arriving in three steps of ~30 ms fit easily
+    const paced = await makeEnv({ UPLOAD_READ_GRACE_MS: "200", UPLOAD_MIN_BYTES_PER_SECOND: "1000" });
+    const bytes = JPEG(300);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(c) {
+        await new Promise((r) => setTimeout(r, 30));
+        if (sent >= bytes.length) return c.close();
+        c.enqueue(bytes.slice(sent, sent + 100));
+        sent += 100;
+      },
+    }, { highWaterMark: 0 });
+    const request = new Request(`${ORIGIN}${pageUrl(tid)}?filename=ok.jpg&size=300`, { method: "POST", headers: { ...(await legs(ALICE)), origin: ORIGIN, "content-type": "application/octet-stream" }, body, duplex: "half" } as RequestInit);
+    const res = await app.fetch(request, paced);
+    expect(res.status).toBe(201);
+    expect(await storageOf(ALICE)).toBe(300);
+    expect(await reservations()).toBe(0);
+  });
+
+  it("figures and source PDFs have the same deadline", async () => {
+    const { tid } = await pdfText();
+    const quick = await makeEnv({ UPLOAD_READ_GRACE_MS: "60", UPLOAD_MIN_BYTES_PER_SECOND: "1000000000" });
+    for (const path of [api(`/texts/${tid}/figures`)]) {
+      const g = await gatedUpload(path, PNG(200), ALICE, { env: quick, query: { filename: "f.png" } });
+      await g.reserved;
+      expect((await g.done).status).toBe(408);
+      g.open();
+    }
+    expect(await reservations()).toBe(0);
+    expect(await storageOf(ALICE)).toBe(0);
+  });
+
+  it("rejects malformed deadline settings as a configuration error", () => {
+    expect(validateConfig({ ...({} as Env), UPLOAD_READ_GRACE_MS: "-1" } as Env)).toMatchObject({ ok: false, errors: expect.arrayContaining(["limit_invalid"]) });
+    expect(limits({ UPLOAD_MIN_BYTES_PER_SECOND: "500" } as Env).uploadMinBytesPerSecond).toBe(500);
   });
 });

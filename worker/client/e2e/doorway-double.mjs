@@ -27,7 +27,8 @@ mkdirSync(state, { recursive: true });
 const issuer = await createTestIdentityIssuer();
 const wrangler = join(worker, 'node_modules/.bin/wrangler');
 execFileSync(wrangler, ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', state], { cwd: worker, stdio: 'inherit', env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' } });
-const vars = { CAIL_IDENTITY_JWKS: issuer.jwksJson, CAIL_IDENTITY_ISSUER: issuer.issuer, CAIL_CANONICAL_ORIGIN: origin, CAIL_LOG_ENV: 'test' };
+// A short upload read grace (the size-proportional part is the production rate), so a stalled upload is answered within seconds.
+const vars = { CAIL_IDENTITY_JWKS: issuer.jwksJson, CAIL_IDENTITY_ISSUER: issuer.issuer, CAIL_CANONICAL_ORIGIN: origin, CAIL_LOG_ENV: 'test', UPLOAD_READ_GRACE_MS: '4000' };
 const dev = spawn(wrangler, ['dev', '-c', 'wrangler.jsonc', '-c', join(here, 'gateway-stub.jsonc'), '--port', String(WRANGLER_PORT), '--ip', '127.0.0.1', '--local-upstream', `127.0.0.1:${PORT}`, '--persist-to', state, ...Object.entries(vars).flatMap(([k, v]) => ['--var', `${k}:${v}`])], { cwd: worker, stdio: ['ignore', 'inherit', 'inherit'], env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' } });
 process.on('exit', () => dev.kill());
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { dev.kill(); process.exit(0); });
@@ -53,7 +54,7 @@ createServer(async (req, res) => {
     const as = who(req.headers.cookie);
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) {
-      if (k.startsWith('x-cail-') || k === 'cookie' || k === 'authorization' || k === 'host' || k === 'connection' || k === 'content-length') continue;
+      if (k.startsWith('x-cail-') || k === 'cookie' || k === 'authorization' || k === 'host' || k === 'connection' || k === 'content-length' || k === 'transfer-encoding') continue; // hop-by-hop: fetch sets its own framing
       headers.set(k, Array.isArray(v) ? v.join(', ') : v);
     }
     if (as === 'none') {

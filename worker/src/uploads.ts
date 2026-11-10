@@ -6,11 +6,11 @@
 // same batch that writes the row, so the bytes are counted exactly once.
 // The client declares the exact size (`size` query) before any bytes are read,
 // so quota is reserved for exactly that size, and it is enforced as a hard read
-// limit. Content-length (Doorway forwards it on requests) is not relied on: it
+// limit and sets the read deadline (src/body.ts readDeadlineMs). Content-length (Doorway forwards it on requests) is not relied on: it
 // can be absent on a streamed body, and the read limit holds either way.
-import { readBoundedBytes } from "./body";
+import { readBoundedBytes, readDeadlineMs } from "./body";
 import { E } from "./errors";
-import type { Env } from "./env";
+import { limits, type Env } from "./env";
 import { releaseReservation, reserveStorage, type Reservation } from "./storage";
 
 export type ImageType = "image/jpeg" | "image/png" | "image/webp";
@@ -62,7 +62,9 @@ export async function receive<T>(env: Env, request: Request, projectId: string, 
   const reservation = await reserveStorage(env, projectId, size); // before reading a single byte, on the project's owner
   const release = () => releaseReservation(env.DB, reservation);
   try {
-    const bytes = await readBoundedBytes(request, size);
+    // A body that stops arriving gives its reservation back at the deadline (in proportion to the declared size), not after an hour.
+    const lim = limits(env);
+    const bytes = await readBoundedBytes(request, size, readDeadlineMs(size, lim.uploadReadGraceMs, lim.uploadMinBytesPerSecond));
     if (bytes.byteLength !== size) throw E.badRequest("The uploaded size did not match the declared size.", "size_mismatch");
     const type = sniff(bytes);
     if (type === null) throw E.unsupported("That file type is not accepted.");

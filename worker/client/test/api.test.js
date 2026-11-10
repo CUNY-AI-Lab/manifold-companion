@@ -56,6 +56,12 @@ describe('errors and uploads', () => {
     await expect(h.api.get('/api/a')).rejects.toMatchObject({ requestId: 'body-id' });
     await expect(h.api.get('/api/b')).rejects.toMatchObject({ requestId: null });
   });
+  it('a stalled upload (408 upload_too_slow) is a retryable error with the Worker message, and never navigates', async () => {
+    const h = harness([json(408, { error: { code: 'upload_too_slow', message: 'The upload stopped arriving before its deadline. Check the connection and try again.', retryable: true } }, { 'x-should-retry': 'true' })]);
+    const blob = new Blob([new Uint8Array(10)], { type: 'image/jpeg' });
+    await expect(h.api.upload('/api/texts/t/pages', blob, { filename: 'p.jpg' })).rejects.toMatchObject({ status: 408, code: 'upload_too_slow', retryable: true, message: expect.stringMatching(/deadline/) });
+    expect(h.navigations).toEqual([]);
+  });
   it('uploads the raw bytes with the exact size and file name in the query', async () => {
     const h = harness([json(201, { page: {} })]);
     const blob = new Blob([new Uint8Array(10)], { type: 'image/jpeg' });

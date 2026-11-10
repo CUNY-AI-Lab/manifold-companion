@@ -1,3 +1,5 @@
+import { READ_GRACE_MS, READ_MIN_BYTES_PER_SECOND } from "./body";
+
 export interface Env {
   ASSETS: Fetcher;
   /** Gateway service binding (cail-model-api). Unused in phase 1; readiness requires it. */
@@ -45,6 +47,9 @@ export interface Env {
   RETENTION_DAYS?: string;
   /** Days before deletion at which the in-app warning starts (default 30). */
   RETENTION_WARN_DAYS?: string;
+  /** Upload read deadline: a fixed grace (ms, default 30000) plus the declared size at this rate (bytes/s, default 32768). Tests lower them. */
+  UPLOAD_READ_GRACE_MS?: string;
+  UPLOAD_MIN_BYTES_PER_SECOND?: string;
 }
 
 /** The API and pages are mounted at this literal prefix by Doorway. */
@@ -69,6 +74,8 @@ export interface Limits {
   maxProjectsPerPerson: number;
   maxActiveInvitesPerProject: number;
   maxInviteTtlDays: number;
+  uploadReadGraceMs: number;
+  uploadMinBytesPerSecond: number;
 }
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -91,6 +98,8 @@ export function limits(env: Env): Limits {
     maxProjectsPerPerson: positiveInt(env.MAX_PROJECTS_PER_PERSON, 100),
     maxActiveInvitesPerProject: positiveInt(env.MAX_ACTIVE_INVITES, 20),
     maxInviteTtlDays: 30,
+    uploadReadGraceMs: positiveInt(env.UPLOAD_READ_GRACE_MS, READ_GRACE_MS),
+    uploadMinBytesPerSecond: positiveInt(env.UPLOAD_MIN_BYTES_PER_SECOND, READ_MIN_BYTES_PER_SECOND),
   };
 }
 
@@ -136,7 +145,7 @@ export function validateConfig(env: Env): { ok: true } | { ok: false; errors: Co
   if (missing(env.ASSETS)) errors.push("assets_binding_missing");
   if (env.CAIL_CANONICAL_ORIGIN !== undefined && !validOrigin(env.CAIL_CANONICAL_ORIGIN)) errors.push("canonical_origin_invalid");
   if (env.CAIL_API_BASE !== undefined && !validHttpsUrl(env.CAIL_API_BASE)) errors.push("api_base_invalid");
-  for (const v of [env.STORAGE_QUOTA_BYTES, env.MAX_FILE_BYTES, env.MAX_PDF_BYTES, env.MAX_TEXTS_PER_PROJECT, env.MAX_PROJECTS_PER_PERSON, env.MAX_ACTIVE_INVITES, env.MAX_FIGURES_PER_TEXT, env.MAX_PROJECT_PAGES, env.RETENTION_DAYS, env.RETENTION_WARN_DAYS]) {
+  for (const v of [env.STORAGE_QUOTA_BYTES, env.MAX_FILE_BYTES, env.MAX_PDF_BYTES, env.MAX_TEXTS_PER_PROJECT, env.MAX_PROJECTS_PER_PERSON, env.MAX_ACTIVE_INVITES, env.MAX_FIGURES_PER_TEXT, env.MAX_PROJECT_PAGES, env.RETENTION_DAYS, env.RETENTION_WARN_DAYS, env.UPLOAD_READ_GRACE_MS, env.UPLOAD_MIN_BYTES_PER_SECOND]) {
     if (v !== undefined && v !== "" && positiveInt(v, -1) === -1) {
       errors.push("limit_invalid");
       break;
