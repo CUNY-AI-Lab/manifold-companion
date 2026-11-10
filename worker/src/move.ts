@@ -20,7 +20,7 @@
 // under the move (a row whose object was not copied), or the destination is
 // over its text or page cap, or (owners differ) its owner is over quota.
 import type { ProjectRow } from "./authz";
-import { reindexText, touchProject, type TextRow } from "./content";
+import { reindexText, type TextRow } from "./content";
 import { limits, type Env } from "./env";
 import { AppError, E } from "./errors";
 import { textPrefix } from "./r2-keys";
@@ -155,6 +155,9 @@ export async function moveText(env: Env, subject: string, src: ProjectRow, dst: 
     // The old row goes, with its comments (cascade) and its search row (trigger).
     env.DB.prepare(`DELETE FROM texts WHERE id = ?2 AND project_id = ?3 AND ${moved}`).bind(id, oldId, src.id),
     env.DB.prepare(`INSERT OR IGNORE INTO r2_cleanup (prefix, created_at) SELECT ?2, ?3 WHERE ${moved}`).bind(id, textPrefix(src.id, oldId), now),
+    // A move is an edit of both projects, in the same transaction: the retention sweep re-checks last_edited_at when
+    // it deletes, so a project selected for deletion just before the move commits is kept with the text moved into it.
+    env.DB.prepare(`UPDATE projects SET last_edited_at = ?2, updated_at = ?2, retention_warned_at = NULL WHERE id IN (?3, ?4) AND ${moved}`).bind(id, now, src.id, dst.id),
     env.DB.prepare(
       `UPDATE profiles SET storage_bytes = -1 WHERE subject = ${ownerSql("?2")} AND ${moved} AND (
          ${stray("pages", "image_key")} OR ${stray("figures", "image_key")} OR ${stray("text_versions", "r2_key")}
@@ -194,8 +197,6 @@ export async function moveText(env: Env, subject: string, src: ProjectRow, dst: 
   if (unreferenced.length) await env.FILES.delete(unreferenced).catch(() => undefined);
   await sweepTombstone(env, textPrefix(src.id, oldId));
   await reindexText(env, id);
-  await touchProject(env.DB, src.id, now);
-  await touchProject(env.DB, dst.id, now);
   return { from: oldId, to: id, name: t.name, comments_deleted: plan.comments };
 }
 

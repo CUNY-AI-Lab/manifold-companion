@@ -273,3 +273,26 @@ describe("moving texts: access is re-checked inside each text's transaction", ()
     await clean();
   });
 });
+
+describe("moving texts and retention", () => {
+  it("a text moved into a project the sweep is deleting keeps the project: the move is an edit inside its own transaction", async () => {
+    const { runRetentionSweep } = await import("../src/retention");
+    const { addDays, nowIso } = await import("../src/util");
+    const { src, tid } = await richImageText(ALICE);
+    const dst = await createProject(ALICE, "Old destination");
+    // The destination is past its retention date and was warned long ago.
+    await env.DB.prepare("UPDATE projects SET last_edited_at = ?1, retention_warned_at = ?2 WHERE id = ?3").bind(addDays(nowIso(), -200), addDays(nowIso(), -20), dst).run();
+    // The sweep runs right after the move's batch commits.
+    let swept = -1;
+    const db = hookedDb(env.DB, /SELECT html_key, compiled_key, translation_key, source_pdf_key FROM texts WHERE id = \?1/, async () => { swept = (await runRetentionSweep(await makeEnv())).deleted; });
+    const r = await json(await move(src, { textIds: [tid], to: dst }, ALICE, await makeEnv({ DB: db })));
+    expect(r.moved).toHaveLength(1);
+    expect(swept).toBe(0);
+    const after = await call(api(`/texts/${r.moved[0].to}`));
+    expect(after.status).toBe(200);
+    expect((await json(after)).pages).toHaveLength(2);
+    const p = await env.DB.prepare("SELECT retention_warned_at FROM projects WHERE id = ?1").bind(dst).first<{ retention_warned_at: string | null }>();
+    expect(p?.retention_warned_at).toBeNull();
+    await clean();
+  });
+});
