@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from './client';
+import { ownerOf, purgeDrafts } from '../lib/drafts';
+import { browserStorage } from '../lib/storage';
 
 const SessionContext = createContext(null);
 
@@ -12,6 +14,7 @@ function applyTheme(pref) {
 export function SessionProvider({ children }) {
   const [session, setSession] = useState(null);
   const [error, setError] = useState(null);
+  const [draftOwner, setDraftOwner] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -19,6 +22,8 @@ export function SessionProvider({ children }) {
       setSession(s);
       setError(null);
       applyTheme(s.profile.theme_preference);
+      // Drafts are keyed by a hash of the subject. Someone else's (a person who signed out here) go now.
+      ownerOf(s.subject).then((owner) => { purgeDrafts(browserStorage(), owner); setDraftOwner(owner); }, () => setDraftOwner(null));
       return s;
     } catch (e) {
       if (!api.navigating) setError(e);
@@ -35,7 +40,7 @@ export function SessionProvider({ children }) {
     return profile;
   }, []);
 
-  return <SessionContext.Provider value={{ session, error, refresh, updateProfile }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ session, error, refresh, updateProfile, draftOwner }}>{children}</SessionContext.Provider>;
 }
 
 export const useSession = () => useContext(SessionContext);

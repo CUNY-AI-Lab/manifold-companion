@@ -248,6 +248,10 @@ Fonts: the frame has an opaque origin and runs no script. A font request from it
 
 Checks: `client/test/math.test.js` (71 real and legacy-style formulas, safety, faces); the journeys assert KaTeX fonts are loaded and used inside the frame; `client/e2e/katex-compare.spec.mjs` (`npx playwright test -c playwright.compare.config.js`) renders every fixture formula with the legacy setup and with the new preview, and compares glyph layout (pass within 0.25 CSS px) and pixels (reported).
 
+## 8a. Unsaved edits kept in the browser
+
+The tools origin is shared by every CAIL tool, so `localStorage` is readable by any page on it. What the client keeps (`client/src/lib/drafts.js`) is the least that recovers an edit: one draft per text and person, holding the edited text of the one editor last changed (a page's text, the full text, or the HTML), a hash of the saved text it started from (to say whether the saved text changed since) and the time. The key is `manifold-companion:draft:v1:<first 128 bits of SHA-256("manifold-companion:" + subject)>:<text id>`, so no key names a person. A draft is removed on save, on discard, after 7 days, when the app starts for a different person on this browser (the app cannot observe Doorway's sign-out, which happens on Doorway's own page, so a signed-out person's draft goes before anything of the next person renders), from Settings, and by "Delete my data". Drafts never go to the Worker. Leaving with an unsaved edit asks first: an in-app dialog for in-app navigation (the router is a data router for `useBlocker`), the browser's own prompt for closing or reloading the tab. A cleaner end on sign-out would need Doorway to send `Clear-Site-Data: "storage"` on its sign-out response (it would clear every tool's storage on the origin); not done, it is Doorway's call.
+
 ## 9. Email
 
 ### What I found

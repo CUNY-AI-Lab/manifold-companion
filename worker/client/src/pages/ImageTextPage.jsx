@@ -16,6 +16,8 @@ import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
 import useFileDrop, { DropOverlay, sortDropped } from '../hooks/useFileDrop';
+import { DraftBanner, useDraftKeeper, useLeaveGuard, useStoredDraft } from '../hooks/useUnsaved';
+import { draftDiffers, savedChangedSince } from '../lib/drafts';
 
 const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 /** What a page upload takes: an image (any the browser may open; HEIC gets its own message) or a PDF. */
@@ -77,7 +79,40 @@ export default function ImageTextPage({ data, reload }) {
   // Keep a valid selection as pages arrive or are deleted.
   useEffect(() => { if (!pages.some((p) => p.id === selected)) setSelected(pages[0]?.id ?? null); }, [pages, selected]);
   const page = pages.find((p) => p.id === selected) ?? null;
-  useEffect(() => { setDraft(page?.ocr_text ?? ''); setConflict(null); }, [page?.id, page?.ocr_text]);
+  const pendingRestore = useRef(null);
+  // Which page `draft` belongs to: until the effect below has loaded a page's text, nothing is unsaved.
+  const [draftPage, setDraftPage] = useState(null);
+  useEffect(() => {
+    const restore = pendingRestore.current;
+    pendingRestore.current = null;
+    setDraft(restore && restore.target.pageId === page?.id ? restore.content : page?.ocr_text ?? '');
+    setDraftPage(page?.id ?? null);
+    setConflict(null);
+  }, [page?.id, page?.ocr_text]);
+
+  // Unsaved edits: one to a page, one to the full text. Leaving asks first; the latest is kept as this text's local draft.
+  const [fullDraft, setFullDraft] = useState(null);
+  const [fullRestore, setFullRestore] = useState(null);
+  const pageDirty = !!page && draftPage === page.id && draft !== (page.ocr_text ?? '');
+  useLeaveGuard(pageDirty || fullDraft !== null);
+  const pageKeeper = useDraftKeeper({ textId: text.id, target: { kind: 'page', pageId: page?.id }, content: draft, saved: page?.ocr_text ?? '', dirty: pageDirty });
+  const { draft: stored, discard } = useStoredDraft(text.id);
+  const [offer, setOffer] = useState(true);
+  useEffect(() => { if (pageDirty || fullDraft !== null) setOffer(false); }, [pageDirty, fullDraft]);
+  const storedPage = stored?.target.kind === 'page' ? pages.find((p) => p.id === stored.target.pageId) : null;
+  const showDraft = offer && stored && (stored.target.kind === 'fulltext' || (storedPage && draftDiffers(stored, storedPage.ocr_text)));
+  const restoreStored = () => {
+    setOffer(false);
+    if (stored.target.kind === 'fulltext') { setFullRestore(stored.content); return; }
+    if (selected === stored.target.pageId) setDraft(stored.content);
+    else { pendingRestore.current = stored; setSelected(stored.target.pageId); }
+  };
+  const selectPage = async (id) => {
+    if (id === selected) return;
+    if (pageDirty && !(await confirm({ title: 'Discard the changes to this page?', message: `Page ${page.page_number} has changes that are not saved. Open another page and discard them?`, confirmLabel: 'Discard and open', cancelLabel: 'Stay on this page', danger: true }))) return;
+    if (pageDirty) pageKeeper.forget();
+    setSelected(id);
+  };
   useEffect(() => { api.get(`/api/texts/${text.id}/translation`).then((r) => setTranslation(r.translation), () => {}); }, [text.id]);
 
   const upload = async (files) => {
@@ -166,6 +201,7 @@ export default function ImageTextPage({ data, reload }) {
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
       <p className="text-xs text-slate-500 dark:text-slate-400">{pages.length} pages, {text.status}</p>
+      {showDraft ? <DraftBanner what={stored.target.kind === 'fulltext' ? 'the full text' : `page ${storedPage.page_number} (${storedPage.filename})`} at={stored.at} savedChanged={stored.target.kind === 'page' && savedChangedSince(stored, storedPage.ocr_text)} onRestore={restoreStored} onDiscard={() => { discard(); setOffer(false); }} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       {busy ? <p role="status" className="text-sm text-cail-azure dark:text-cail-link-dark">{busy}</p> : null}
 
@@ -193,7 +229,7 @@ export default function ImageTextPage({ data, reload }) {
           <ol className="space-y-1 text-sm">
             {pages.map((p, i) => (
               <li key={p.id} className="flex items-center gap-1">
-                <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => setSelected(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button>
+                <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => selectPage(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button>
                 {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} /> : null}
               </li>
             ))}
@@ -244,7 +280,7 @@ export default function ImageTextPage({ data, reload }) {
           {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
         </div>
       </section>
-      <FullTextPanel textId={text.id} canEdit={canEdit} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} />
+      <FullTextPanel textId={text.id} canEdit={canEdit} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} onDraftChange={setFullDraft} restoreDraft={fullRestore} onRestoreTaken={() => setFullRestore(null)} />
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
       <TextSettingsPanel textId={text.id} kind="image" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />

@@ -4,6 +4,7 @@ import { useConfirm } from './ConfirmDialog';
 import SandboxedPreview from './SandboxedPreview';
 import VersionHistory from './VersionHistory';
 import { ErrorNote } from './ui';
+import { useDraftKeeper } from '../hooks/useUnsaved';
 
 /**
  * The whole text of an image text in one editor (the legacy compiled text).
@@ -12,7 +13,7 @@ import { ErrorNote } from './ui';
  * uses this full text and page edits no longer change the export, until
  * "Use the pages again" (the full text stays in its version history).
  */
-export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange }) {
+export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange, restoreDraft = null, onRestoreTaken }) {
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(undefined); // undefined: loading; null: none saved
@@ -32,8 +33,15 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
     setDraft((d) => (keepEdit && d !== null && d !== (before ?? null) ? d : c.text));
   };
   useEffect(() => { if (open) load().catch(setError); }, [open, textId, pagesKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const dirty = draft !== null && draft !== (saved ?? null);
+  // A draft recovered from this browser: open, load, then put it in the editor.
+  useEffect(() => {
+    if (restoreDraft === null) return;
+    setOpen(true);
+    load({ keepEdit: false }).then(() => { setDraft(restoreDraft); onRestoreTaken?.(); }, setError);
+  }, [restoreDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = draft !== null && saved !== undefined && draft !== (saved ?? null);
   useEffect(() => { onDraftChange?.(dirty ? draft : null); }, [dirty, draft]); // eslint-disable-line react-hooks/exhaustive-deps
+  useDraftKeeper({ textId, target: { kind: 'fulltext' }, content: draft ?? '', saved: saved ?? '', dirty });
 
   const save = async () => {
     setError(null);

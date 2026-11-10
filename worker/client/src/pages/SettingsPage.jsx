@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import { ErrorNote, formatBytes, QuotaLine } from '../components/ui';
+import { clearAllDrafts, countDrafts } from '../lib/drafts';
+import { browserStorage } from '../lib/storage';
 
 const PREF_LABELS = { inapp_comment_reply: 'Replies to my comments', inapp_comment_mention: 'Mentions of me', inapp_project_shared: 'Someone joins a project I own' };
 
 export default function SettingsPage() {
-  const { session, updateProfile } = useSession();
+  const { session, updateProfile, draftOwner } = useSession();
+  const [drafts, setDrafts] = useState(() => (draftOwner ? countDrafts(browserStorage(), draftOwner) : 0));
+  useEffect(() => { if (draftOwner) setDrafts(countDrafts(browserStorage(), draftOwner)); }, [draftOwner]);
   const [name, setName] = useState(session.profile.display_name ?? '');
   const [prefs, setPrefs] = useState(null);
   const [confirm, setConfirm] = useState('');
@@ -45,11 +49,17 @@ export default function SettingsPage() {
         <p>Storage: {formatBytes(session.storage.used_bytes)} of {formatBytes(session.storage.quota_bytes)} in projects you own (uploads by your collaborators count here too).</p>
         <QuotaLine />
       </section>
+      <section className="space-y-2 text-sm">
+        <h2 className="text-lg">Unsaved changes kept in this browser</h2>
+        <p>When you leave a text with changes that are not saved, this browser keeps a copy of them (for that text only) for 7 days and offers it when you open the text again. Saving or discarding removes it, and so does someone else signing in on this browser.</p>
+        <p>{drafts === 0 ? 'None are kept now.' : `${drafts} text${drafts === 1 ? ' has' : 's have'} unsaved changes kept here.`}</p>
+        <button type="button" className="btn-quiet" disabled={drafts === 0} onClick={run(async () => { clearAllDrafts(browserStorage()); setDrafts(0); }, 'Unsaved changes kept in this browser were deleted.')}>Delete them from this browser</button>
+      </section>
       <section className="space-y-2 rounded-md border border-red-200 p-4 dark:border-red-900">
         <h2 className="text-lg text-red-800 dark:text-red-300">Delete my data</h2>
         <p className="text-sm">Deletes every project you own, with its files, and your comments everywhere. This cannot be undone. Export anything you want to keep first.</p>
         {step === 0 ? <button type="button" className="btn-danger" onClick={() => setStep(1)}>Delete my data</button> : (
-          <form className="space-y-2" onSubmit={run(async () => { await api.del('/api/me/data', { confirm }); window.location.assign('./'); }, 'Deleted.')}>
+          <form className="space-y-2" onSubmit={run(async () => { await api.del('/api/me/data', { confirm }); clearAllDrafts(browserStorage()); window.location.assign('./'); }, 'Deleted.')}>
             <label className="label" htmlFor="confirm-delete">Type “delete my data” to confirm</label>
             <input id="confirm-delete" className="field max-w-xs" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
             <div className="flex gap-2"><button className="btn-danger" type="submit" disabled={confirm !== 'delete my data'}>Delete everything</button><button className="btn-quiet" type="button" onClick={() => { setStep(0); setConfirm(''); }}>Keep my data</button></div>

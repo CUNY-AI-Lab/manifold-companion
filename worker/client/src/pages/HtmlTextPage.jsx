@@ -15,6 +15,8 @@ import { checkList, convertPdf } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { useConfirm } from '../components/ConfirmDialog';
 import useFileDrop, { DropOverlay } from '../hooks/useFileDrop';
+import { DraftBanner, useDraftKeeper, useLeaveGuard, useStoredDraft } from '../hooks/useUnsaved';
+import { draftDiffers, savedChangedSince } from '../lib/drafts';
 
 /** "1, 3-5" -> Set {1,3,4,5} */
 export function parsePages(spec) {
@@ -56,6 +58,14 @@ export default function HtmlTextPage({ data, reload }) {
   const [versionKey, setVersionKey] = useState(0);
   const figureInput = useRef(null);
   const source = useRef(null);
+
+  const dirty = html !== null && html !== saved;
+  useLeaveGuard(dirty);
+  useDraftKeeper({ textId: text.id, target: { kind: 'html' }, content: html ?? '', saved, dirty });
+  const { draft: stored, discard } = useStoredDraft(text.id);
+  const [offer, setOffer] = useState(true);
+  useEffect(() => { if (dirty) setOffer(false); }, [dirty]);
+  const showDraft = offer && html !== null && stored?.target.kind === 'html' && draftDiffers(stored, saved);
 
   const loadHtml = () => api.get(`/api/texts/${text.id}/html`).then((r) => { setHtml(r.html_content); setSaved(r.html_content); }, setError);
   const loadFigures = async () => {
@@ -138,6 +148,7 @@ export default function HtmlTextPage({ data, reload }) {
       <DropOverlay show={dragging} label="Drop a PDF to convert, or images to add as figures" />
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
+      {showDraft ? <DraftBanner what="the HTML" at={stored.at} savedChanged={savedChangedSince(stored, saved)} onRestore={() => { setOffer(false); setHtml(stored.content); }} onDiscard={() => { discard(); setOffer(false); }} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       {checks.length ? (
         <section aria-labelledby="checks-title" className="my-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
@@ -190,7 +201,7 @@ export default function HtmlTextPage({ data, reload }) {
         </div>
         <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />
       </div>
-      <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={html !== saved} onRestored={() => { loadHtml(); refresh(); }} />
+      <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={dirty} onRestored={() => { loadHtml(); refresh(); }} />
       <TextSettingsPanel textId={text.id} kind="pdf" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
       <CommentsPanel textId={text.id} canWrite={canEdit} source={html === null ? null : { text: html, pageId: null, textareaRef: source }} />

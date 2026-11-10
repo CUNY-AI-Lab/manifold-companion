@@ -155,3 +155,128 @@ test('full text of an image text: edit as one text, the export uses it, use the 
   await expect(page.getByRole('button', { name: 'Full text (edited, used by the export)' })).toBeVisible();
   await expect(editor).toHaveValue(/middle of a sentence/);
 });
+
+const draftKeys = (page) => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('manifold-companion:draft:')));
+
+async function imageTextWithPages(page, api, names) {
+  const project = (await api('/projects', 'POST', { name: 'Drafts' })).project;
+  const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Letter' })).text;
+  const png = readFileSync('e2e/fixtures/page.png');
+  for (const [i, words] of names.entries()) {
+    const up = await page.request.fetch(`/manifold-companion/api/texts/${text.id}/pages?filename=p${i + 1}.png&size=${png.length}`, { method: 'POST', headers: { Origin: ORIGIN, 'content-type': 'image/png' }, data: png });
+    expect(up.ok()).toBe(true);
+    await api(`/texts/${text.id}/pages/${(await up.json()).page.id}`, 'POST', { text: words });
+  }
+  return { project, text };
+}
+
+test('unsaved changes: leaving asks first, the edit is kept in this browser, restored, and gone once saved', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { project, text } = await imageTextWithPages(page, api, ['Saved page one.', 'Saved page two.']);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const editor = page.getByLabel(/^Text of page 1/);
+  await expect(editor).toHaveValue('Saved page one.');
+  await editor.fill('Saved page one, corrected by hand.');
+
+  // Another page of the same text: asks, and Stay keeps the edit.
+  await page.getByRole('button', { name: /^2\. p2\.png/ }).click();
+  const ask = page.getByRole('alertdialog');
+  await expect(ask).toContainText('Discard the changes to this page?');
+  await ask.getByRole('button', { name: 'Stay on this page' }).click();
+  await expect(editor).toHaveValue('Saved page one, corrected by hand.');
+
+  // An in-app link: asks in the app; Stay, then Leave.
+  await page.getByRole('link', { name: 'Back to project' }).click();
+  await expect(ask).toContainText('Leave without saving?');
+  expect(await axe(page, 'leave confirmation')).toEqual([]);
+  await ask.getByRole('button', { name: 'Stay' }).click();
+  await expect(page).toHaveURL(new RegExp(`/texts/${text.id}$`));
+  await page.getByRole('link', { name: 'Back to project' }).click();
+  await ask.getByRole('button', { name: 'Leave this page' }).click();
+  await expect(page.getByRole('heading', { name: 'Drafts' })).toBeVisible();
+
+  // Kept: one key, naming no one; the value holds the edit only.
+  const keys = await draftKeys(page);
+  expect(keys).toHaveLength(1);
+  expect(keys[0]).toMatch(/^manifold-companion:draft:v1:[0-9a-f]{32}:/);
+  expect(keys[0]).not.toContain('cail-');
+  const stored = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), keys[0]));
+  expect(stored).toMatchObject({ v: 1, target: { kind: 'page' }, content: 'Saved page one, corrected by hand.' });
+  expect(JSON.stringify(stored)).not.toContain('Saved page two');
+
+  // Back: offered, restored, saved, gone.
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const banner = page.getByRole('region', { name: 'Unsaved changes found' });
+  await expect(banner).toContainText('Changes to page 1 (p1.png)');
+  expect(await axe(page, 'draft recovery banner')).toEqual([]);
+  await banner.getByRole('button', { name: 'Restore my changes' }).click();
+  await expect(editor).toHaveValue('Saved page one, corrected by hand.');
+  await page.getByRole('button', { name: 'Save page' }).click();
+  await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
+  await expect.poll(() => draftKeys(page)).toEqual([]);
+  expect((await api(`/texts/${text.id}`)).pages[0].ocr_text).toBe('Saved page one, corrected by hand.');
+  // After a save, leaving does not ask.
+  await page.getByRole('link', { name: 'Back to project' }).click();
+  await expect(page.getByRole('heading', { name: 'Drafts' })).toBeVisible();
+  void project;
+});
+
+test('closing the tab asks first; the next visit offers the edit; discard removes it; someone else signing in removes it', async ({ page, context, browser }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const project = (await api('/projects', 'POST', { name: 'Drafts HTML', project_type: 'pdf_to_html' })).project;
+  const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Chapter' })).text;
+  await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<p>Saved.</p>' });
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const source = page.getByLabel(/^HTML/);
+  await expect(source).toHaveValue('<p>Saved.</p>');
+  await source.fill('<p>Saved, then edited.</p>');
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+  const asked = [];
+  page.on('dialog', async (d) => { asked.push(d.type()); await (asked.length === 1 ? d.dismiss() : d.accept()); });
+  await page.close({ runBeforeUnload: true });
+  await expect.poll(() => asked).toEqual(['beforeunload']);
+  expect(page.isClosed()).toBe(false);
+  await page.close({ runBeforeUnload: true });
+  await expect.poll(() => page.isClosed()).toBe(true);
+
+  const again = await context.newPage();
+  await again.goto(`/manifold-companion/texts/${text.id}`);
+  const banner = again.getByRole('region', { name: 'Unsaved changes found' });
+  await expect(banner).toContainText('Changes to the HTML');
+  await banner.getByRole('button', { name: 'Discard them' }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(again.getByLabel(/^HTML/)).toHaveValue('<p>Saved.</p>');
+  expect(await draftKeys(again)).toEqual([]);
+
+  // Leave an edit behind, then someone else signs in on this browser: it is removed before anything shows.
+  await again.getByLabel(/^HTML/).fill('<p>Carol was here.</p>');
+  await expect.poll(() => draftKeys(again)).toHaveLength(1);
+  await again.evaluate(() => { window.onbeforeunload = null; });
+  await context.addCookies([{ name: 'e2e_as', value: 'bob', url: ORIGIN }]);
+  again.on('dialog', (d) => d.accept());
+  await again.goto('/manifold-companion/');
+  await expect(again.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  await expect.poll(() => draftKeys(again)).toEqual([]);
+  void browser;
+});
+
+test('Settings counts the edits kept in this browser and deletes them', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { text } = await imageTextWithPages(page, api, ['One.']);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  await page.getByLabel(/^Text of page 1/).fill('One, edited.');
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+  await page.locator('header a[href$="/settings"]').click(); // named after the person's display name, if set
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Leave this page' }).click();
+  await expect(page.getByText('1 text has unsaved changes kept here.')).toBeVisible();
+  expect(await axe(page, 'settings with a kept draft')).toEqual([]);
+  await page.getByRole('button', { name: 'Delete them from this browser' }).click();
+  await expect(page.getByText('None are kept now.')).toBeVisible();
+  expect(await draftKeys(page)).toEqual([]);
+});
