@@ -124,6 +124,8 @@ const ROUTES: Route[] = [
   { name: "GET /texts/:id/result", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/result`, as) },
   { name: "GET /texts/:id/compiled", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/compiled`, as) },
   { name: "POST /texts/:id/save", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/save`, as, "POST", { text: "# compiled" }) },
+  // Saves a full text first (as the owner), so an allowed caller has one to clear.
+  { name: "DELETE /texts/:id/compiled", min: "editor", ok: 200, run: async ({ textId }, as) => { await j(`/texts/${textId}/save`, ALICE, "POST", { text: "# to clear" }); return j(`/texts/${textId}/compiled`, as, "DELETE"); } },
   { name: "GET /texts/:id/html", min: "viewer", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/html`, as) },
   { name: "PUT /texts/:id/html", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/html`, as, "PUT", { html_content: "<p>three</p>" }) },
   { name: "GET /texts/:id/metadata", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/metadata`, as) },

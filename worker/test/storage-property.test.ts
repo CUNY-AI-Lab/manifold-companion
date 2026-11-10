@@ -1,7 +1,7 @@
 // Property test for DESIGN 6: random batches of concurrent operations on shared
 // projects (uploads that succeed or fail, page edits that version, deletes of
 // pages, texts and many texts, splits, merges, content writes that grow and
-// shrink, ownership transfers, recounts, "delete my data"), and after every
+// shrink, giving up an edited full text, ownership transfers, recounts, "delete my data"), and after every
 // batch, once all of it has finished:
 //   - every counter equals its owner's row bytes plus reservations (none left),
 //   - every R2 key a row points at exists, and no object exists that no row
@@ -98,6 +98,8 @@ function operations(r: ReturnType<typeof rng>, s: State, e: Awaited<ReturnType<t
     // content that grows and shrinks: translation (unversioned) and compiled text (versioned)
     async () => { const t = text(); if (t) return call(api(`/texts/${t.id}/translation`), { method: "PUT", body: { translation: "t".repeat(r.int(0, 3000)) }, as: who(), env: e }); },
     async () => { const t = text(); if (t) return post(`/texts/${t.id}/save`, { text: `c${r.int(0, 1e9)}`.repeat(r.int(1, 200)) }); },
+    // give up the edited full text (its bytes move from the text row to a version)
+    async () => { const t = text(); if (t) return call(api(`/texts/${t.id}/compiled`), { method: "DELETE", as: who(), env: e }); },
     // the owner offers the project to another member, who accepts
     async () => {
       const p = r.pick(s.projects);

@@ -87,13 +87,11 @@ Reviewed and found sound: the transfer batch's nonce discipline (concurrent acce
 | Drag and drop, HEIC | see git log | files dropped anywhere on a text's page upload (image text: images and PDFs as pages; PDF text: the PDF is chosen for conversion, images become figures; other files named and refused); a file dropped elsewhere never replaces the app. HEIC: `heic2any` removed (verified under the page CSP: its Emscripten glue calls `new Function`, refused by `script-src 'self'`, and the upload hung silently); the browser decodes HEIC itself (Safari) or the person is told how to convert | 516 |
 | Text pagination | see git log | the project page lists texts 50 at a time (`?page=`), moves count positions across the whole project, the export dialog loads every text | 517 |
 | Per-text settings UI | see git log | “Model settings for this text”: model (and math model for PDF texts), temperature, maximum length, transcription prompt (image texts); the run pickers name the saved model as their default; a viewer reads them | 518 |
+| Full-text editor (image texts) | see git log | “Full text”: the page texts as the export joins them; “Edit as one text”, save (the export then uses it), “Use the pages again” (new `DELETE /texts/:id/compiled`: the full text becomes a version, bytes move row to row, in the storage property test), version history of the full text | 521 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
 ## 4. Not built, stubbed, or different from legacy
-
-API complete, no UI yet in `worker/client` (the legacy UI had these):
-- the compiled full-text editor for image texts (`POST /save`).
 
 Not built yet (owner's list of 2026-11-10, in order): moving texts between projects (bulk "move"; needs R2 copies, a storage move between owners and tombstones); drag-and-drop upload, keyboard shortcuts, unsaved-draft protection with local recovery, pagination beyond 50 texts, HEIC verification under the page CSP; client-side figure extraction from PDFs; the rich-text editor. See the end of this file for the plan.
 

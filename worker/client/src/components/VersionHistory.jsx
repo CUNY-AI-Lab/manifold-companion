@@ -12,7 +12,7 @@ import { useConfirm } from './ConfirmDialog';
  * Restore writes the old content back, and the server saves the current
  * content as a version first. `refreshKey` reloads the list after other saves.
  */
-export default function VersionHistory({ textId, type, pageId, canRestore, onRestored, refreshKey, images, dirty = false }) {
+export default function VersionHistory({ textId, type, pageId, canRestore, onRestored, refreshKey, images, dirty = false, heading }) {
   const { session } = useSession();
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
@@ -46,7 +46,7 @@ export default function VersionHistory({ textId, type, pageId, canRestore, onRes
     <section aria-labelledby={headingId} className="mt-3 rounded-md border border-slate-200 dark:border-slate-700">
       <h3 id={headingId} className="m-0 text-sm">
         <button type="button" className="flex w-full items-center justify-between px-3 py-2 text-left font-medium" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          <span>Version history{type === 'page' ? ' of this page' : ''}</span>
+          <span>{heading ?? `Version history${type === 'page' ? ' of this page' : ''}`}</span>
           <span aria-hidden="true">{open ? '−' : '+'}</span>
         </button>
       </h3>

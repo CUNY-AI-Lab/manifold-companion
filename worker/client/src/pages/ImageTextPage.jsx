@@ -5,6 +5,7 @@ import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { useTextSettings } from '../components/TextSettingsPanel';
+import FullTextPanel from '../components/FullTextPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
@@ -243,6 +244,7 @@ export default function ImageTextPage({ data, reload }) {
           {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
         </div>
       </section>
+      <FullTextPanel textId={text.id} canEdit={canEdit} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} />
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
       <TextSettingsPanel textId={text.id} kind="image" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />

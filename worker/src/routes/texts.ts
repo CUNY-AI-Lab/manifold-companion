@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { requireTextRole, type Access } from "../authz";
 import { readJsonObject, optionalString } from "../body";
-import { byteLength, CAPS, getContent, prepareHtml, reindexText, touchProject, writeContent, writePageText, type TextRow } from "../content";
+import { byteLength, CAPS, clearCompiled, getContent, prepareHtml, reindexText, touchProject, writeContent, writePageText, type TextRow } from "../content";
 import { limits } from "../env";
 import { E } from "../errors";
 import { deleteTextObjects, splitText } from "../text-ops";
@@ -178,6 +178,15 @@ textRoutes.post("/:id/save", async (c) => {
   if (typeof body.text !== "string") throw E.badRequest("Text content is required.");
   if (byteLength(body.text) > CAPS.compiledBytes) throw E.tooLarge(`Text is larger than ${CAPS.compiledBytes} bytes.`);
   await writeContent(c.env, ctx.project, ctx.text, "compiled", body.text, c.get("principal").subject);
+  await reindexText(c.env, ctx.text.id);
+  return c.json({ ok: true });
+});
+
+// Back to the pages: the export uses the page texts again; the full text is kept as a version.
+textRoutes.delete("/:id/compiled", async (c) => {
+  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
+  requireType(ctx, "image_to_markdown");
+  if (!(await clearCompiled(c.env, ctx.project, ctx.text, c.get("principal").subject))) throw E.notFound("This text has no edited full text.");
   await reindexText(c.env, ctx.text.id);
   return c.json({ ok: true });
 });

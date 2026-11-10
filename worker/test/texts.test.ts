@@ -472,3 +472,47 @@ describe("text list pagination", () => {
     expect((await json(await call(api(`/projects/${pid}/texts?limit=x&page=-3`)))).page).toBe(1);
   });
 });
+
+describe("the edited full text of an image text", () => {
+  it("can be given up: the export uses the pages again, the full text stays as a version, no byte is counted twice or lost", async () => {
+    const { storageDrift, objectDrift } = await import("./helpers");
+    const pid = await createProject(ALICE), tid = await createText(ALICE, pid);
+    await seedPage(tid, { filename: "p.jpg", ocr: "Page text.", pageNumber: 1 });
+    await put(`/texts/${tid}/save`, { text: "# Edited full text" }, ALICE, "POST");
+    expect((await json(await call(api(`/texts/${tid}`)))).text.has_compiled).toBe(true);
+    const before = await storageOf(ALICE);
+    expect((await call(api(`/texts/${tid}/compiled`), { method: "DELETE" })).status).toBe(200);
+    expect((await json(await call(api(`/texts/${tid}`)))).text.has_compiled).toBe(false);
+    expect((await json(await call(api(`/texts/${tid}/compiled`)))).text).toBeNull();
+    expect(await storageOf(ALICE)).toBe(before); // the bytes moved from the text row to its version
+    expect(await storageDrift()).toEqual([]);
+    expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
+    const [v] = await versions(tid, "compiled");
+    expect(v).toMatchObject({ reason: "save" });
+    expect((await json(await call(api(`/texts/${tid}/versions/${v!.id}`)))).version.content).toBe("# Edited full text");
+    // nothing left to clear; restoring the version brings it back
+    expect((await call(api(`/texts/${tid}/compiled`), { method: "DELETE" })).status).toBe(404);
+    expect((await call(api(`/texts/${tid}/versions/${v!.id}/revert`), { method: "POST" })).status).toBe(200);
+    expect((await json(await call(api(`/texts/${tid}/compiled`)))).text).toBe("# Edited full text");
+    expect(await storageDrift()).toEqual([]);
+  });
+
+  it("an empty full text leaves no version and its object goes; only image texts; a race with a save loses nothing", async () => {
+    const { storageDrift, objectDrift } = await import("./helpers");
+    const pid = await createProject(ALICE), tid = await createText(ALICE, pid);
+    await put(`/texts/${tid}/save`, { text: "" }, ALICE, "POST");
+    expect((await call(api(`/texts/${tid}/compiled`), { method: "DELETE" })).status).toBe(200);
+    expect(await versions(tid, "compiled")).toHaveLength(0);
+    expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
+    const hp = await createProject(ALICE, "H", { project_type: "pdf_to_html" }), ht = await createText(ALICE, hp);
+    expect((await call(api(`/texts/${ht}/compiled`), { method: "DELETE" })).status).toBe(400);
+    // save and give up at the same moment, many times: each request either lands whole or is refused
+    await put(`/texts/${tid}/save`, { text: "start" }, ALICE, "POST");
+    for (let i = 0; i < 6; i += 1) {
+      const res = await Promise.all([put(`/texts/${tid}/save`, { text: `save ${i} ${"x".repeat(i * 50)}` }, ALICE, "POST"), call(api(`/texts/${tid}/compiled`), { method: "DELETE" })]);
+      for (const r of res) expect([200, 404, 409]).toContain(r.status);
+      expect(await storageDrift()).toEqual([]);
+      expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
+    }
+  });
+});

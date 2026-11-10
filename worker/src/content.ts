@@ -207,6 +207,36 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
   return { bytes };
 }
 
+/**
+ * Stop using an image text's edited full text: the export goes back to the
+ * page texts. The current full text is kept as a `compiled` version (restoring
+ * it brings it back), so its bytes move from the text row to the version row
+ * inside one transaction and no counter changes (DESIGN 6). A compare-and-set
+ * on the pointer: a concurrent save gets `409 edit_conflict` and nothing moves.
+ * An empty full text has no version (as writeContent keeps none) and its
+ * object is deleted after the swap. Returns false when there is none.
+ */
+export async function clearCompiled(env: Env, project: ProjectRow, text: TextRow, authorSubject: string): Promise<boolean> {
+  const oldKey = text.compiled_key;
+  if (!oldKey) return false;
+  const versioned = text.compiled_bytes > 0;
+  const now = nowIso();
+  const statements: D1PreparedStatement[] = [];
+  if (versioned) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO text_versions (id, text_id, content_type, r2_key, bytes, created_by, created_at, reason)
+       SELECT ?1, ?2, 'compiled', ?3, ?4, ?5, ?6, 'save' WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND compiled_key = ?3 AND compiled_bytes = ?4)`,
+    ).bind(newId(), text.id, oldKey, text.compiled_bytes, authorSubject, now));
+  }
+  statements.push(env.DB.prepare("UPDATE texts SET compiled_key = NULL, compiled_bytes = 0, updated_at = ?1 WHERE id = ?2 AND compiled_key = ?3 AND compiled_bytes = ?4").bind(now, text.id, oldKey, text.compiled_bytes));
+  const results = await env.DB.batch(statements);
+  if (results[results.length - 1]?.meta.changes !== 1) throw E.conflict("This text was changed by someone else. Reload and try again.", "edit_conflict");
+  if (versioned) await pruneVersions(env, project, text.id, "compiled");
+  else await env.FILES.delete(oldKey).catch(() => undefined);
+  await touchProject(env.DB, project.id, now);
+  return true;
+}
+
 /** Sanitize-then-store an HTML document. Refuses (never truncates) over-long input. */
 export function prepareHtml(raw: unknown): string {
   if (typeof raw !== "string") throw E.badRequest("html_content must be a string.");
