@@ -18,6 +18,21 @@ export function settingsBody(form, kind) {
   return [body, null];
 }
 
+/**
+ * What a run will take from this text's saved settings, said next to the run
+ * controls: the settings were saved by any editor and are paid from the
+ * allowance of whoever runs, so they are shown before anything is spent.
+ * Returns '' when nothing is saved that changes a run.
+ */
+export function savedRunNote(settings, kind) {
+  if (!settings) return '';
+  const parts = [];
+  if (kind === 'image' && settings.prompt) parts.push('its own transcription prompt (it replaces the built-in one)');
+  if (settings.temperature != null) parts.push(`temperature ${settings.temperature}`);
+  if (settings.max_tokens != null) parts.push(`at most ${settings.max_tokens} tokens per page`);
+  return parts.length ? `This text has saved model settings: ${parts.join(', ')}. See “Model settings for this text” below.` : '';
+}
+
 const toForm = (s = {}) => ({ model: s.model ?? null, math_model: s.math_model ?? null, temperature: s.temperature ?? '', max_tokens: s.max_tokens ?? '', prompt: s.prompt ?? '' });
 
 /** Saved settings of one text, loaded once; the run pickers show the saved model as their default. */

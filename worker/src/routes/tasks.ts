@@ -8,7 +8,7 @@ import { byteLength, CAPS, getContent, reindexText, touchProject, writeContent, 
 import { limits } from "../env";
 import { AppError, E } from "../errors";
 import { freshCorrelation, gatewayClient, runChat } from "../gateway";
-import { loadCatalog, policyFrom, resolveModel, thinksOnMath, type ModelOption } from "../models";
+import { loadCatalog, policyFrom, resolveModel, resolveRunModel, thinksOnMath, type ModelOption } from "../models";
 import { cleanupDocumentHtml, toDataUri } from "../model-output";
 import { formulaRepairTask, MAX_TRANSLATE_CHUNK_CHARS, ocrTask, pageHtmlTask, parseFormulaRepair, parseOcr, parsePageHtml, parseSummary, parseTranslation, summaryTask, translateTask } from "../task-specs";
 import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
@@ -78,7 +78,7 @@ taskRoutes.post("/:id/pages/:pageId/ocr", logged("/{id}/pages/{pageId}/ocr"), as
 
   const settings = await settingsOf(c.env.DB, ctx.text.id);
   const catalog = await catalogFor(c);
-  const model = resolveModel("ocr", catalog, c.env, modelChoice(body), settings.model);
+  const model = resolveRunModel("ocr", catalog, c.env, modelChoice(body), settings.model);
   const prompt = typeof body.prompt === "string" && body.prompt.trim() ? body.prompt.slice(0, 3000) : undefined;
   const obj = await c.env.FILES.get(page.image_key);
   if (!obj) throw E.conflict("The page image is missing.", "object_missing");
@@ -141,7 +141,7 @@ taskRoutes.post("/:id/parse-page", logged("/{id}/parse-page"), async (c) => {
 
   const settings = await settingsOf(c.env.DB, ctx.text.id);
   const catalog = await catalogFor(c);
-  const model = math ? resolveModel("html_math", catalog, c.env, modelChoice(body), settings.math_model) : resolveModel("html_page", catalog, c.env, modelChoice(body), settings.model);
+  const model = math ? resolveRunModel("html_math", catalog, c.env, modelChoice(body), settings.math_model) : resolveRunModel("html_page", catalog, c.env, modelChoice(body), settings.model);
   const result = await runChat(c.env, principal, c.req.raw, pageHtmlTask(model, { imageDataUri: body.image as string, pageNumber, totalPages, hint, math, thinking: math && thinksOnMath(model, policyFrom(c.env)), figures }, settings));
   const { html, shortOutput, warnings } = parsePageHtml(result.text, pageNumber, hint);
   return c.json({

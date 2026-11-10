@@ -411,3 +411,29 @@ describe("saved per-text settings reach the model call", () => {
     expect(third.messages[0].content[0].text).not.toBe("Transcribe this letter exactly.");
   });
 });
+
+describe("a saved model spends the runner's allowance, so it must be one the tool offers", () => {
+  it("a model the policy hides is not used from a text's settings; the person running can still name it for the run", async () => {
+    const e = await gatewayEnv({ chat: () => ({ text: "Transcribed page" }) }, { MODELS_HIDDEN: "vision-thinker" });
+    const { pid, tid, pageId } = await imagePage(ALICE, e);
+    await addMember(ALICE, pid, BOB, "editor");
+    // Bob saves a hidden model on the text; Alice runs OCR without choosing one.
+    expect((await call(api(`/texts/${tid}/settings`), { method: "POST", body: { model: "vision-thinker" }, env: e, as: BOB })).status).toBe(200);
+    const res = await ocr(tid, pageId, e);
+    expect(res.status).toBe(400);
+    expect((await json(res)).error.code).toBe("saved_model_not_offered");
+    expect(chatCalls(e)).toHaveLength(0);
+    // Chosen on purpose for the run, it is allowed (typed ids reach the capability menu).
+    expect((await ocr(tid, pageId, e, { model: "vision-thinker" })).status).toBe(200);
+    expect((await chatBodies(e))[0].model).toBe("vision-thinker");
+  });
+
+  it("the same for the math model of a PDF text", async () => {
+    const e = await gatewayEnv({ chat: () => ({ text: '<section data-page="1"><p>x</p></section>' }) }, { MATH_MODELS_HIDDEN: "vision-thinker-advanced", MATH_MODELS_OFFERED: "" });
+    const { tid } = await pdfText();
+    await call(api(`/texts/${tid}/settings`), { method: "POST", body: { math_model: "vision-thinker-advanced" }, env: e });
+    const res = await call(api(`/texts/${tid}/parse-page`), { method: "POST", body: { image: IMG, page_number: 1, math: true }, env: e });
+    expect((await json(res)).error.code).toBe("saved_model_not_offered");
+    expect(chatCalls(e)).toHaveLength(0);
+  });
+});

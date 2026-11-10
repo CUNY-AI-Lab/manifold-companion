@@ -6,7 +6,7 @@ import { brokenFormulas as brokenTex } from '../lib/math';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
-import TextSettingsPanel, { useTextSettings } from '../components/TextSettingsPanel';
+import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FigurePanel from '../components/FigurePanel';
 import RichEditor from '../components/RichEditor';
 import { browserStorage } from '../lib/storage';
@@ -193,6 +193,7 @@ export default function HtmlTextPage({ data, reload }) {
             <ModelPicker task="html_page" value={model} onChange={setModel} label="Page model" savedDefault={settings?.model ?? null} />
             <ModelPicker task="html_math" value={mathModel} onChange={setMathModel} label="Math and tables model" savedDefault={settings?.math_model ?? null} />
           </div>
+          {savedRunNote(settings, 'pdf') ? <p className="text-xs text-slate-700 dark:text-slate-200">{savedRunNote(settings, 'pdf')}</p> : null}
           {progress ? (
             <p className="flex items-center gap-3 text-sm" role="status">{progress.stage === 'assemble' ? 'Assembling the document' : `${progress.stage === 'render' ? 'Drawing' : 'Converting'} page ${progress.page} of ${progress.total}${progress.math ? ' with the math model' : ''}`}<button className="btn-danger" type="button" onClick={() => controller.current?.abort()}>Cancel</button></p>
           ) : <button className="btn-primary" type="button" disabled={!file} onClick={convert}>{done.current.size ? 'Continue converting' : 'Convert PDF'}</button>}

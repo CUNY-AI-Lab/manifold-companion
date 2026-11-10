@@ -4,7 +4,7 @@ import { API, api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
-import TextSettingsPanel, { useTextSettings } from '../components/TextSettingsPanel';
+import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FullTextPanel from '../components/FullTextPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
@@ -225,6 +225,7 @@ export default function ImageTextPage({ data, reload }) {
           <span className="text-xs text-slate-600 dark:text-slate-300">or drop images or a PDF anywhere on this page</span>
           <label className="text-sm">Rotate uploads <select className="field inline-block w-auto" value={rotate} onChange={(e) => setRotate(Number(e.target.value))}>{[0, 90, 180, 270].map((d) => <option key={d} value={d}>{d}°</option>)}</select></label>
           <ModelPicker task="ocr" value={model} onChange={setModel} label="OCR model" savedDefault={settings?.model ?? null} />
+          {savedRunNote(settings, 'image') ? <p className="w-full text-xs text-slate-700 dark:text-slate-200">{savedRunNote(settings, 'image')}</p> : null}
           {run ? (
             <span className="flex items-center gap-3 text-sm"><span role="status">Reading {run.current} ({run.done} of {run.total})</span><button className="btn-danger" type="button" onClick={() => run.controller.abort()}>Cancel</button></span>
           ) : (

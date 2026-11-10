@@ -191,6 +191,26 @@ export function resolveModel(task: Task, list: ModelOption[], env: Env, ...choic
   return fallback;
 }
 
+/**
+ * The model for one run: a model the person running chose for it (any on the
+ * capability menu, as resolveModel), else the text's saved setting, else the
+ * default. A saved setting was written by any editor of the text and is paid
+ * from the allowance of whoever runs the task, so it must be on the OFFERED
+ * menu: a model the policy hides (Kimi everywhere, Gemma for math) is used only
+ * when the person paying names it for the run.
+ */
+export function resolveRunModel(task: Task, list: ModelOption[], env: Env, chosen: string | null | undefined, saved: string | null | undefined): ModelOption {
+  if (chosen) return resolveModel(task, list, env, chosen);
+  if (saved) {
+    const hit = resolveModel(task, list, env, saved); // model_not_allowed when the catalog no longer offers it for the task at all
+    if (!offeredMenu(task, list, policyFrom(env)).some((m) => m.id === hit.id)) {
+      throw E.badRequest("The model saved for this text is not one this tool offers. Choose a model for this run, or change the text's model settings.", "saved_model_not_offered");
+    }
+    return hit;
+  }
+  return resolveModel(task, list, env);
+}
+
 // ---- reasoning headroom (Tool Maintainer Handoff, LanGames mount notes) -----
 // Reasoning is billed as output: a tight max_tokens yields an empty reply with
 // finish_reason "length". Headroom fixed all six affected models at 4,000;
