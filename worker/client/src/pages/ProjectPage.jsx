@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import useFocusTrap from '../hooks/useFocusTrap';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import SharePanel from '../components/SharePanel';
@@ -8,6 +8,7 @@ import { ErrorNote, MoveButtons, Spinner, useMoveFocus } from '../components/ui'
 import { RetentionBanner } from './Dashboard';
 import * as toc from '../lib/toc';
 import { useConfirm } from '../components/ConfirmDialog';
+import { TEXTS_PER_PAGE, fetchAllTexts, pageCount, pageFromSearch, rangeLabel } from '../lib/paging';
 
 /**
  * Actions on the selected texts: set their status, delete them (after a
@@ -147,7 +148,24 @@ function TocEditor({ items, setItems, texts }) {
   );
 }
 
-function ExportPanel({ project, texts, onClose }) {
+/** The export covers every text of the project, not just the page of the list on screen. */
+function ExportPanel({ project, onClose }) {
+  const [texts, setTexts] = useState(null);
+  const [failed, setFailed] = useState(null);
+  useEffect(() => { fetchAllTexts(api, project.id).then(setTexts, setFailed); }, [project.id]);
+  const dialog = useRef(null);
+  useFocusTrap(dialog, !texts, onClose);
+  if (!texts) {
+    return (
+      <div ref={dialog} role="dialog" aria-modal="true" aria-label="Export for Manifold" tabIndex={-1} className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4">
+        <div className="mt-12 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl dark:bg-slate-800">{failed ? <><ErrorNote error={failed} /><button className="btn-quiet" type="button" onClick={onClose}>Close</button></> : <Spinner label="Loading the texts" />}</div>
+      </div>
+    );
+  }
+  return <ExportForm project={project} texts={texts} onClose={onClose} />;
+}
+
+function ExportForm({ project, texts, onClose }) {
   const canSave = project.role !== 'viewer';
   const [items, setItems] = useState(() => toc.reconcileToc([], texts));
   const [meta, setMeta] = useState({ title: project.name, creators: '', date: new Date().toISOString().slice(0, 10), language: project.default_language, rights: '', description: project.description ?? '' });
@@ -205,9 +223,23 @@ function ExportPanel({ project, texts, onClose }) {
   );
 }
 
+function Pager({ page, total, onPage }) {
+  const count = pageCount(total);
+  if (count <= 1) return null;
+  return (
+    <nav aria-label="Pages of texts" className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+      <button type="button" className="btn-quiet" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous {TEXTS_PER_PAGE}</button>
+      <span>Page {page} of {count}</span>
+      <button type="button" className="btn-quiet" disabled={page >= count} onClick={() => onPage(page + 1)}>Next {TEXTS_PER_PAGE}</button>
+    </nav>
+  );
+}
+
 export default function ProjectPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const page = pageFromSearch(location.search);
   const { refresh } = useSession();
   const confirm = useConfirm();
   const [project, setProject] = useState(null);
@@ -221,14 +253,19 @@ export default function ProjectPage() {
   const [error, setError] = useState(null);
   const load = useCallback(async () => {
     try {
-      const [p, t] = await Promise.all([api.get(`/api/projects/${id}`), api.get(`/api/projects/${id}/texts?limit=50`)]);
+      const [p, t] = await Promise.all([api.get(`/api/projects/${id}`), api.get(`/api/projects/${id}/texts?limit=${TEXTS_PER_PAGE}&page=${page}`)]);
       setProject(p.project);
-      setTexts(t.texts);
       setTotal(t.total);
+      // A page past the end (texts deleted meanwhile) goes to the last page that exists.
+      if (t.texts.length === 0 && t.total > 0 && page > 1) { navigate(`?page=${pageCount(t.total)}`, { replace: true }); return; }
+      setTexts(t.texts);
     } catch (e) { setError(e); }
-  }, [id]);
+  }, [id, page, navigate]);
+  const offset = (page - 1) * TEXTS_PER_PAGE;
+  const goToPage = (n) => { setChosen([]); navigate(n === 1 ? '?' : `?page=${n}`); };
+  // `index` is the text's position in the whole project (the list shows one page of it).
   const moveText = async (index, dir) => {
-    const t = texts[index];
+    const t = texts[index - offset];
     setError(null);
     try {
       const r = await api.post(`/api/projects/${id}/texts/${t.id}/move`, { to: index + 1 + (dir === 'up' ? -1 : 1) });
@@ -249,7 +286,7 @@ export default function ProjectPage() {
         <h1 className="doc-title text-3xl">{project.name}</h1>
         <span className="text-xs text-slate-500 dark:text-slate-400">{project.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}, you are {project.role === 'owner' ? 'the owner' : `a ${project.role}`}</span>
         <div className="ml-auto flex gap-2">
-          <button className="btn-quiet" type="button" onClick={() => setPanel('export')} disabled={texts.length === 0}>Export</button>
+          <button className="btn-quiet" type="button" onClick={() => setPanel('export')} disabled={total === 0}>Export</button>
           {isOwner ? <button className="btn-quiet" type="button" onClick={() => setPanel('share')}>Share</button> : null}
         </div>
       </div>
@@ -258,21 +295,23 @@ export default function ProjectPage() {
       <TransferOffer projectId={id} onAccepted={() => { load(); refresh(); }} />
       {isOwner ? <ProjectDetails project={project} onSaved={load} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
-      <ul className="rowlist mt-6 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      {total > TEXTS_PER_PAGE ? <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">{rangeLabel(page, total)}</p> : null}
+      <ul className="rowlist mt-2 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         {texts.length === 0 ? <li className="p-4 text-sm text-slate-500 dark:text-slate-400">{canEdit ? 'No texts yet. Add one below, then upload its pages.' : 'No texts yet.'}</li> : null}
         {texts.map((t) => (
           <li key={t.id} className="flex flex-wrap items-center gap-3 p-4">
             {canEdit ? <input type="checkbox" aria-label={`Select ${t.name}`} checked={chosen.includes(t.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, t.id] : chosen.filter((x) => x !== t.id))} /> : null}
-            {canEdit && texts.length > 1 ? <MoveButtons label={t.name} index={texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
+            {canEdit && total > 1 ? <MoveButtons label={t.name} index={offset + texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
             <span className="text-xs text-slate-500 dark:text-slate-400">{project.project_type === 'pdf_to_html' ? (t.has_html ? 'converted' : 'not converted yet') : `${t.page_count} pages, ${t.status}`}</span>
             {canEdit ? <button className="btn-quiet ml-auto" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this text?', message: `Delete “${t.name}”, its pages, files and versions, for every member? This cannot be undone.`, confirmLabel: 'Delete text', danger: true }))) return; try { await api.del(`/api/texts/${t.id}`); load(); refresh(); } catch (e) { setError(e); } }}>Delete</button> : null}
           </li>
         ))}
       </ul>
+      <Pager page={page} total={total} onPage={goToPage} />
       {canEdit && chosen.length ? <BulkBar project={project} texts={texts.filter((t) => chosen.includes(t.id))} onDone={(msg) => { setChosen([]); setMoved(msg); load(); refresh(); }} onError={setError} onClear={() => setChosen([])} /> : null}
       <p className="sr-only" role="status">{moved}</p>
-      {canEdit && texts.length > 1 ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Texts export in this order. Use the arrows to move a text up or down.</p> : null}
+      {canEdit && total > 1 ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Texts export in this order. Use the arrows to move a text up or down{total > TEXTS_PER_PAGE ? '; the first or last text of a page moves onto the next page' : ''}.</p> : null}
       {canEdit ? (
         <form className="mt-4 flex gap-2" onSubmit={async (e) => { e.preventDefault(); try { const { text } = await api.post(`/api/projects/${id}/texts`, { name }); navigate(`/texts/${text.id}`); } catch (err) { setError(err); } }}>
           <label className="sr-only" htmlFor="new-text">New text name</label>
@@ -286,7 +325,7 @@ export default function ProjectPage() {
         )}
       </div>
       {panel === 'share' ? <SharePanel projectId={id} onClose={() => setPanel(null)} /> : null}
-      {panel === 'export' ? <ExportPanel project={project} texts={texts} onClose={() => setPanel(null)} /> : null}
+      {panel === 'export' ? <ExportPanel project={project} onClose={() => setPanel(null)} /> : null}
     </div>
   );
 }

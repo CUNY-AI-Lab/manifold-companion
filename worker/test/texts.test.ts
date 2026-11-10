@@ -448,3 +448,27 @@ describe("moving texts and pages", () => {
     expect(md.indexOf("First page, corrected")).toBeLessThan(md.indexOf("Second page"));
   });
 });
+
+describe("text list pagination", () => {
+  it("pages of at most 50 cover every text once, in export order, with the total", async () => {
+    const pid = await createProject(ALICE, "Many");
+    const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    const ids = Array.from({ length: 123 }, () => crypto.randomUUID());
+    // Seeded directly (123 POSTs would be slow); sort_order is what the route orders by.
+    await env.DB.batch(ids.map((id, i) => env.DB.prepare("INSERT INTO texts (id, project_id, name, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)").bind(id, pid, `T${i + 1}`, i + 1, now)));
+    const seen: string[] = [];
+    for (let page = 1; page <= 3; page += 1) {
+      const r = await json(await call(api(`/projects/${pid}/texts?limit=50&page=${page}`)));
+      expect(r.total).toBe(123);
+      expect(r.limit).toBe(50);
+      expect(r.page).toBe(page);
+      expect(r.texts).toHaveLength(page < 3 ? 50 : 23);
+      seen.push(...r.texts.map((t: { id: string }) => t.id));
+    }
+    expect(seen).toEqual(ids);
+    expect((await json(await call(api(`/projects/${pid}/texts?limit=50&page=4`)))).texts).toEqual([]);
+    // a larger limit is capped at 50; nonsense falls back to the defaults
+    expect((await json(await call(api(`/projects/${pid}/texts?limit=500`)))).texts).toHaveLength(50);
+    expect((await json(await call(api(`/projects/${pid}/texts?limit=x&page=-3`)))).page).toBe(1);
+  });
+});
