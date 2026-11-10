@@ -1,5 +1,7 @@
 # Manifold Companion
 
+> The CAIL-stack port (Cloudflare Worker, D1, R2, Doorway mount) lives in [`worker/`](worker/); start with `worker/docs/DESIGN.md`. The Express app below is the legacy implementation.
+
 A document-processing platform built by the [CUNY AI Lab](https://gc.cuny.edu/) that transforms scanned pages, historical manuscripts, and digital PDFs into publication-ready texts for [CUNY's Manifold instance](https://cuny.manifoldapp.org/).
 
 ## Workflows

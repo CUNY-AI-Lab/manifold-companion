@@ -1,0 +1,87 @@
+import { E } from "./errors";
+import { projectPrefix } from "./r2-keys";
+import type { Env } from "./env";
+import { limits } from "./env";
+
+/** Delete every object under a prefix. Resumable: safe to call again after a failure. */
+export async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<number> {
+  let deleted = 0;
+  for (;;) {
+    const page = await bucket.list({ prefix, limit: 1000 });
+    if (page.objects.length === 0) break;
+    await bucket.delete(page.objects.map((o) => o.key));
+    deleted += page.objects.length;
+    if (!page.truncated) break;
+  }
+  return deleted;
+}
+
+/** Bytes of R2 content this project's rows account for. */
+export async function projectStorageBytes(db: D1Database, projectId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT
+        COALESCE((SELECT SUM(t.html_bytes + t.translation_bytes + t.source_pdf_bytes) FROM texts t WHERE t.project_id = ?1), 0) +
+        COALESCE((SELECT SUM(p.image_bytes) FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?1), 0) +
+        COALESCE((SELECT SUM(v.bytes) FROM text_versions v JOIN texts t ON t.id = v.text_id WHERE t.project_id = ?1), 0) AS bytes`,
+    )
+    .bind(projectId)
+    .first<{ bytes: number }>();
+  return row?.bytes ?? 0;
+}
+
+/**
+ * Atomically add `bytes` to the OWNER's counter, refusing if it would pass the
+ * quota. The check and the increment are one statement, so concurrent uploads
+ * cannot jointly overshoot.
+ */
+export async function reserveStorage(env: Env, ownerSubject: string, bytes: number): Promise<void> {
+  if (bytes <= 0) return;
+  const quota = limits(env).storageQuotaBytes;
+  const result = await env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + ?1 WHERE subject = ?2 AND storage_bytes + ?1 <= ?3")
+    .bind(bytes, ownerSubject, quota)
+    .run();
+  if (result.meta.changes !== 1) throw E.quota("This would exceed the storage allowance for this project's owner.");
+}
+
+export async function releaseStorage(db: D1Database, ownerSubject: string, bytes: number): Promise<void> {
+  if (bytes <= 0) return;
+  await db.prepare("UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?1) WHERE subject = ?2").bind(bytes, ownerSubject).run();
+}
+
+/**
+ * Delete a project: R2 objects first (so a failure leaves rows that still point
+ * at what remains and a retry finishes the job), then one atomic D1 batch that
+ * releases the owner's bytes and removes the project (cascading to texts,
+ * pages, versions, annotations, members, invites, FTS rows via trigger).
+ */
+export async function deleteProject(env: Env, projectId: string): Promise<boolean> {
+  const project = await env.DB.prepare("SELECT owner_subject FROM projects WHERE id = ?1").bind(projectId).first<{ owner_subject: string }>();
+  if (!project) return false;
+  const bytes = await projectStorageBytes(env.DB, projectId);
+  await deleteR2Prefix(env.FILES, projectPrefix(projectId));
+  await env.DB.batch([
+    env.DB.prepare("UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?1) WHERE subject = ?2").bind(bytes, project.owner_subject),
+    env.DB.prepare("DELETE FROM projects WHERE id = ?1").bind(projectId),
+  ]);
+  return true;
+}
+
+/**
+ * "Delete my data": every project this person owns (with its objects), then the
+ * profile, whose deletion cascades to memberships, annotations, notifications,
+ * preferences and invites they created. Content other people own that this
+ * person only touched (versions they saved) stays, with the author cleared.
+ */
+export async function deleteProfileData(env: Env, subject: string): Promise<{ projects: number }> {
+  let projects = 0;
+  for (;;) {
+    const batch = await env.DB.prepare("SELECT id FROM projects WHERE owner_subject = ?1 LIMIT 25").bind(subject).all<{ id: string }>();
+    if (batch.results.length === 0) break;
+    for (const { id } of batch.results) {
+      if (await deleteProject(env, id)) projects += 1;
+    }
+  }
+  await env.DB.prepare("DELETE FROM profiles WHERE subject = ?1").bind(subject).run();
+  return { projects };
+}

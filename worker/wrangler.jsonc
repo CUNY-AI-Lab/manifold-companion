@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Manifold Companion on the CAIL stack: mounted by CAIL Doorway at
+  // https://tools.ailab.gc.cuny.edu/manifold-companion/ (person-funded: the
+  // signed-in person's own Gateway budget pays for model calls).
+  "name": "cail-manifold-companion",
+  "account_id": "452c33847cf5cb1e46f391fca32fd1b5",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-25",
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal", "request_signal_passthrough"],
+  // Reached only through Doorway's service binding; no public hostname.
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  // The built React SPA (`npm run build` at the repository root; Vite `base` is
+  // /manifold-companion/). The Worker runs first so every request is gated.
+  "assets": {
+    "directory": "../client/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  "services": [{ "binding": "GATEWAY", "service": "cail-model-api" }],
+  // PLACEHOLDER IDs: create with `wrangler d1 create cail-manifold-companion`
+  // and `wrangler r2 bucket create cail-manifold-companion-files`, then paste the
+  // D1 id below. Apply schema with `wrangler d1 migrations apply DB --remote`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cail-manifold-companion",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "cail-manifold-companion-files" }],
+  // Daily retention sweep (warn, then delete projects 180 days after last edit), 06:17 UTC.
+  "triggers": { "crons": ["17 6 * * *"] },
+  "exports": { "ManifoldCompanionReadiness": { "type": "worker" } },
+  // CAIL_IDENTITY_JWKS is a Worker secret (Doorway's public JWKS), not a var.
+  "vars": {
+    "CAIL_API_BASE": "https://tools.ailab.gc.cuny.edu",
+    "CAIL_IDENTITY_ISSUER": "https://tools.ailab.gc.cuny.edu/cail-sso",
+    "CAIL_CANONICAL_ORIGIN": "https://tools.ailab.gc.cuny.edu",
+    "CAIL_LOG_ENV": "production",
+    "STORAGE_QUOTA_BYTES": "524288000",
+    "MAX_FILE_BYTES": "10485760",
+    "MAX_PROJECT_PAGES": "300",
+    "RETENTION_DAYS": "180",
+    "RETENTION_WARN_DAYS": "30"
+  }
+}

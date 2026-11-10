@@ -1,0 +1,12 @@
+{
+  // Test-only bindings for the Vitest/workerd run. Production config is ../wrangler.jsonc.
+  "name": "manifold-companion-test",
+  "compatibility_date": "2026-03-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "test" },
+    // Migrated one step at a time, to compare against DB (all at once).
+    { "binding": "DB_STEPWISE", "database_name": "test-stepwise" }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "test-files" }]
+}

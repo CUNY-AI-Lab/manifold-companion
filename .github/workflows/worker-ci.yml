@@ -1,0 +1,72 @@
+name: Worker CI
+
+# CAIL-stack Worker (worker/). No deploy job: releases go through the CAIL
+# Admission/Doorway receiver-first process, see worker/docs/HANDOFF.md.
+on:
+  pull_request:
+    paths:
+      - "worker/**"
+      - "client/**"
+      - ".github/workflows/worker-ci.yml"
+  push:
+    branches:
+      - main
+      - cail-stack
+    paths:
+      - "worker/**"
+      - "client/**"
+      - ".github/workflows/worker-ci.yml"
+
+concurrency:
+  group: manifold-companion-worker-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  WRANGLER_SEND_METRICS: "false"
+  CI: "true"
+
+jobs:
+  worker:
+    name: typecheck, test, dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            worker/package-lock.json
+
+      # The Worker serves the built SPA, so the dry-run needs client/dist.
+      - name: Install client dependencies
+        run: npm ci --workspace client --include-workspace-root --ignore-scripts
+
+      - name: Build client
+        run: npm run build --workspace client
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: worker
+        run: npm run typecheck
+
+      - name: Test (workerd, D1 and R2 via Miniflare)
+        working-directory: worker
+        run: npm test
+
+      - name: Deploy dry run
+        working-directory: worker
+        run: npx wrangler deploy --dry-run --outdir .wrangler/dry-run
