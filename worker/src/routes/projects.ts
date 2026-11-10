@@ -3,7 +3,7 @@ import { requireRole } from "../authz";
 import { optionalString, readJsonObject, requiredString } from "../body";
 import { limits } from "../env";
 import { E } from "../errors";
-import { deleteProject } from "../storage";
+import { deleteProject, ownedBy } from "../storage";
 import { notify } from "../notify";
 import { addDays, isSubject, newId, nowIso } from "../util";
 import { projectInviteRoutes as inviteRoutes } from "./project-invites";
@@ -114,7 +114,11 @@ projectRoutes.put("/:id", async (c) => {
 projectRoutes.delete("/:id", async (c) => {
   const { subject } = c.get("principal");
   const { project } = await requireRole(c.env.DB, subject, c.req.param("id"), "owner");
-  await deleteProject(c.env, project.id);
+  // Re-checked inside the deleting transaction: ownership may have moved since the check above.
+  if (!(await deleteProject(c.env, project.id, ownedBy(subject)))) {
+    const still = await c.env.DB.prepare("SELECT 1 AS x FROM projects WHERE id = ?1").bind(project.id).first();
+    if (still) throw E.conflict("This project now has another owner; only they can delete it.", "owner_changed");
+  }
   return c.json({ deleted: true });
 });
 

@@ -258,21 +258,35 @@ export async function processCleanup(env: Env, nowMs = Date.now(), limit = 100):
   return { swept, failed };
 }
 
+/** A delete guard: the project is still owned by `subject` inside the deleting transaction. */
+export const ownedBy = (subject: string): DeleteGuard => ({ sql: "owner_subject = ?G1", binds: [subject] });
+
 /**
  * "Delete my data": every project this person owns (with its objects), then the
  * profile, whose deletion cascades to memberships, annotations, notifications,
  * preferences and invites they created. Content other people own that this
  * person only touched (versions they saved) stays, with the author cleared.
+ *
+ * Ownership can move while this runs (a transfer accepted by or from this
+ * person), so each project is deleted only if this person still owns it in the
+ * deleting transaction, and the profile only once it owns nothing: a project
+ * left to the profile's cascade would lose its rows without a tombstone, and
+ * its objects would never be swept.
  */
 export async function deleteProfileData(env: Env, subject: string): Promise<{ projects: number }> {
   let projects = 0;
-  for (;;) {
-    const batch = await env.DB.prepare("SELECT id FROM projects WHERE owner_subject = ?1 LIMIT 25").bind(subject).all<{ id: string }>();
-    if (batch.results.length === 0) break;
-    for (const { id } of batch.results) {
-      if (await deleteProject(env, id)) projects += 1;
+  for (let round = 0; round < 5; round += 1) {
+    for (;;) {
+      const batch = await env.DB.prepare("SELECT id FROM projects WHERE owner_subject = ?1 LIMIT 25").bind(subject).all<{ id: string }>();
+      if (batch.results.length === 0) break;
+      for (const { id } of batch.results) {
+        if (await deleteProject(env, id, ownedBy(subject))) projects += 1;
+      }
     }
+    const gone = await env.DB.prepare("DELETE FROM profiles WHERE subject = ?1 AND NOT EXISTS (SELECT 1 FROM projects WHERE owner_subject = ?1)").bind(subject).run();
+    if (gone.meta.changes === 1) return { projects };
+    const left = await env.DB.prepare("SELECT 1 AS x FROM profiles WHERE subject = ?1").bind(subject).first();
+    if (!left) return { projects };
   }
-  await env.DB.prepare("DELETE FROM profiles WHERE subject = ?1").bind(subject).run();
-  return { projects };
+  throw E.conflict("Your projects changed while they were being deleted. Try again.", "retry");
 }

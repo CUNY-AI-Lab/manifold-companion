@@ -154,3 +154,49 @@ describe("a request that outlives its reservation", () => {
     expect(await storageOf(ALICE)).toBe(4000);
   });
 });
+
+describe("deleting by an owner who stopped owning the project meanwhile", () => {
+  it("delete my data never deletes a project transferred away after it listed its projects", async () => {
+    const { hookedDb } = await import("./helpers");
+    const { pid } = await sharedProject();
+    const offer = await offerTo(pid, BOB);
+    const e = await makeEnv();
+    e.DB = hookedDb(env.DB, /SELECT id FROM projects WHERE owner_subject/, async () => expect((await accept(offer, BOB)).status).toBe(200));
+    const res = await call(api("/me/data"), { method: "DELETE", as: ALICE, env: e, body: { confirm: "delete my data" } });
+    expect(res.status).toBe(200);
+    expect(await env.DB.prepare("SELECT owner_subject FROM projects WHERE id = ?1").bind(pid).first()).toEqual({ owner_subject: BOB });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM profiles WHERE subject = ?1").bind(ALICE).first()).toEqual({ n: 0 });
+    expect(await storageDrift()).toEqual([]);
+    expect(await storageOf(BOB)).toBe(4000);
+    expect((await env.FILES.list({ prefix: `p/${pid}/` })).objects).toHaveLength(1);
+  });
+
+  it("delete my data deletes, with its objects, a project that became theirs while it ran", async () => {
+    const { hookedDb } = await import("./helpers");
+    const bobs = await createProject(BOB, "Bob's");
+    const bt = await createText(BOB, bobs);
+    expect((await upload(api(`/texts/${bt}/pages`), JPEG(700), BOB, { query: { filename: "b.jpg" } })).status).toBe(201);
+    await addMember(BOB, bobs, ALICE, "editor");
+    const offer = await offerTo(bobs, ALICE, BOB);
+    await createProject(ALICE, "Alice's");
+    const e = await makeEnv();
+    e.DB = hookedDb(env.DB, /SELECT id FROM projects WHERE owner_subject/, async () => expect((await accept(offer, ALICE)).status).toBe(200));
+    const res = await call(api("/me/data"), { method: "DELETE", as: ALICE, env: e, body: { confirm: "delete my data" } });
+    expect(res.status).toBe(200);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE id = ?1").bind(bobs).first()).toEqual({ n: 0 });
+    expect((await env.FILES.list({ prefix: `p/${bobs}/` })).objects).toHaveLength(0);
+    expect(await storageDrift()).toEqual([]);
+  });
+
+  it("deleting a project after ownership moved to someone else is refused", async () => {
+    const { hookedDb } = await import("./helpers");
+    const { pid } = await sharedProject();
+    const offer = await offerTo(pid, BOB);
+    const e = await makeEnv();
+    e.DB = hookedDb(env.DB, /FROM projects p JOIN project_members m/, async () => expect((await accept(offer, BOB)).status).toBe(200));
+    const res = await call(api(`/projects/${pid}`), { method: "DELETE", as: ALICE, env: e });
+    expect(res.status).toBe(409);
+    expect(await env.DB.prepare("SELECT owner_subject FROM projects WHERE id = ?1").bind(pid).first()).toEqual({ owner_subject: BOB });
+    expect(await storageDrift()).toEqual([]);
+  });
+});
