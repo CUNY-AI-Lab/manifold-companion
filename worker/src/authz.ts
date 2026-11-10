@@ -1,4 +1,4 @@
-import { E } from "./errors";
+import { AppError, E } from "./errors";
 import { isUuid } from "./util";
 
 export type Role = "viewer" | "editor" | "owner";
@@ -45,4 +45,19 @@ export async function requireRole(db: D1Database, subject: string, projectId: st
   const { member_role, ...project } = row;
   if (RANK[member_role] < RANK[minRole]) throw E.forbidden("Your role on this project does not allow that.", "insufficient_role");
   return { project, role: member_role };
+}
+
+/** Authorize through a text's project. Same non-disclosure rule as requireRole. */
+export async function requireTextRole(db: D1Database, subject: string, textId: string, minRole: Role): Promise<Access & { text: import("./content").TextRow }> {
+  if (!isUuid(textId)) throw E.notFound("Text not found.");
+  const text = await db.prepare("SELECT * FROM texts WHERE id = ?1").bind(textId).first<import("./content").TextRow>();
+  if (!text) throw E.notFound("Text not found.");
+  try {
+    const access = await requireRole(db, subject, text.project_id, minRole);
+    return { ...access, text };
+  } catch (error) {
+    // A stranger must not learn that the text exists: same message as a missing text.
+    if (error instanceof AppError && error.status === 404) throw E.notFound("Text not found.");
+    throw error;
+  }
 }

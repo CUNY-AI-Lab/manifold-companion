@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALICE, BOB, CAROL, addMember, api, call, createProject, invite, json } from "./helpers";
+import { ALICE, BOB, CAROL, addMember, api, call, createProject, createText, invite, json, seedPage } from "./helpers";
 import { canonicalTestSubject } from "@cuny-ai-lab/cail-identity/testing";
 
 const DAVE = canonicalTestSubject("dave");
@@ -9,32 +9,76 @@ const ACTORS: Actor[] = ["owner", "editor", "viewer", "stranger"];
 const WHO: Record<Actor, string> = { owner: ALICE, editor: BOB, viewer: CAROL, stranger: DAVE };
 const RANK = { stranger: 0, viewer: 1, editor: 2, owner: 3 } as const;
 
-async function setup(): Promise<{ id: string; inviteId: string }> {
+interface Ctx { id: string; inviteId: string; textId: string; pageId: string; pageVersionId: string; hid: string; htextId: string; htmlVersionId: string; textB: string }
+
+async function setup(): Promise<Ctx> {
   const id = await createProject(ALICE, "Matrix");
   await addMember(ALICE, id, BOB, "editor");
   await addMember(ALICE, id, CAROL, "viewer");
   const inv = await invite(ALICE, id, "viewer");
-  return { id, inviteId: inv.id };
+  const textId = await createText(ALICE, id, "T1");
+  const textB = await createText(ALICE, id, "T2");
+  const pageId = await seedPage(textId, { filename: "a.jpg", ocr: "first", pageNumber: 1 });
+  await call(api(`/texts/${textId}/pages/${pageId}`), { method: "POST", body: { text: "second" } });
+  const pageVersionId = (await json(await call(api(`/texts/${textId}/versions?type=page`)))).versions[0].id;
+  // a second, PDF-to-HTML project for the html routes
+  const hid = await createProject(ALICE, "Matrix HTML", { project_type: "pdf_to_html" });
+  await addMember(ALICE, hid, BOB, "editor");
+  await addMember(ALICE, hid, CAROL, "viewer");
+  const htextId = await createText(ALICE, hid, "H1");
+  await call(api(`/texts/${htextId}/html`), { method: "PUT", body: { html_content: "<p>one</p>" } });
+  await call(api(`/texts/${htextId}/html`), { method: "PUT", body: { html_content: "<p>two</p>" } });
+  const htmlVersionId = (await json(await call(api(`/texts/${htextId}/versions?type=html`)))).versions[0].id;
+  return { id, inviteId: inv.id, textId, textB, pageId, pageVersionId, hid, htextId, htmlVersionId };
 }
 
 interface Route {
   name: string;
   min: "viewer" | "editor" | "owner";
   ok: number;
-  run: (ctx: { id: string; inviteId: string }, as: string) => Promise<Response>;
+  run: (ctx: Ctx, as: string) => Promise<Response>;
 }
 
-// Every project-scoped route this phase adds. Adding a route without adding it
-// here is caught by the route-coverage test below.
+const j = (path: string, as: string, method = "GET", body?: unknown) => call(api(path), { as, method, ...(body === undefined ? {} : { body }) });
+
+// Every project- or text-scoped route the app exposes. A route added without a row
+// here fails the route-coverage test below.
 const ROUTES: Route[] = [
-  { name: "GET /projects/:id", min: "viewer", ok: 200, run: ({ id }, as) => call(api(`/projects/${id}`), { as }) },
-  { name: "PUT /projects/:id", min: "owner", ok: 200, run: ({ id }, as) => call(api(`/projects/${id}`), { method: "PUT", as, body: { name: "Renamed" } }) },
-  { name: "DELETE /projects/:id", min: "owner", ok: 200, run: ({ id }, as) => call(api(`/projects/${id}`), { method: "DELETE", as }) },
-  { name: "GET /projects/:id/members", min: "viewer", ok: 200, run: ({ id }, as) => call(api(`/projects/${id}/members`), { as }) },
-  { name: "DELETE /projects/:id/members/:other", min: "owner", ok: 200, run: ({ id }, as) => call(api(`/projects/${id}/members/${EVE}`), { method: "DELETE", as }) },
-  { name: "POST /projects/:id/invites", min: "owner", ok: 201, run: ({ id }, as) => call(api(`/projects/${id}/invites`), { method: "POST", as, body: { role: "viewer" } }) },
-  { name: "GET /projects/:id/invites", min: "owner", ok: 200, run: ({ id }, as) => call(api(`/projects/${id}/invites`), { as }) },
-  { name: "DELETE /projects/:id/invites/:inviteId", min: "owner", ok: 200, run: ({ id, inviteId }, as) => call(api(`/projects/${id}/invites/${inviteId}`), { method: "DELETE", as }) },
+  { name: "GET /projects/:id", min: "viewer", ok: 200, run: ({ id }, as) => j(`/projects/${id}`, as) },
+  { name: "PUT /projects/:id", min: "owner", ok: 200, run: ({ id }, as) => j(`/projects/${id}`, as, "PUT", { name: "Renamed" }) },
+  { name: "DELETE /projects/:id", min: "owner", ok: 200, run: ({ id }, as) => j(`/projects/${id}`, as, "DELETE") },
+  { name: "GET /projects/:id/members", min: "viewer", ok: 200, run: ({ id }, as) => j(`/projects/${id}/members`, as) },
+  { name: "DELETE /projects/:id/members/:subject", min: "owner", ok: 200, run: ({ id }, as) => j(`/projects/${id}/members/${EVE}`, as, "DELETE") },
+  { name: "POST /projects/:id/invites", min: "owner", ok: 201, run: ({ id }, as) => j(`/projects/${id}/invites`, as, "POST", { role: "viewer" }) },
+  { name: "GET /projects/:id/invites", min: "owner", ok: 200, run: ({ id }, as) => j(`/projects/${id}/invites`, as) },
+  { name: "DELETE /projects/:id/invites/:inviteId", min: "owner", ok: 200, run: ({ id, inviteId }, as) => j(`/projects/${id}/invites/${inviteId}`, as, "DELETE") },
+  { name: "GET /projects/:id/texts", min: "viewer", ok: 200, run: ({ id }, as) => j(`/projects/${id}/texts`, as) },
+  { name: "POST /projects/:id/texts", min: "editor", ok: 201, run: ({ id }, as) => j(`/projects/${id}/texts`, as, "POST", { name: "New" }) },
+  { name: "PUT /projects/:id/texts/reorder", min: "editor", ok: 200, run: ({ id, textId, textB }, as) => j(`/projects/${id}/texts/reorder`, as, "PUT", { textIds: [textB, textId] }) },
+  { name: "POST /projects/:id/texts/bulk-status", min: "editor", ok: 200, run: ({ id, textId }, as) => j(`/projects/${id}/texts/bulk-status`, as, "POST", { textIds: [textId], status: "reviewed" }) },
+  { name: "POST /projects/:id/texts/bulk-delete", min: "editor", ok: 200, run: ({ id, textB }, as) => j(`/projects/${id}/texts/bulk-delete`, as, "POST", { textIds: [textB] }) },
+  { name: "POST /projects/:id/texts/merge", min: "editor", ok: 201, run: ({ id, textId, textB }, as) => j(`/projects/${id}/texts/merge`, as, "POST", { textIds: [textId, textB], name: "Merged" }) },
+  { name: "GET /texts/:id", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}`, as) },
+  { name: "PUT /texts/:id", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}`, as, "PUT", { name: "Renamed text" }) },
+  { name: "DELETE /texts/:id", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}`, as, "DELETE") },
+  { name: "GET /texts/:id/pages", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/pages`, as) },
+  { name: "PUT /texts/:id/pages/reorder", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/reorder`, as, "PUT", { pageIds: [pageId] }) },
+  { name: "POST /texts/:id/pages/:pageId", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/${pageId}`, as, "POST", { text: "edited" }) },
+  { name: "DELETE /texts/:id/pages/:pageId", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/${pageId}`, as, "DELETE") },
+  { name: "GET /texts/:id/result", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/result`, as) },
+  { name: "GET /texts/:id/compiled", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/compiled`, as) },
+  { name: "POST /texts/:id/save", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/save`, as, "POST", { text: "# compiled" }) },
+  { name: "GET /texts/:id/html", min: "viewer", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/html`, as) },
+  { name: "PUT /texts/:id/html", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/html`, as, "PUT", { html_content: "<p>three</p>" }) },
+  { name: "GET /texts/:id/metadata", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/metadata`, as) },
+  { name: "POST /texts/:id/metadata", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/metadata`, as, "POST", { dc_title: "T" }) },
+  { name: "GET /texts/:id/settings", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/settings`, as) },
+  { name: "POST /texts/:id/settings", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/settings`, as, "POST", { temperature: 0.2 }) },
+  { name: "DELETE /texts/:id/settings", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/settings`, as, "DELETE") },
+  { name: "GET /texts/:id/versions", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/versions?type=page`, as) },
+  { name: "GET /texts/:id/versions/:versionId", min: "viewer", ok: 200, run: ({ textId, pageVersionId }, as) => j(`/texts/${textId}/versions/${pageVersionId}`, as) },
+  { name: "POST /texts/:id/versions/:versionId/revert", min: "editor", ok: 200, run: ({ textId, pageVersionId }, as) => j(`/texts/${textId}/versions/${pageVersionId}/revert`, as, "POST") },
+  { name: "POST /texts/:id/split", min: "editor", ok: 201, run: ({ textId }, as) => j(`/texts/${textId}/split`, as, "POST", { splits: [{ name: "A", pages: [1] }, { name: "B", pages: [] }].map((s, i) => (i === 0 ? s : { name: "B", pages: [9] })) }) },
 ];
 
 describe("authorization matrix: owner / editor / viewer / stranger x every project route", () => {
@@ -144,15 +188,14 @@ describe("authorization matrix: owner / editor / viewer / stranger x every proje
     expect((await json(cleared)).project.description).toBeNull();
   });
 
-  it("route coverage: the matrix lists every project-scoped route the app exposes", async () => {
+  it("route coverage: the matrix lists every project- or text-scoped route the app exposes", async () => {
     const { default: app } = await import("../src/app");
     const registered = app.routes
-      .filter((r) => r.path.includes("/projects/:id") && r.method !== "ALL")
-      .map((r) => `${r.method} ${r.path.replace("/manifold-companion/api", "")}`);
-    const covered = new Set(ROUTES.map((r) => r.name.replace(/:other|:inviteId/g, (m) => (m === ":other" ? ":subject" : m))));
-    for (const r of registered) {
-      const normalized = r.replace("/members/:subject", "/members/:subject");
-      expect(covered.has(normalized), `route ${r} is not in the authorization matrix`).toBe(true);
-    }
+      .filter((r) => (r.path.includes("/projects/:id") || r.path.includes("/texts/:id")) && r.method !== "ALL")
+      .map((r) => `${r.method} ${r.path.replace("/manifold-companion/api", "").replace(/\/$/, "")}`);
+    const covered = new Set(ROUTES.map((r) => r.name));
+    expect(registered.length).toBeGreaterThan(30);
+    for (const r of registered) expect(covered.has(r), `route ${r} is not in the authorization matrix`).toBe(true);
+    for (const name of covered) expect(registered.includes(name), `matrix row ${name} matches no route`).toBe(true);
   });
 });

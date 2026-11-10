@@ -21,7 +21,7 @@ export async function projectStorageBytes(db: D1Database, projectId: string): Pr
   const row = await db
     .prepare(
       `SELECT
-        COALESCE((SELECT SUM(t.html_bytes + t.translation_bytes + t.source_pdf_bytes) FROM texts t WHERE t.project_id = ?1), 0) +
+        COALESCE((SELECT SUM(t.html_bytes + t.translation_bytes + t.source_pdf_bytes + t.compiled_bytes) FROM texts t WHERE t.project_id = ?1), 0) +
         COALESCE((SELECT SUM(p.image_bytes) FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?1), 0) +
         COALESCE((SELECT SUM(v.bytes) FROM text_versions v JOIN texts t ON t.id = v.text_id WHERE t.project_id = ?1), 0) AS bytes`,
     )

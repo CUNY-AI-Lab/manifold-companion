@@ -110,3 +110,44 @@ export async function addMember(owner: string, projectId: string, subject: strin
   const res = await redeem(subject, inv.token);
   if (res.status !== 201) throw new Error(`redeem failed: ${res.status} ${await res.text()}`);
 }
+
+export async function createText(as: string, projectId: string, name = "Text"): Promise<string> {
+  const res = await call(api(`/projects/${projectId}/texts`), { method: "POST", as, body: { name } });
+  if (res.status !== 201) throw new Error(`createText failed: ${res.status} ${await res.text()}`);
+  return (await json(res)).text.id as string;
+}
+
+/** Insert a page row (and optionally its image object) the way the upload route will. */
+export async function seedPage(textId: string, opts: { filename?: string; ocr?: string | null; imageBytes?: number; pageNumber?: number } = {}): Promise<string> {
+  const { env: e } = await import("cloudflare:workers");
+  const id = crypto.randomUUID();
+  const t = await e.DB.prepare("SELECT project_id FROM texts WHERE id = ?").bind(textId).first<{ project_id: string }>();
+  const owner = await e.DB.prepare("SELECT owner_subject FROM projects WHERE id = ?").bind(t!.project_id).first<{ owner_subject: string }>();
+  let key: string | null = null;
+  const bytes = opts.imageBytes ?? 0;
+  if (bytes > 0) {
+    key = `p/${t!.project_id}/t/${textId}/page/${id}`;
+    await e.FILES.put(key, new Uint8Array(bytes).fill(7), { httpMetadata: { contentType: "image/jpeg" } });
+    await e.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + ? WHERE subject = ?").bind(bytes, owner!.owner_subject).run();
+  }
+  await e.DB.prepare("INSERT INTO pages (id, text_id, filename, page_number, ocr_text, image_key, image_bytes) VALUES (?,?,?,?,?,?,?)")
+    .bind(id, textId, opts.filename ?? `p${id.slice(0, 4)}.jpg`, opts.pageNumber ?? 1, opts.ocr ?? null, key, bytes).run();
+  return id;
+}
+
+export async function storageOf(subject: string): Promise<number> {
+  const { env: e } = await import("cloudflare:workers");
+  return (await e.DB.prepare("SELECT storage_bytes FROM profiles WHERE subject = ?").bind(subject).first<{ storage_bytes: number }>())!.storage_bytes;
+}
+
+/** DB wrapper that fails any statement mentioning FTS MATCH, to exercise the LIKE fallback. */
+export function dbWithoutFts(real: D1Database): D1Database {
+  return {
+    prepare: (sql: string) => {
+      if (/MATCH|text_fts/.test(sql)) throw new Error("no such module: fts5");
+      return real.prepare(sql);
+    },
+    batch: (s: D1PreparedStatement[]) => real.batch(s),
+    exec: (s: string) => real.exec(s),
+  } as unknown as D1Database;
+}

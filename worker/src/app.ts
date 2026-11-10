@@ -9,6 +9,8 @@ import { checkConfigurationReadiness } from "./readiness";
 import { sessionRoutes } from "./routes/session";
 import { projectRoutes } from "./routes/projects";
 import { inviteRoutes } from "./routes/invites";
+import { textRoutes } from "./routes/texts";
+import { searchRoutes } from "./routes/search";
 
 export interface AppVariables {
   requestId: string;
@@ -69,6 +71,8 @@ api.use("*", async (c, next) => {
 api.route("/", sessionRoutes);
 api.route("/projects", projectRoutes);
 api.route("/invites", inviteRoutes);
+api.route("/texts", textRoutes);
+api.route("/search", searchRoutes);
 api.all("*", (c) => errorResponse(E.notFound("No such API route."), c.get("requestId")));
 
 app.route(`${BASE_PATH}/api`, api);

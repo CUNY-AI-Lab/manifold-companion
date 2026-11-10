@@ -20,3 +20,11 @@ export const translationKey = (p: string, t: string): string => `p/${p}/t/${t}/t
 export const versionKey = (p: string, t: string, v: string): string => `p/${p}/t/${t}/v/${v}`;
 export const figureKey = (p: string, t: string, f: string): string => `p/${p}/t/${t}/fig/${f}`;
 export const exportKey = (p: string, e: string): string => `p/${p}/export/${e}`;
+
+// Revisioned content. Every write of html / compiled / translation goes to a NEW
+// key; the previous object then simply becomes the version snapshot (no copy).
+//   p/{project}/t/{text}/c/{kind}/{revision}
+export type ContentKind = "html" | "compiled" | "translation";
+export const contentKey = (p: string, t: string, kind: ContentKind, revision: string): string => `p/${p}/t/${t}/c/${kind}/${revision}`;
+// A version snapshot of one page's OCR text (page text itself lives in D1).
+export const pageVersionKey = (p: string, t: string, v: string): string => `p/${p}/t/${t}/v/${v}`;

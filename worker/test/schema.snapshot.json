@@ -151,6 +151,9 @@
     "source_pdf_key TEXT",
     "source_pdf_bytes INTEGER NOT NULL",
     "created_at TEXT NOT NULL",
-    "updated_at TEXT NOT NULL"
+    "updated_at TEXT NOT NULL",
+    "compiled_key TEXT",
+    "compiled_bytes INTEGER NOT NULL",
+    "search_text TEXT"
   ]
 }
