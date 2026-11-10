@@ -9,5 +9,6 @@ export default defineConfig({
   build: { outDir: 'dist', assetsInlineLimit: 0, sourcemap: false },
   // The preview sanitizes drafts with the Worker's own sanitizer (../src/sanitize/html.ts).
   server: { fs: { allow: ['..'] } },
-  test: { include: ['test/**/*.test.js'], environment: 'node' },
+  // css: KaTeX's stylesheet is imported ?raw by the font inliner; without this Vitest hands it over empty.
+  test: { include: ['test/**/*.test.js'], environment: 'node', css: { include: [/katex/] } },
 });

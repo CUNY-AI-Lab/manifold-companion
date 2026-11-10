@@ -77,21 +77,21 @@ export async function readinessResult(env: Env): Promise<ReadinessResult> {
   };
 }
 
-// The public verdict for Doorway's anonymous canary route
-// (/manifold-companion/api/health): ok, status and version only, never the
-// reasons; cached per isolate so anonymous traffic cannot multiply catalog reads.
+// The verdict for GET /manifold-companion/api/health (behind sign-in): ok,
+// status and version only, never the reasons; cached per isolate so repeated
+// requests cannot multiply catalog reads.
 const HEALTH_CACHE_MS = 30_000;
 let health: { at: number; ok: boolean; version: string | null } | null = null;
 
-export async function publicHealth(env: Env, now = Date.now()): Promise<{ ok: boolean; version: string | null }> {
+export async function cachedHealth(env: Env, now = Date.now()): Promise<{ ok: boolean; version: string | null }> {
   if (health !== null && now - health.at < HEALTH_CACHE_MS) return { ok: health.ok, version: health.version };
   const result = await readinessResult(env);
   health = { at: now, ok: result.ok, version: result.version_id };
   return { ok: result.ok, version: result.version_id };
 }
 
-/** For tests: forget the cached public verdict. */
-export function resetPublicHealth(): void {
+/** For tests: forget the cached verdict. */
+export function resetCachedHealth(): void {
   health = null;
 }
 

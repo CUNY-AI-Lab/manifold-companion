@@ -2,8 +2,10 @@
 //   declared size -> cheap checks -> ATOMIC quota reservation -> read at most
 //   that many bytes -> magic-byte sniff -> store. Bytes are never accepted
 //   without a reservation, and every failure after it releases the reservation.
-// Doorway strips content-length on the service binding, so the client must
-// declare the exact size (`size` query) and we enforce it as a hard read limit.
+// The client declares the exact size (`size` query) before any bytes are read,
+// so quota is reserved for exactly that size, and it is enforced as a hard read
+// limit. Content-length (Doorway forwards it on requests) is not relied on: it
+// can be absent on a streamed body, and the read limit holds either way.
 import { readBoundedBytes } from "./body";
 import { E } from "./errors";
 import type { Env } from "./env";

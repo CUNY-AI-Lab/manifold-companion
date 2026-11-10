@@ -24,14 +24,14 @@
     "not_found_handling": "none"
   },
   "services": [{ "binding": "GATEWAY", "service": "cail-model-api" }],
-  // PLACEHOLDER IDs: create with `wrangler d1 create cail-manifold-companion`
-  // and `wrangler r2 bucket create cail-manifold-companion-files`, then paste the
-  // D1 id below. Apply schema with `wrangler d1 migrations apply DB --remote`.
+  // Provisioned 2026-11-10 in the CUNY AI Lab account (D1 and R2). Schema:
+  // `wrangler d1 migrations apply cail-manifold-companion --remote` (HANDOFF 6.1).
+  // test/config.test.ts fails if the id is ever a placeholder again.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "cail-manifold-companion",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "67481a76-aaf2-4035-b261-04e37d099246",
       "migrations_dir": "migrations"
     }
   ],

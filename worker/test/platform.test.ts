@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALICE, BASE, ORIGIN, api, call, json, legs, makeEnv } from "./helpers";
+import { ALICE, BASE, ORIGIN, api, call, fakeFetcher, json, legs, makeEnv } from "./helpers";
 import app from "../src/app";
 import { readinessResult } from "../src/readiness";
 import { gatewayEnv } from "./gateway-stub";
@@ -120,6 +120,34 @@ describe("security headers and static serving", () => {
   });
   it("does not serve mutations on pages", async () => {
     expect((await call(`${BASE}/`, { method: "POST", body: {} })).status).toBe(405);
+  });
+  it("passes the asset binding only accept, accept-encoding, conditional and range headers: never the JWTs or cookies", async () => {
+    const seen: Headers[] = [];
+    const env = await makeEnv({ ASSETS: fakeFetcher((r) => { seen.push(new Headers(r.headers)); return new Response("x", { status: new URL(r.url).pathname === "/index.html" ? 200 : 404 }); }) });
+    const res = await call(`${BASE}/projects/abc`, {
+      env,
+      headers: { cookie: "doorway_session=secret", accept: "text/html", "accept-encoding": "br, gzip", "if-none-match": '"etag-1"', "if-modified-since": "Tue, 10 Nov 2026 00:00:00 GMT", range: "bytes=0-10", "x-forwarded-for": "203.0.113.9", "user-agent": "probe" },
+    });
+    expect(res.status).toBe(200);
+    expect(seen).toHaveLength(2); // the miss, then index.html
+    for (const h of seen) {
+      expect([...h.keys()].sort()).toEqual(["accept", "accept-encoding", "if-modified-since", "if-none-match", "range"]);
+      expect(h.get("if-none-match")).toBe('"etag-1"');
+    }
+  });
+  it("the page path reads no identity: it is served with no legs, with the app leg only, and with a forged leg alike", async () => {
+    const allLegs = await legs();
+    const appOnly = Object.fromEntries(Object.entries(allLegs).filter(([k]) => k !== "x-cail-gateway-identity-jwt"));
+    const forged = { "x-cail-identity-jwt": "not-a-jwt" };
+    const bodies: string[] = [];
+    for (const headers of [{}, appOnly, forged]) {
+      const res = await call(`${BASE}/projects/abc`, { as: null, headers });
+      expect(res.status).toBe(200);
+      bodies.push(await res.text());
+    }
+    expect(new Set(bodies).size).toBe(1);
+    // The app leg alone is not enough for the API (it needs the Gateway leg too).
+    expect((await call(api("/session"), { as: null, headers: appOnly })).status).toBe(401);
   });
 });
 

@@ -24,7 +24,8 @@ browser ──► Doorway (CUNY Login, Admission membership, CSRF-independent)
           ├─ /manifold-companion/api/*  CSRF(Origin) ─ identity(both legs) ─ profile upsert ─ routes
           ├─ /manifold-companion/*      static SPA from ASSETS (index.html fallback for client routes)
           ├─ /health/live, /health/ready, ManifoldCompanionReadiness RPC (Doorway release probe),
-          │  /manifold-companion/api/health (public canary: verdict only; readiness includes the
+          │  (binding-only: outside the mount, never forwarded by Doorway);
+          │  /manifold-companion/api/health behind sign-in (verdict only; readiness includes the
           │  Gateway catalog read through the GATEWAY binding), */15 cron self-check
           ├─ scheduled: daily retention sweep
           ├─ D1  (DB)     relational data; FTS5 created at runtime when available
@@ -120,7 +121,7 @@ Row sizing: the largest D1 value we plan is `pages.ocr_text`; the OCR route will
 
 **Not locally enforced.** Miniflare/workerd does not enforce the 2 MB row limit (I tested: a 2.1 MB insert succeeds locally), so code must enforce its own caps; the local test suite cannot catch a row-size regression. The tests assert only what Miniflare enforces (foreign keys, FTS, cascades).
 
-**FTS5 on D1 is not confirmed** by the D1 documentation (re-checked 2026-11-09: the docs list FTS5 for Durable Object SQLite and recommend the trigram tokenizer on the D1 "Use indexes" page, but no D1 page states that `CREATE VIRTUAL TABLE ... USING fts5` is accepted). A migration D1 refused would block every later migration and the deploy, so **no migration creates an FTS5 object**. `ensureSearchIndex()` in `src/search.ts` creates the table, its two triggers and a backfill from `texts.search_text`, idempotently, once per isolate (a failure is remembered for ten minutes). Search uses FTS5 when it exists and otherwise a `LIKE` scan of `texts.search_text` (capped plain text, never HTML), behind the one function `searchTexts`. `test/migrations.test.ts` fails if a migration mentions FTS5. `0002_search.sql` was rewritten for this before it was ever applied to a real database.
+**FTS5 on remote D1 is confirmed by test** (2026-11-10: on a scratch remote D1, `CREATE VIRTUAL TABLE ... USING fts5` and a `MATCH` query worked), though not by the D1 documentation (re-checked 2026-11-09: the docs list FTS5 for Durable Object SQLite and recommend the trigram tokenizer on the D1 "Use indexes" page, but no D1 page states that `CREATE VIRTUAL TABLE ... USING fts5` is accepted). The runtime design stays: a migration D1 refused would block every later migration and the deploy, so **no migration creates an FTS5 object**. `ensureSearchIndex()` in `src/search.ts` creates the table, its two triggers and a backfill from `texts.search_text`, idempotently, once per isolate (a failure is remembered for ten minutes). Search uses FTS5 when it exists and otherwise a `LIKE` scan of `texts.search_text` (capped plain text, never HTML), behind the one function `searchTexts`. `test/migrations.test.ts` fails if a migration mentions FTS5. `0002_search.sql` was rewritten for this before it was ever applied to a real database.
 
 ### R2 key layout
 
@@ -284,9 +285,9 @@ The exact steps, files and tests are in `HANDOFF.md` section 6 (deploy checklist
 
 ## 13. Verified versus assumed
 
-Verified from Cloudflare docs (docs search, 2026-11-09): D1 limits (2 MB row, 100 KB statement, 100 binds, `db.batch()` is one transaction, 50 MB result size); Workers limits (128 MB memory per isolate, default 30 s CPU raisable to 5 min, 10,000 subrequests on paid); `request.signal` needs `enable_request_signal` before compatibility date 2026-11-17 and `request_signal_passthrough` is separate; Cron Triggers (UTC, `scheduled()`, 15 min). **Not found in the docs:** FTS5 on remote D1 (handled at runtime, section 3).
+Verified from Cloudflare docs (docs search, 2026-11-09): D1 limits (2 MB row, 100 KB statement, 100 binds, `db.batch()` is one transaction, 50 MB result size); Workers limits (128 MB memory per isolate, default 30 s CPU raisable to 5 min, 10,000 subrequests on paid); `request.signal` needs `enable_request_signal` before compatibility date 2026-11-17 and `request_signal_passthrough` is separate; Cron Triggers (UTC, `scheduled()`, 15 min). **Not found in the docs:** FTS5 on remote D1 (confirmed by test on 2026-11-10; still created at runtime, section 3).
 
 Verified by running: the Worker suite in workerd via `@cloudflare/vitest-plugin` (real Hono app, real CAIL identity verification with the test issuer, real cail-client, D1 and R2 in Miniflare, only the Gateway binding stubbed); the sanitizer against a spec-compliant parser (parse5 tree construction plus serialize/re-parse rounds), not only HTMLRewriter, which tokenizes and does no tree construction; the export against a golden made by running the unmodified legacy `server/routes/export.js`; fflate and temml under workerd; the client's unit tests; three Playwright journeys against `wrangler dev` (real workerd, local D1/R2) behind a Doorway double minting real test-issuer legs, with a Gateway stub Worker on the service binding and the production CSP, with no CSP violations; `wrangler deploy --dry-run`.
 
-Assumed / not verified: FTS5 on remote D1; the 2 MB row limit (not enforced locally; enforced by caps in code); real Doorway in front of the Worker; real Gateway calls and model quality (none made); R2 behaviour at 1000-key list/delete pages; `heic2any` under the page CSP (no HEIC fixture was run); Worker CPU for the largest allowed export on production hardware (designed for, section 2 and `src/export.ts`, not measured there).
+Assumed / not verified: the 2 MB row limit (not enforced locally; enforced by caps in code); real Doorway in front of the Worker; real Gateway calls and model quality (none made); R2 behaviour at 1000-key list/delete pages; `heic2any` under the page CSP (no HEIC fixture was run); Worker CPU for the largest allowed export on production hardware (designed for, section 2 and `src/export.ts`, not measured there).
 

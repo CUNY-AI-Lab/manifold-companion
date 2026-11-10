@@ -50,7 +50,8 @@ export function createApi({ base, fetchImpl, navigate }) {
       message: typeof e.message === 'string' ? e.message : `Request failed (${res.status}).`,
       retryable: res.headers.get('x-should-retry') === 'true' || e.retryable === true,
       retryAfter: retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : null,
-      requestId: e.requestId ?? res.headers.get('x-cail-request-id'),
+      // From the body only: Doorway strips every x-cail-* response header.
+      requestId: typeof e.requestId === 'string' ? e.requestId : null,
       result: envelope?.result ?? null,
     });
   }
@@ -76,7 +77,7 @@ export function createApi({ base, fetchImpl, navigate }) {
     post: (path, body, opts) => send(path, { ...opts, method: 'POST', body: body ?? {} }),
     put: (path, body, opts) => send(path, { ...opts, method: 'PUT', body: body ?? {} }),
     del: (path, body, opts) => send(path, { ...opts, method: 'DELETE', ...(body ? { body } : {}) }),
-    /** Raw upload: the Worker needs the exact size (Doorway strips content-length) and a file name. */
+    /** Raw upload: the Worker reserves quota for the declared exact size before reading, and needs a file name. */
     upload: (path, blob, { filename, method = 'POST', query = {}, signal } = {}) => {
       const q = new URLSearchParams({ size: String(blob.size), filename, ...query });
       return send(`${path}${path.includes('?') ? '&' : '?'}${q}`, { method, body: blob, headers: { 'content-type': blob.type || 'application/octet-stream' }, signal });

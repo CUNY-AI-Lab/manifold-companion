@@ -58,7 +58,7 @@ The uncommitted model-task draft was kept and repaired (type error, conflict han
 | Version history | `0ba0466` | history panel, read-only view, restore; version reasons (migration 0007); per-page pruning | 438 |
 | Reordering | `9ca3728` | move pages and texts; export follows | 442 |
 | Accessibility, help | `3d5959c` | axe WCAG 2.2 A/AA in e2e, contrast and dialog focus fixes, keyboard walk, first-run welcome, Help page | 442 |
-| Release runbook, canary | this commit | Gateway-binding guard test, readiness probes the catalog through the binding, public canary route, 15-minute self-check, required secret | 452 |
+| Release runbook, canary | `86026a8` | Gateway-binding guard test, readiness probes the catalog through the binding, health route (public at first; now behind sign-in), 15-minute self-check, required secret | 452 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
@@ -79,7 +79,7 @@ Unverified client risks: `heic2any` under `script-src 'self'` (no HEIC fixture w
 
 ## 5. Infrastructure that does not exist yet (section 6 creates it)
 
-D1 database (id in `wrangler.jsonc` is `REPLACE_WITH_D1_DATABASE_ID`), R2 bucket, the `CAIL_IDENTITY_JWKS` secret, the Doorway mount. Nothing has been deployed.
+Provisioned 2026-11-10 in the CUNY AI Lab account: D1 `cail-manifold-companion` (`67481a76-aaf2-4035-b261-04e37d099246`, in `wrangler.jsonc`; `test/config.test.ts` fails if a placeholder comes back) and R2 `cail-manifold-companion-files`. The migration rehearsal on a scratch remote D1 passed (0001-0007, 15 tables plus `d1_migrations`, matching the snapshot), and FTS5 works on remote D1. Still to do: migrations on the real database, the `CAIL_IDENTITY_JWKS` secret and first deploy (6.1-6.2), and the Doorway mount (draft PR #383 in `cail-tools-admission`, mergeable once this Worker is deployed). Nothing has been deployed.
 
 ## 6. Release runbook (in order; receiver first)
 
@@ -103,13 +103,12 @@ The dry run bundles but never starts workerd; the e2e run does (it is what catch
 
 ```bash
 npx wrangler whoami                                          # must list account 452c33847cf5cb1e46f391fca32fd1b5
-npx wrangler d1 create cail-manifold-companion               # prints database_id
-#   edit wrangler.jsonc: d1_databases[0].database_id = <that id>; commit it
-npx wrangler r2 bucket create cail-manifold-companion-files
+npx wrangler d1 create cail-manifold-companion               # done 2026-11-10; the id is committed in wrangler.jsonc
+npx wrangler r2 bucket create cail-manifold-companion-files  # done 2026-11-10
 npx wrangler r2 bucket lifecycle add --help                  # optional: a rule aborting incomplete multipart uploads after 1 day (the Worker uses none today)
 ```
 
-Rehearse the migrations on a throwaway remote database first (remote D1 can differ from the local SQLite the tests use):
+Rehearse the migrations on a throwaway remote database first (remote D1 can differ from the local SQLite the tests use; done 2026-11-10, passed):
 
 ```bash
 npx wrangler d1 create cail-manifold-companion-scratch       # prints its database_id
@@ -118,7 +117,7 @@ npx wrangler d1 migrations apply SCRATCH_DB --remote -c wrangler.scratch-d1.json
 npx wrangler d1 execute SCRATCH_DB --remote -c wrangler.scratch-d1.jsonc --command "SELECT name FROM d1_migrations ORDER BY id"
 #   expect 0001_init.sql .. 0007_version_reason.sql
 npx wrangler d1 execute SCRATCH_DB --remote -c wrangler.scratch-d1.jsonc --command "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name"
-#   expect the 15 tables of test/schema.snapshot.json, plus d1_migrations (FTS5 tables appear only after the first search)
+#   expect the 15 tables of test/schema.snapshot.json, plus d1_migrations (FTS5 tables appear only after the first search; FTS5 itself is confirmed on remote D1)
 npx wrangler d1 delete cail-manifold-companion-scratch
 git checkout wrangler.scratch-d1.jsonc
 ```
@@ -152,17 +151,13 @@ Later deploys: `npx wrangler deploy --tag "mc-$(git rev-parse --short HEAD)" --m
 
 Readiness is `ok` only when the configuration is valid, both identity verifiers load, D1 has the schema, the Gateway's public catalog answers **through the GATEWAY service binding** with at least one usable model (no credential involved), and the version has an id and a tag. Three ways to read it:
 
-1. Before the mount: the `*/15` cron runs the same check and logs `readiness.failed` (warn, error codes only) when it fails. In the dashboard: Workers & Pages > cail-manifold-companion > Logs, filter `event = readiness.failed` for the 30 minutes after a deploy: expect none. The daily sweep also logs `readiness.checked` with the verdict.
-2. After the mount, from anywhere, with no credential (the public canary route in 6.5, step 5):
-   ```bash
-   curl -fsS https://tools.ailab.gc.cuny.edu/manifold-companion/api/health     # {"ok":true,"status":"ready",...}
-   ```
-   A 503 `{"ok":false}` means a check failed; the codes are in Workers Logs (`readiness.failed`) and in the RPC result.
+1. Any time, with no credential: the `*/15` cron runs the same check and logs `readiness.failed` (warn, error codes only) when it fails. In the dashboard: Workers & Pages > cail-manifold-companion > Logs, filter `event = readiness.failed` for the 30 minutes after a deploy: expect none. The daily sweep also logs `readiness.checked` with the verdict.
+2. After the mount, signed in: open `https://tools.ailab.gc.cuny.edu/manifold-companion/api/health` in the browser session (it is behind sign-in like every route of this person-funded mount; Doorway publishes no public route for it). `{"ok":true,"status":"ready","version":"..."}`; a 503 `{"ok":false}` means a check failed, and the codes are in Workers Logs (`readiness.failed`) and in the RPC result. The binding-only `/health/live` and `/health/ready` are outside the mount, so Doorway never forwards them.
 3. Over RPC from a Worker that binds the service (Doorway, or a release probe): `ManifoldCompanionReadiness.getReadiness()` returns the verdict with error codes.
 
 Why the Gateway check matters: a Worker that reaches the Gateway by its public URL from the same zone gets the zone origin's 404, which no local test shows (the Bibliography Converter's production bug). This Worker sends every Gateway call (catalog, quota, chat) through the binding (`src/gateway.ts`); `test/gateway-binding.test.ts` makes global `fetch` fail and checks every route and the readiness probe still work, and scans `src/` for any `fetch(` that is not a binding's.
 
-After the first authenticated search, check whether FTS5 was created on the remote D1 (`npx wrangler d1 execute cail-manifold-companion --remote --command "SELECT name FROM sqlite_master WHERE name = 'text_fts'"`); if not, search uses the LIKE fallback and nothing else changes.
+FTS5 is confirmed on remote D1 (2026-11-10: `CREATE VIRTUAL TABLE ... USING fts5` and `MATCH` worked on the scratch database). The index is created at runtime on the first search; after it, `npx wrangler d1 execute cail-manifold-companion --remote --command "SELECT name FROM sqlite_master WHERE name = 'text_fts'"` shows it. The LIKE fallback stays for a damaged index.
 
 ### 6.4 Rollback
 
@@ -185,32 +180,31 @@ R2 objects are never rewritten in place (new keys per revision), so a D1 restore
 
 To take the tool offline without a deploy, revert the Doorway mount (6.5) or remove its route: the Worker has no other way in.
 
-### 6.5 Doorway mount in `cail-tools-admission` (draft PR, mutation tests first)
+### 6.5 Doorway mount in `cail-tools-admission` (draft PR #383)
 
-Checked against `1bf54e0` (origin/main as last fetched, 2026-11-09; re-read 2026-11-10, anchors unchanged); PDF Accessibility (`pdf-accessibility-*`) is the closest precedent. The local checkout of `cail-tools-admission` is on an older branch; branch the PR from origin/main.
+The mount is draft PR #383, mergeable once this Worker is deployed and ready (6.2-6.3). What it adds, and what this Worker relies on:
 
-1. `apps/doorway/wrangler.toml`: `[[services]] binding = "MANIFOLD_COMPANION"`, `service = "cail-manifold-companion"`.
-2. `apps/doorway/src/config.ts`: `MANIFOLD_COMPANION?: ServiceFetcher` in the env interface, `manifoldCompanion: ServiceFetcher` in `DoorwayConfig`, `manifoldCompanion: requiredService(env.MANIFOLD_COMPANION, "MANIFOLD_COMPANION")`.
-3. `apps/doorway/src/policy.ts`: add both routes to `GATEWAY_ROUTE_CONTRACTS` exactly as in item 5 (the page entry without `gatewayIdentity`), and extend the `validateGatewayRoute` guard so it also runs for `toolId === "manifold-companion"`; otherwise a policy that drops the API route's Gateway leg, or makes it public, still validates.
-4. `apps/doorway/src/doorway.ts`: `const MANIFOLD_COMPANION_ROUTES = new Set(["manifold-companion-health", "manifold-companion-page", "manifold-companion-api"])`, add `"manifoldCompanion"` to `MountOwningService` and one row to `MOUNT_OWNING_SERVICES` (no new `if` in `boundServiceTarget`). The original path, including `/manifold-companion`, is forwarded, which is what the Worker expects.
-5. `apps/doorway/config/route-policy.json`: in `tools[]` `{"id": "manifold-companion", "label": "Manifold Companion", "steward": "CUNY AI Lab", "landingPath": "/manifold-companion/", "listed": true}`; in `routes[]`:
-   ```json
-   { "name": "manifold-companion-health", "match": "exact", "path": "/manifold-companion/api/health", "access": "public", "requestKind": "api", "identityMode": "none" },
-   { "name": "manifold-companion-api", "match": "prefix", "path": "/manifold-companion/api", "access": "authenticated", "requestKind": "api", "identityMode": "jwt", "toolId": "manifold-companion", "audience": "cail:manifold-companion", "gatewayIdentity": true },
-   { "name": "manifold-companion-page", "match": "prefix", "path": "/manifold-companion", "access": "authenticated", "requestKind": "page", "identityMode": "jwt", "toolId": "manifold-companion", "audience": "cail:manifold-companion" }
-   ```
-   The health route is the credential-free canary (6.3): exact match, listed before the API prefix, no `toolId` and no identity, like the public Library Assistant routes. It answers only `{ ok, status, version }`, cached for 30 s per isolate, and touches no person's data; the Doorway owner must agree to a public route. Without it, use the Workers Logs check in 6.3.
-6. `scripts/release/doorway.sh`: `check_service MANIFOLD_COMPANION cail-manifold-companion ""`, add `"MANIFOLD_COMPANION"` to the exact binding list, add `/manifold-companion/` to the page-route loop, and probes `probe_mounted_auth "$origin/manifold-companion/api/session" '/launch/manifold-companion'` plus the forged-header variant; and the canary `curl -fsS "$origin/manifold-companion/api/health" | jq -e '.ok == true'` (it fails the release when the Worker's GATEWAY binding, D1, identity configuration or version tag is wrong).
-7. Tests: `apps/doorway/vitest.config.ts` (`MANIFOLD_COMPANION: "ManifoldCompanionDouble"`), `test/runtime/products.ts` (a `ManifoldCompanionDouble` WorkerEntrypoint, product `"manifold-companion"`), `test/doorway-env.ts`, `test/admission-config.test.ts` and `test/runtime/configuration.test.ts` (binding lists), `test/decision.test.ts` (`/manifold-companion/api`, `/manifold-companion/api/projects`, `/manifold-companion`, `/manifold-companion/`, `/manifold-companionx` denied), `test/runtime/identity-legs.test.ts` (both legs on the API route, app leg only on the page route, header and cookie stripping, forged identity refused, missing binding fails config), `test/integration/release-components.test.ts` (binding list and the anonymous `401` fixture with `launch: "/launch/manifold-companion"`), `test/browser/welcome.spec.ts` (portal card). Mutation tests first: removing `gatewayIdentity` from the API route, or making either route public, must fail `policy.ts` validation.
-8. Docs: a "Manifold Companion mount" section in `docs/workflows/README.md` in the PDF Accessibility format, and the product lists in `apps/doorway/README.md` / `AGENTS.md`.
+1. A `MANIFOLD_COMPANION` service binding to `cail-manifold-companion`, in the Doorway config and in the release script's exact binding list.
+2. Two routes, both authenticated, no public route:
+   - `manifold-companion-api`, prefix `/manifold-companion/api`, `requestKind: "api"`, JWT identity, audience `cail:manifold-companion`, **with the Gateway leg** (`gatewayIdentity: true`), held to an exact contract in `policy.ts` so dropping the Gateway leg or making it public fails validation;
+   - `manifold-companion-page`, prefix `/manifold-companion`, `requestKind: "page"`, the **app leg only**.
+3. The original path, including `/manifold-companion`, is forwarded; the mount-path pin already exists on Doorway main.
+4. Release probes: the binding check, the page route, and `probe_mounted_auth` on `/manifold-companion/api/session` (anonymous 401 with `/launch/manifold-companion`) plus the forged-header variant. There is no public health probe; readiness is the RPC and the cron self-check (6.3).
 
-**`tool` enumeration: not required.** Doorway drops a `tool` not in `GATEWAY_TOOLS` (`apps/doorway/src/identity.ts`), so the Gateway leg verifies and spends the person's budget without it, as PDF Accessibility's does today; the CAIL Client still sends `X-CAIL-App: manifold-companion`. Adding `"manifold-companion"` to `GATEWAY_TOOLS` and to the `tool` enum in `config/contract/identity-jwt-claims-v1.json` only adds per-tool attribution in the Gateway usage breakdown; it changes a shared identity contract, so propose it separately to Stephen Zweibel.
+How Doorway treats this Worker's traffic (from the mount's author; the Worker is built for it):
+- Request `content-length` is forwarded; on responses Doorway strips `content-length` and `content-encoding`. The Worker never trusts a declared length: uploads declare `?size=` and every body is read with a hard byte limit (`src/body.ts`).
+- Doorway sets no request-body cap of its own; a 25 MiB pass-through is tested on its side. This Worker's caps: 10 MB per file, 25 MB per PDF, page-image JSON under 6 MB.
+- Every signed-in response gets `cache-control: private, no-store`, so the browser never caches the bundle or the KaTeX fonts. The client inlines each font once per page load from memory (`client/src/lib/katex-assets.js`, tested).
+- Every `x-cail-*` response header is stripped. The client reads nothing from them; the support reference shown to people is the `requestId` in the error body.
+- The page route carries the app leg only. The Worker's page and asset handler reads no identity and passes the asset binding only `accept`, `accept-encoding`, `if-none-match`, `if-modified-since` and `range` (tested); the session and every Gateway call are under `/api`, which requires both legs.
 
-Admission membership needs no change: Doorway checks it per request for authenticated JWT routes (`currentAdmissionExpiry`).
+**`tool` enumeration: not required.** Doorway drops a `tool` not in `GATEWAY_TOOLS`, so the Gateway leg verifies and spends the person's budget without it; the CAIL Client still sends `X-CAIL-App: manifold-companion`. Adding it only adds per-tool attribution in the Gateway usage breakdown and changes a shared identity contract, so it is a separate proposal to Stephen Zweibel.
+
+Admission membership needs no change: Doorway checks it per request for authenticated JWT routes.
 
 ### 6.6 Acceptance run (after the mount is released)
 
-0. Canary: `curl -fsS https://tools.ailab.gc.cuny.edu/manifold-companion/api/health` is `{"ok":true,...}` (6.3), and Workers Logs show no `readiness.failed`.
+0. Readiness: signed in, `/manifold-companion/api/health` is `{"ok":true,...}` (6.3); anonymous, it is 401 like every API route; Workers Logs show no `readiness.failed`.
 1. Anonymous `GET /manifold-companion/api/session` -> `401 authentication_required` with `/launch/manifold-companion`; forged `x-cail-*` headers refused; `workers.dev` 404; `/manifold-companion/` without sign-in starts CUNY Login.
 2. Signed in: dashboard loads with no CSP violations in the console; set a name; create an image project and a PDF-to-HTML project.
 3. Upload a phone photo and a PDF; OCR one page with the default model; check the allowance moves on `/usage` (the in-app estimate is delayed).
@@ -241,15 +235,15 @@ Flags: `--tasks ocr,html,math,summary,translate,repair`, `--models`, `--pages`, 
 
 ## 7. Open questions for the owner
 
-1. **FTS5 on remote D1.** Unconfirmed in the docs; the app works either way (LIKE fallback). Worth one look after the first deploy (6.1).
+1. **FTS5 on remote D1.** Confirmed 2026-11-10 on a scratch remote D1 (create and `MATCH` worked). Closed.
 2. **Math model default.** Settled 2026-11-10 from the live run: Magistral Small for math pages, DeepSeek Flash elsewhere (`docs/model-policy.md`).
 3. **Retention by editors.** Edits and comments by any editor keep a project alive and editors get the warning too. Confirm that is the intent for projects whose owner has left.
 4. **Viewer export.** Kept from legacy (viewers can export); only editors and owners save export settings.
 5. **Email.** In-app only at launch. The retention warning reaches only people who sign in; the Admission-owned notice capability (DESIGN section 9) remains a design.
 6. **Gateway `tool` attribution** (6.2): leave unattributed for launch, or ask Stephen for the enum change?
-7. **Doorway body size.** No Doorway-specific request-body cap was found in source beyond the edge limit; uploads are <= 10 MB (25 MB PDFs) and page-image JSON <= 6 MB. Confirm on the first acceptance run.
+7. **Doorway body size.** Closed: Doorway sets no body cap of its own and its tests pass a 25 MiB body through; this Worker's caps (10 MB files, 25 MB PDFs, page-image JSON under 6 MB) are the limits.
 8. **Missing UI** (section 4): version history and reordering are built; split/merge, metadata editing, TOC nesting and a rich editor are follow-ups. Confirm none is needed for the first release.
-9. **Public canary route** (6.5, step 5): the Doorway owner must agree to one public exact route, `/manifold-companion/api/health`. Without it the canary is the Workers Logs check in 6.3.
+9. **Public canary route.** Not granted: `/manifold-companion/api/health` stays behind sign-in (a public route would publish the version id and tie Doorway releases to this tool's health). Readiness signals are the RPC and the 15-minute self-check (6.3).
 
 ## 8. Rules for whoever continues
 

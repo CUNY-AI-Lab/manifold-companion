@@ -1,9 +1,10 @@
 import { E } from "./errors";
 
 /**
- * Read at most `maxBytes` of the body. Doorway strips content-length over the
- * service binding, so bytes are counted as they stream; the stream is cancelled
- * the moment the cap is passed.
+ * Read at most `maxBytes` of the body. A declared content-length over the cap
+ * is refused at once (Doorway forwards the request's content-length), but the
+ * header is never trusted as the size: bytes are counted as they stream and the
+ * stream is cancelled the moment the cap is passed.
  */
 export async function readBoundedBytes(request: Request, maxBytes: number): Promise<Uint8Array> {
   const declared = request.headers.get("content-length");

@@ -5,7 +5,7 @@ import { AppError, E, errorResponse } from "./errors";
 import { authenticate, type Principal } from "./identity";
 import { isMutation, originAllowed } from "./csrf";
 import { withSecurityHeaders } from "./security";
-import { checkConfigurationReadiness, publicHealth } from "./readiness";
+import { cachedHealth, checkConfigurationReadiness } from "./readiness";
 import { sessionRoutes } from "./routes/session";
 import { projectRoutes } from "./routes/projects";
 import { inviteRoutes } from "./routes/invites";
@@ -43,22 +43,17 @@ app.use("*", async (c, next) => {
   c.res = withSecurityHeaders(c.res, correlation.request_id, url.pathname);
 });
 
+// Binding-only probes. These paths are outside the mount (/manifold-companion),
+// so Doorway never forwards them and they have no public URL (workers_dev and
+// preview URLs are off); only a Worker holding a service binding to this one
+// reaches them. The reasons for a failed check are never in an HTTP body: they
+// go to the ManifoldCompanionReadiness RPC and to Workers Logs (readiness.failed).
 app.get("/health/live", (c) => c.json({ status: "alive" }));
 
-// The verdict is public (Doorway's release probe is unauthenticated); the
-// reasons are not, and go to the ManifoldCompanionReadiness RPC instead.
 app.get("/health/ready", async (c) => {
   const result = await checkConfigurationReadiness(c.env);
   const version = c.env.CF_VERSION_METADATA?.id ?? null;
   return result.ok ? c.json({ ok: true, status: "ready", version }) : c.json({ ok: false, status: "not_ready", version }, 503);
-});
-
-// The credential-free canary, for Doorway's public exact route of the same path
-// (docs/HANDOFF.md 6.3): the same checks as /health/ready, including the
-// Gateway catalog through the GATEWAY binding, before any identity middleware.
-app.get(`${BASE_PATH}/api/health`, async (c) => {
-  const { ok, version } = await publicHealth(c.env);
-  return c.json({ ok, status: ok ? "ready" : "not_ready", version }, ok ? 200 : 503, { "cache-control": "no-store" });
 });
 
 const api = new Hono<AppEnv>();
@@ -85,6 +80,16 @@ api.use("*", async (c, next) => {
   await next();
 });
 
+// Readiness for a signed-in person or operator: the same checks as /health/ready,
+// including the Gateway catalog read through the GATEWAY binding. Behind sign-in
+// like every route of a person-funded mount (Doorway publishes no route for
+// this tool), so it may carry the version id; if it is ever made public, drop
+// `version` from the body. The verdict is cached 30 s per isolate.
+api.get("/health", async (c) => {
+  const { ok, version } = await cachedHealth(c.env);
+  return c.json({ ok, status: ok ? "ready" : "not_ready", version }, ok ? 200 : 503, { "cache-control": "no-store" });
+});
+
 api.route("/", sessionRoutes);
 api.route("/projects", projectRoutes);
 api.route("/invites", inviteRoutes);
@@ -99,7 +104,21 @@ api.all("*", (c) => errorResponse(E.notFound("No such API route."), c.get("reque
 
 app.route(`${BASE_PATH}/api`, api);
 
-// 4. The built SPA, served under the mount. Asset misses on extension-less
+// What the static-asset binding needs from the browser's request, and nothing
+// else: never the app identity JWT, cookies or any other header Doorway adds.
+const ASSET_REQUEST_HEADERS = ["accept", "accept-encoding", "if-none-match", "if-modified-since", "range"] as const;
+export function assetRequestHeaders(from: Headers): Headers {
+  const out = new Headers();
+  for (const name of ASSET_REQUEST_HEADERS) {
+    const value = from.get(name);
+    if (value !== null) out.set(name, value);
+  }
+  return out;
+}
+
+// 4. The built SPA, served under the mount. Reads no identity: Doorway forwards
+//    the page route with the app leg only, and nothing here needs either leg
+//    (the session and every Gateway call are under /api, behind sign-in). Asset misses on extension-less
 //    paths fall back to index.html so client-side routes survive a reload.
 app.all("*", async (c) => {
   const url = new URL(c.req.url);
@@ -108,7 +127,7 @@ app.all("*", async (c) => {
   if (c.req.method !== "GET" && c.req.method !== "HEAD") return errorResponse(new AppError({ code: "method_not_allowed", message: "Method not allowed.", status: 405 }), c.get("requestId"));
   const assetUrl = new URL(url);
   assetUrl.pathname = url.pathname.slice(BASE_PATH.length) || "/";
-  const request = (u: URL) => new Request(u.toString(), { method: c.req.method, headers: c.req.raw.headers });
+  const request = (u: URL) => new Request(u.toString(), { method: c.req.method, headers: assetRequestHeaders(c.req.raw.headers) });
   let asset = await c.env.ASSETS.fetch(request(assetUrl));
   const lastSegment = assetUrl.pathname.split("/").pop() ?? "";
   if (asset.status === 404 && !lastSegment.includes(".")) {

@@ -6,7 +6,7 @@
 // stubbed network would show; so global fetch is made to fail here.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../src/app";
-import { readinessResult, resetPublicHealth } from "../src/readiness";
+import { readinessResult, resetCachedHealth } from "../src/readiness";
 import { ALICE, JPEG, ORIGIN, api, call, createProject, createText, fakeFetcher, json, upload } from "./helpers";
 import { gatewayEnv, gatewayOf } from "./gateway-stub";
 
@@ -63,28 +63,28 @@ describe("the GATEWAY binding carries every Gateway call", () => {
   });
 });
 
-describe("the public canary route", () => {
-  it("answers without any credential, through the binding, with no reasons; cached for 30 s", async () => {
-    resetPublicHealth();
+describe("GET /api/health (behind sign-in)", () => {
+  it("needs both Doorway legs; signed in, it reads the catalog through the binding and is cached for 30 s", async () => {
+    resetCachedHealth();
     const e = await gatewayEnv({}, { CF_VERSION_METADATA: { id: "v1", tag: "t", timestamp: "now" } });
-    const res = await app.fetch(new Request(`${ORIGIN}/manifold-companion/api/health`), e);
+    expect((await app.fetch(new Request(`${ORIGIN}/manifold-companion/api/health`), e)).status).toBe(401);
+    const res = await call(api("/health"), { env: e });
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.json()).toEqual({ ok: true, status: "ready", version: "v1" });
     const reads = gatewayOf(e).calls.length;
-    await app.fetch(new Request(`${ORIGIN}/manifold-companion/api/health`), e);
+    await call(api("/health"), { env: e });
     expect(gatewayOf(e).calls.length).toBe(reads);
+    for (const r of gatewayOf(e).calls) expect(r.headers.get("x-cail-identity-jwt")).toBeNull(); // the catalog read carries no credential
     expect(globalFetch).not.toHaveBeenCalled();
   });
-  it("is 503 with no reasons when the Gateway path is broken; other API routes still require sign-in", async () => {
-    resetPublicHealth();
+  it("is 503 with no reasons when the Gateway path is broken", async () => {
+    resetCachedHealth();
     const e = await gatewayEnv({ catalog: () => new Response("<html>404</html>", { status: 404 }) }, { CF_VERSION_METADATA: { id: "v1", tag: "t", timestamp: "now" } });
-    const res = await app.fetch(new Request(`${ORIGIN}/manifold-companion/api/health`), e);
+    const res = await call(api("/health"), { env: e });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ ok: false, status: "not_ready", version: "v1" });
-    resetPublicHealth();
-    expect((await app.fetch(new Request(`${ORIGIN}/manifold-companion/api/session`), e)).status).toBe(401);
-    expect((await app.fetch(new Request(`https://example.workers.dev/manifold-companion/api/health`), e)).status).toBe(404);
+    resetCachedHealth();
   });
 });
 

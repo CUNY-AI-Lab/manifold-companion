@@ -48,6 +48,14 @@ describe('errors and uploads', () => {
     await expect(h.api.post('/api/y', {})).rejects.toMatchObject({ code: 'edit_conflict', result: { text: 'model text' } });
   });
 
+  it('the support reference comes from the error body only (Doorway strips every x-cail-* response header)', async () => {
+    const h = harness([
+      json(500, { error: { code: 'internal_error', message: 'Internal server error.', requestId: 'body-id' } }, { 'x-cail-request-id': 'header-id' }),
+      json(502, { error: { code: 'bad_gateway', message: 'Bad gateway.' } }, { 'x-cail-request-id': 'header-id' }),
+    ]);
+    await expect(h.api.get('/api/a')).rejects.toMatchObject({ requestId: 'body-id' });
+    await expect(h.api.get('/api/b')).rejects.toMatchObject({ requestId: null });
+  });
   it('uploads the raw bytes with the exact size and file name in the query', async () => {
     const h = harness([json(201, { page: {} })]);
     const blob = new Blob([new Uint8Array(10)], { type: 'image/jpeg' });
