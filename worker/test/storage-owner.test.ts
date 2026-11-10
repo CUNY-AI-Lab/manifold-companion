@@ -122,3 +122,35 @@ describe("a delete authorized before ownership moved releases from the new owner
     expect(await storageDrift()).toEqual([]);
   });
 });
+
+describe("a request that outlives its reservation", () => {
+  // Uploads have no read deadline: a slow client can keep one open past the
+  // reservation's hour, and the daily recount then drops the reservation and
+  // its bytes from the counter. The row must still be paid for when it lands.
+  it("an upload committed after the recount dropped its reservation is still charged", async () => {
+    const { recountStorage } = await import("../src/storage");
+    const { tid } = await sharedProject();
+    const up = await gatedUpload(api(`/texts/${tid}/pages`), JPEG(3000), CAROL);
+    await up.reserved;
+    await env.DB.prepare("UPDATE storage_reservations SET expires_at = '2000-01-01T00:00:00Z'").run();
+    await recountStorage(await makeEnv());
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations").first()).toEqual({ n: 0 });
+    up.open();
+    expect((await up.done).status).toBe(201);
+    expect(await storageDrift()).toEqual([]);
+    expect(await storageOf(ALICE)).toBe(7000);
+  });
+
+  it("a failed request after the recount gives nothing back twice", async () => {
+    const { recountStorage } = await import("../src/storage");
+    const { tid } = await sharedProject();
+    const up = await gatedUpload(api(`/texts/${tid}/pages`), JPEG(10), CAROL, { query: { size: "3000" } });
+    await up.reserved;
+    await env.DB.prepare("UPDATE storage_reservations SET expires_at = '2000-01-01T00:00:00Z'").run();
+    await recountStorage(await makeEnv());
+    up.open();
+    expect((await up.done).status).toBe(400);
+    expect(await storageDrift()).toEqual([]);
+    expect(await storageOf(ALICE)).toBe(4000);
+  });
+});

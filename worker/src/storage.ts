@@ -113,14 +113,24 @@ export async function reserveStorage(env: Env, projectId: string, bytes: number)
 }
 
 /**
- * The statement that commits a reservation, for the batch that writes its row:
- * it deletes the reservation (the counter already holds the bytes, now
- * accounted by the row) only if `rowExistsSql` holds, i.e. only if that same
- * batch really wrote the row. Placeholders in `rowExistsSql` start at ?2.
+ * The statements that commit a reservation, for the batch that writes its row.
+ * Both run only if `rowExistsSql` holds, i.e. only if that same batch really
+ * wrote the row (placeholders in `rowExistsSql` start at ?2), in this order:
+ *   1. if the reservation is gone, charge the project's owner for the bytes.
+ *      It is gone only if the request outlived RESERVATION_TTL_MS and the
+ *      recount dropped it (and its bytes) meanwhile; uploads have no read
+ *      deadline, so a slow client can do that. Without this the row would be
+ *      stored and never paid for.
+ *   2. delete the reservation: the counter already holds the bytes, now
+ *      accounted by the row.
  */
 export function commitReservation(db: D1Database, r: Reservation | null, rowExistsSql: string, ...binds: unknown[]): D1PreparedStatement[] {
   if (!r) return [];
-  return [db.prepare(`DELETE FROM storage_reservations WHERE id = ?1 AND ${rowExistsSql}`).bind(r.id, ...binds)];
+  const n = binds.length;
+  return [
+    db.prepare(`UPDATE profiles SET storage_bytes = storage_bytes + ?${n + 2} WHERE subject = ${ownerSql(`?${n + 3}`)} AND NOT EXISTS (SELECT 1 FROM storage_reservations WHERE id = ?1) AND ${rowExistsSql}`).bind(r.id, ...binds, r.bytes, r.projectId),
+    db.prepare(`DELETE FROM storage_reservations WHERE id = ?1 AND ${rowExistsSql}`).bind(r.id, ...binds),
+  ];
 }
 
 /**
