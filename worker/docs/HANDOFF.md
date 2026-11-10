@@ -124,10 +124,22 @@ Admission membership needs no change: Doorway checks it per request for authenti
 7. Let the session expire (or clear the Doorway cookie) and click: exactly one navigation to `/launch/manifold-companion`.
 8. Next day: cron history shows a run; `retention.sweep` appears in Workers Logs with counts and no failures.
 
+### 6.4 Live model evaluation (owner, once, with a personal key)
+
+`scripts/live-eval.mjs` runs every model task through the real Gateway with the Worker's own code (`src/task-specs.ts` builders and parsers, `runChat`, the catalog menus, reasoning headroom and switches, deadlines, the sanitizer, the client's preview renderer), on pages of the precalculus textbook (Chapter 7 identities; Chapter 1 tables and piecewise graphs). The key is read once from stdin and only ever sent as `Authorization: Bearer` (cail-client, `kind: "key"`); it is refused as an argument, never read from the environment, never printed, and no file containing it can be written.
+
+```bash
+node worker/scripts/live-eval.mjs --dry-run          # the plan, from the public catalog; no key, no spend
+pbpaste | node worker/scripts/live-eval.mjs          # the run (default budget $1.50, worst case per call)
+node worker/scripts/live-eval-selftest.mjs           # the run path against a stubbed Gateway (no network, no spend)
+```
+
+Flags: `--tasks ocr,html,math,summary,translate,repair`, `--models`, `--pages`, `--budget-microdollars` (default 1500000), `--budget-mode worst|expected`, `--out`, `--mathbook`. Output (default the scratchpad `eval-out/`, never committed): `report.md`, `report.json`, `index.html` (page image next to each model's rendered output), and per call `raw.txt`, the parsed output, `preview.html` and `meta.json`. The math comparison runs last, so a budget stop never starves the cheaper tasks. Page images are made with `pdftoppm` at the client's scales (144 dpi; 216 dpi for math pages; JPEG quality 88; at most 3.5 MiB) and text-layer hints with `pdftotext`, the nearest local equivalent of what pdf.js gives the browser.
+
 ## 7. Open questions for the owner
 
 1. **FTS5 on remote D1.** Unconfirmed in the docs; the app works either way (LIKE fallback). Worth one look after the first deploy (6.1).
-2. **Math model default.** The default is the Gateway's top-ranked vision+reasoning model. Which catalog model is best for mathematics, and whether 8,000 tokens of headroom with thinking on is right, needs a measured run with a real key on a small math PDF (no real model call was made here).
+2. **Math model default.** The default is the Gateway's top-ranked vision+reasoning model. Which catalog model is best for mathematics, and whether 8,000 tokens of headroom with thinking on is right, needs a measured run with a real key: section 6.4 is that run (no real model call was made here).
 3. **Retention by editors.** Edits and comments by any editor keep a project alive and editors get the warning too. Confirm that is the intent for projects whose owner has left.
 4. **Viewer export.** Kept from legacy (viewers can export); only editors and owners save export settings.
 5. **Email.** In-app only at launch. The retention warning reaches only people who sign in; the Admission-owned notice capability (DESIGN section 9) remains a design.

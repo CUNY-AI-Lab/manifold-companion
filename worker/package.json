@@ -11,7 +11,9 @@
     "deploy:dry-run": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "check:logging": "bash scripts/check-logging.sh",
     "test:client": "npm --prefix client test",
-    "test:e2e": "npm --prefix client run e2e"
+    "test:e2e": "npm --prefix client run e2e",
+    "eval:dry-run": "node scripts/live-eval.mjs --dry-run",
+    "eval:selftest": "node scripts/live-eval-selftest.mjs"
   },
   "dependencies": {
     "@cuny-ai-lab/cail-client": "6.3.0",

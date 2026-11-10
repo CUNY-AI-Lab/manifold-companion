@@ -9,8 +9,8 @@ import { limits } from "../env";
 import { AppError, E } from "../errors";
 import { freshCorrelation, gatewayClient, runChat } from "../gateway";
 import { loadCatalog, resolveModel, type ModelOption } from "../models";
-import { cleanOcr, cleanupDocumentHtml, extractHtml, postprocessPageHtml, stripReasoning, toDataUri, visibleLength } from "../model-output";
-import { DEFAULT_OCR_PROMPT, FORMULA_REPAIR_SYSTEM, HTML_PAGE_SYSTEM, htmlPageUser, summarySystem, translationSystem } from "../prompts";
+import { cleanupDocumentHtml, toDataUri } from "../model-output";
+import { formulaRepairTask, MAX_TRANSLATE_CHUNK_CHARS, ocrTask, pageHtmlTask, parseFormulaRepair, parseOcr, parsePageHtml, parseSummary, parseTranslation, summaryTask, translateTask } from "../task-specs";
 import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
 import { isUuid, nowIso } from "../util";
 import type { AppEnv } from "../app";
@@ -35,8 +35,6 @@ const idOf = (c: { req: { param: (n: string) => string | undefined } }): string 
 
 /** A page image sent to a model is capped (Media Tools uses the same 4 MiB); the browser resizes before upload. */
 export const MAX_MODEL_IMAGE_BYTES = 4 * 1024 * 1024;
-const MAX_SUMMARY_INPUT_CHARS = 100_000;
-export const MAX_TRANSLATE_CHUNK_CHARS = 12_000;
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 const LANGUAGES = new Set(("en es fr de it pt ru zh ja ko ar hi nl sv da no fi pl cs el tr he th vi uk ro hu id ms ca hr sk bg sr lt lv et sl ga sq mk bs mt is cy la auto-detect").split(" "));
 
@@ -81,18 +79,13 @@ taskRoutes.post("/:id/pages/:pageId/ocr", logged("/{id}/pages/{pageId}/ocr"), as
   const settings = await settingsOf(c.env.DB, ctx.text.id);
   const catalog = await catalogFor(c);
   const model = resolveModel("ocr", catalog, c.env, modelChoice(body), settings.model);
-  const prompt = typeof body.prompt === "string" && body.prompt.trim() ? body.prompt.slice(0, 3000) : settings.prompt || DEFAULT_OCR_PROMPT;
+  const prompt = typeof body.prompt === "string" && body.prompt.trim() ? body.prompt.slice(0, 3000) : undefined;
   const obj = await c.env.FILES.get(page.image_key);
   if (!obj) throw E.conflict("The page image is missing.", "object_missing");
   const dataUri = toDataUri(new Uint8Array(await obj.arrayBuffer()), page.image_type ?? "image/jpeg");
 
-  const result = await runChat(c.env, principal, c.req.raw, {
-    model, deadline: "ocr", wantsThinking: false,
-    maxTokens: settings.max_tokens ?? 4096, temperature: settings.temperature ?? 0.1,
-    messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: dataUri } }] }],
-  });
-  const text = cleanOcr(result.text);
-  if (text === "") throw new AppError({ code: "empty_ocr", message: "The model returned no readable text for this page.", status: 422 });
+  const result = await runChat(c.env, principal, c.req.raw, ocrTask(model, dataUri, settings, prompt));
+  const text = parseOcr(result.text);
   try {
     // Compare-and-set against the text read BEFORE the model call; the old text is saved as a version first.
     await writePageText(c.env, ctx.project, ctx.text.id, page, text, principal.subject, model.id);
@@ -149,19 +142,12 @@ taskRoutes.post("/:id/parse-page", logged("/{id}/parse-page"), async (c) => {
   const settings = await settingsOf(c.env.DB, ctx.text.id);
   const catalog = await catalogFor(c);
   const model = math ? resolveModel("html_math", catalog, c.env, modelChoice(body), settings.math_model) : resolveModel("html_page", catalog, c.env, modelChoice(body), settings.model);
-  const result = await runChat(c.env, principal, c.req.raw, {
-    model, deadline: math ? "html_math" : "html_page", wantsThinking: math,
-    maxTokens: settings.max_tokens ?? 6000, temperature: settings.temperature ?? 0.1,
-    messages: [
-      { role: "system", content: HTML_PAGE_SYSTEM },
-      { role: "user", content: [{ type: "text", text: htmlPageUser(pageNumber, totalPages, figures, hint) }, { type: "image_url", image_url: { url: body.image as string } }] },
-    ],
-  });
-  const html = sanitizeHtml(postprocessPageHtml(extractHtml(result.text), pageNumber));
+  const result = await runChat(c.env, principal, c.req.raw, pageHtmlTask(model, { imageDataUri: body.image as string, pageNumber, totalPages, hint, math, figures }, settings));
+  const { html, shortOutput } = parsePageHtml(result.text, pageNumber);
   return c.json({
     html, model: model.id, math,
     // One attempt only: a suspiciously short result is reported so the person can retry, not retried here.
-    short_output: visibleLength(html) < 40,
+    short_output: shortOutput,
     usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId,
   });
 });
@@ -209,18 +195,13 @@ taskRoutes.post("/:id/summary", logged("/{id}/summary"), async (c) => {
   const principal = c.get("principal");
   const ctx = await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
-  let source = await sourceText(c.env, ctx);
+  const source = await sourceText(c.env, ctx);
   if (source.trim() === "") throw E.badRequest("There is no text to summarise yet.", "no_text");
-  const truncated = source.length > MAX_SUMMARY_INPUT_CHARS;
-  if (truncated) source = `${source.slice(0, MAX_SUMMARY_INPUT_CHARS)}\n\n[text truncated]`;
   const language = typeof body.language === "string" && LANGUAGES.has(body.language) ? body.language : ctx.text.source_language ?? ctx.project.default_language;
   const model = resolveModel("text", await catalogFor(c), c.env, modelChoice(body));
-  const result = await runChat(c.env, principal, c.req.raw, {
-    model, deadline: "text", wantsThinking: false, maxTokens: 1024, temperature: 0.3,
-    messages: [{ role: "system", content: summarySystem(language) }, { role: "user", content: source }],
-  });
-  let summary = stripReasoning(result.text).trim();
-  if (byteLength(summary) > CAPS.summaryBytes) summary = summary.slice(0, Math.floor(CAPS.summaryBytes / 4));
+  const { task, truncatedInput: truncated } = summaryTask(model, source, language);
+  const result = await runChat(c.env, principal, c.req.raw, task);
+  const summary = parseSummary(result.text);
   await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3").bind(summary, nowIso(), ctx.text.id).run();
   await touchProject(c.env.DB, ctx.project.id);
   await reindexText(c.env, ctx.text.id);
@@ -238,11 +219,8 @@ taskRoutes.post("/:id/translate-chunk", logged("/{id}/translate-chunk"), async (
   const { source_language: src, target_language: tgt } = body;
   if (typeof src !== "string" || !LANGUAGES.has(src) || typeof tgt !== "string" || !LANGUAGES.has(tgt) || tgt === "auto-detect") throw E.badRequest("Invalid source or target language.");
   const model = resolveModel("text", await catalogFor(c), c.env, modelChoice(body));
-  const result = await runChat(c.env, principal, c.req.raw, {
-    model, deadline: "translate", wantsThinking: false, maxTokens: 6000, temperature: 0.3,
-    messages: [{ role: "system", content: translationSystem(src, tgt) }, { role: "user", content: body.text }],
-  });
-  return c.json({ text: stripReasoning(result.text).trim(), model: model.id, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId });
+  const result = await runChat(c.env, principal, c.req.raw, translateTask(model, body.text, src, tgt));
+  return c.json({ text: parseTranslation(result.text), model: model.id, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId });
 });
 
 taskRoutes.get("/:id/translation", async (c) => {
@@ -272,18 +250,7 @@ taskRoutes.post("/:id/formula-repair", logged("/{id}/formula-repair"), async (c)
   if (f.length > 50) throw E.badRequest("Too many formulas in one request (max 50).");
   if (f.some((x) => typeof x !== "string" || x.length === 0 || x.length > 2000)) throw E.badRequest("Each formula must be a non-empty string of at most 2000 characters.");
   const model = resolveModel("text", await catalogFor(c), c.env, modelChoice(body));
-  const result = await runChat(c.env, principal, c.req.raw, {
-    model, deadline: "text", wantsThinking: false, maxTokens: 4000, temperature: 0,
-    messages: [{ role: "system", content: FORMULA_REPAIR_SYSTEM }, { role: "user", content: JSON.stringify(f) }],
-  });
-  let repaired: unknown;
-  try {
-    repaired = JSON.parse(stripReasoning(result.text).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
-  } catch {
-    repaired = null;
-  }
-  if (!Array.isArray(repaired) || repaired.length !== f.length || repaired.some((x) => typeof x !== "string" || x.length > 4000)) {
-    throw new AppError({ code: "bad_model_output", message: "The model did not return usable repairs. Try again or pick another model.", status: 502 });
-  }
-  return c.json({ formulas: (f as string[]).map((original, i) => ({ original, repaired: repaired[i] as string })), model: model.id, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId });
+  const result = await runChat(c.env, principal, c.req.raw, formulaRepairTask(model, f as string[]));
+  const formulas = parseFormulaRepair(result.text, f as string[]);
+  return c.json({ formulas, model: model.id, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId });
 });

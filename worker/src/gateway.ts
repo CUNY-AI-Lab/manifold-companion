@@ -94,6 +94,30 @@ export interface ChatTask {
   /** True for tasks that need the model to think (math); false switches thinking off where honored. */
   wantsThinking: boolean;
   deadline: DeadlineKey;
+  /**
+   * Optional: told what happened on this one attempt (status, finish reason,
+   * usage as reported, provider, latency, whether the deadline fired). Used by
+   * scripts/live-eval.mjs; never sent anywhere and never logged.
+   */
+  observe?: (o: ChatObservation) => void;
+}
+
+export interface ChatObservation {
+  status: number | null;
+  errorCode: string | null;
+  finishReason: string | null;
+  usage: Record<string, unknown> | null;
+  provider: string | null;
+  gatewayRequestId: string | null;
+  latencyMs: number;
+  deadlineHit: boolean;
+  contentChars: number;
+}
+
+/** The exact Chat Completions body sent for a task (reasoning headroom and switches applied). */
+export function chatRequestBody(task: ChatTask): Record<string, unknown> {
+  const policy = reasoningPolicy(task.model, task.wantsThinking);
+  return { model: task.model.id, stream: false, max_tokens: task.maxTokens + policy.headroom, temperature: task.temperature, ...policy.extraBody, messages: task.messages };
 }
 
 /**
@@ -105,36 +129,51 @@ export interface ChatTask {
  */
 export async function runChat(env: Env, principal: Principal, request: Request, task: ChatTask): Promise<ChatResult> {
   const { signal, deadline } = deadlineSignal(env, task.deadline, request.signal);
-  const policy = reasoningPolicy(task.model, task.wantsThinking);
+  const started = Date.now();
+  const observation: ChatObservation = { status: null, errorCode: null, finishReason: null, usage: null, provider: null, gatewayRequestId: null, latencyMs: 0, deadlineHit: false, contentChars: 0 };
+  const done = (patch: Partial<ChatObservation>) => {
+    if (!task.observe) return;
+    try {
+      task.observe({ ...observation, ...patch, latencyMs: Date.now() - started, deadlineHit: deadline.aborted });
+    } catch {
+      // an observer can never change the outcome
+    }
+  };
   let response: Response;
   try {
-    response = await gatewayClient(env).chatCompletions(
-      { model: task.model.id, stream: false, max_tokens: task.maxTokens + policy.headroom, temperature: task.temperature, ...policy.extraBody, messages: task.messages as never },
-      principal.credential,
-      { signal, correlation: freshCorrelation(request) },
-    );
+    response = await gatewayClient(env).chatCompletions(chatRequestBody(task) as never, principal.credential, { signal, correlation: freshCorrelation(request) });
   } catch (error) {
-    throw gatewayError(error, deadline, request.signal);
+    const mapped = gatewayError(error, deadline, request.signal);
+    done({ status: error instanceof CailError && error.status > 0 ? error.status : mapped.status, errorCode: mapped.code, gatewayRequestId: mapped.gatewayRequestId ?? null });
+    throw mapped;
   }
   const gatewayRequestId = response.headers.get("x-cail-request-id") ?? response.headers.get("x-request-id");
-  let body: { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[]; usage?: ChatResult["usage"] };
+  observation.status = response.status;
+  observation.gatewayRequestId = gatewayRequestId;
+  observation.provider = response.headers.get("x-cail-provider");
+  let body: { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[]; usage?: Record<string, unknown> };
   try {
     body = (await response.json()) as typeof body;
   } catch (error) {
     // Cancelled or past the deadline while the body was still arriving.
-    if (signal.aborted) throw gatewayError(error, deadline, request.signal);
-    throw new AppError({ code: "bad_gateway_response", message: "The model service returned an unreadable reply.", status: 502, ...(gatewayRequestId ? { gatewayRequestId } : {}) });
+    const mapped = signal.aborted ? gatewayError(error, deadline, request.signal) : new AppError({ code: "bad_gateway_response", message: "The model service returned an unreadable reply.", status: 502, ...(gatewayRequestId ? { gatewayRequestId } : {}) });
+    done({ errorCode: mapped.code });
+    throw mapped;
   }
   const choice = body.choices?.[0];
   const text = extractText(choice?.message?.content);
   const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
+  const usage = body.usage && typeof body.usage === "object" ? body.usage : null;
+  const seen = { finishReason, usage, contentChars: text.length };
   // finish_reason "length" is never success. Two distinct codes, because the remedy differs:
   //  - model_output_empty: a reasoning model spent the whole budget thinking and wrote nothing;
   //  - model_output_truncated: the answer stopped mid-way, so it is incomplete and is discarded.
   if (finishReason === "length") {
     const empty = stripVisibleReasoning(text).trim() === "";
+    const code = empty ? "model_output_empty" : "model_output_truncated";
+    done({ ...seen, errorCode: code });
     throw new AppError({
-      code: empty ? "model_output_empty" : "model_output_truncated",
+      code,
       message: empty
         ? "The model used its whole output budget before writing anything (reasoning models spend tokens thinking). Try another model."
         : "The model reached its output limit mid-answer, so the result is incomplete and was not used. Try another model or a smaller page.",
@@ -143,7 +182,9 @@ export async function runChat(env: Env, principal: Principal, request: Request, 
     });
   }
   if (text.trim() === "") {
+    done({ ...seen, errorCode: "empty_model_response" });
     throw new AppError({ code: "empty_model_response", message: "The model returned no text.", status: 502, ...(gatewayRequestId ? { gatewayRequestId } : {}) });
   }
-  return { text, finishReason, usage: body.usage ?? null, gatewayRequestId };
+  done(seen);
+  return { text, finishReason, usage: (usage as ChatResult["usage"]) ?? null, gatewayRequestId };
 }

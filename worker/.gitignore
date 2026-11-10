@@ -7,4 +7,6 @@ client/dist/
 client/test-results/
 client/playwright-report/
 client/e2e/.state/
-!worker/client/e2e/fixtures/*.png
+!client/e2e/fixtures/*.png
+# scripts/live-eval.mjs output, if pointed inside the repository
+eval-out/
