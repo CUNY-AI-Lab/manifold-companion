@@ -4,7 +4,7 @@
 import { E } from "./errors";
 import { limits, type Env } from "./env";
 import { contentKey, pageVersionKey, type ContentKind } from "./r2-keys";
-import { releaseStorage, reserveStorage } from "./storage";
+import { commitReservation, releaseReservation, releaseStatement, reserveStorage } from "./storage";
 import { htmlToPlainText, sanitizeHtml, MAX_SANITIZE_INPUT_CHARS } from "./sanitize/html";
 import { newId, nowIso } from "./util";
 import { ensureSearchIndex } from "./search";
@@ -165,7 +165,7 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
   const versioned = cols.versioned && oldKey !== null && oldBytes > 0;
   const net = bytes - (versioned ? 0 : oldKey ? oldBytes : 0);
   const owner = ownerOf(project);
-  if (net > 0) await reserveStorage(env, owner, net);
+  const reservation = net > 0 ? await reserveStorage(env, owner, net) : null;
 
   const revision = newId();
   const newKey = contentKey(project.id, text.id, kind, revision);
@@ -188,17 +188,20 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
         newKey, bytes, now, text.id, ...extra.map((e) => e.value), ...(oldKey === null ? [] : [oldKey]),
       ),
     );
+    const swapAt = statements.length - 1;
+    // Same transaction, only if THIS swap landed (the new key is unique to this request):
+    // commit the reservation, or give back the bytes the smaller content no longer needs.
+    const swapped = `EXISTS (SELECT 1 FROM texts WHERE id = ?3 AND ${cols.key} = ?4)`;
+    statements.push(...commitReservation(env.DB, reservation, `EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND ${cols.key} = ?3)`, text.id, newKey));
+    if (net < 0) statements.push(...releaseStatement(env.DB, owner, -net, swapped, text.id, newKey));
     const results = await env.DB.batch(statements);
-    if (results[results.length - 1]?.meta.changes !== 1) throw E.conflict("This text was changed by someone else. Reload and try again.", "edit_conflict");
+    if (results[swapAt]?.meta.changes !== 1) throw E.conflict("This text was changed by someone else. Reload and try again.", "edit_conflict");
   } catch (error) {
     await env.FILES.delete(newKey).catch(() => undefined);
-    if (net > 0) await releaseStorage(env.DB, owner, net);
+    await releaseReservation(env.DB, reservation);
     throw error;
   }
-  if (!versioned && oldKey) {
-    await env.FILES.delete(oldKey).catch(() => undefined);
-    if (net < 0) await releaseStorage(env.DB, owner, -net);
-  }
+  if (!versioned && oldKey) await env.FILES.delete(oldKey).catch(() => undefined);
   if (versioned) await pruneVersions(env, project, text.id, kind as "html" | "compiled");
   await touchProject(env.DB, project.id, now);
   return { bytes };
@@ -225,9 +228,10 @@ export async function writePageText(env: Env, project: ProjectRow, textId: strin
   const owner = ownerOf(project);
   const snapshot = old !== null && old !== "" && old !== newText;
   const snapBytes = snapshot ? byteLength(old as string) : 0;
-  if (snapBytes > 0) await reserveStorage(env, owner, snapBytes);
+  const reservation = snapBytes > 0 ? await reserveStorage(env, owner, snapBytes) : null;
   const now = nowIso();
   const vKey = snapshot ? pageVersionKey(project.id, textId, newId()) : null;
+  const versionId = newId();
   try {
     if (vKey) await env.FILES.put(vKey, old as string, { httpMetadata: { contentType: "text/plain; charset=utf-8" } });
     const statements: D1PreparedStatement[] = [];
@@ -236,16 +240,19 @@ export async function writePageText(env: Env, project: ProjectRow, textId: strin
         env.DB.prepare(
           `INSERT INTO text_versions (id, text_id, content_type, page_filename, r2_key, bytes, created_by, created_at, reason)
            SELECT ?1, ?2, 'page', ?3, ?4, ?5, ?6, ?7, ?10 WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?8 AND ocr_text IS ?9)`,
-        ).bind(newId(), textId, page.filename, vKey, snapBytes, authorSubject, now, page.id, old, reason),
+        ).bind(versionId, textId, page.filename, vKey, snapBytes, authorSubject, now, page.id, old, reason),
       );
     }
     // A model write records which model produced the text; a human edit leaves the field as it was.
     statements.push(env.DB.prepare("UPDATE pages SET ocr_text = ?1, processed_at = ?2, ocr_model = COALESCE(?5, ocr_model) WHERE id = ?3 AND ocr_text IS ?4").bind(newText, now, page.id, old, ocrModel ?? null));
+    const swapAt = statements.length - 1;
+    // The snapshot's reservation is committed only if THIS batch wrote the version row.
+    statements.push(...commitReservation(env.DB, reservation, "EXISTS (SELECT 1 FROM text_versions WHERE id = ?2)", versionId));
     const results = await env.DB.batch(statements);
-    if (results[results.length - 1]?.meta.changes !== 1) throw E.conflict("This page was changed by someone else. Reload and try again.", "edit_conflict");
+    if (results[swapAt]?.meta.changes !== 1) throw E.conflict("This page was changed by someone else. Reload and try again.", "edit_conflict");
   } catch (error) {
     if (vKey) await env.FILES.delete(vKey).catch(() => undefined);
-    if (snapBytes > 0) await releaseStorage(env.DB, owner, snapBytes);
+    await releaseReservation(env.DB, reservation);
     throw error;
   }
   if (snapshot) await pruneVersions(env, project, textId, "page", page.filename);

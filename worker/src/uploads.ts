@@ -2,6 +2,8 @@
 //   declared size -> cheap checks -> ATOMIC quota reservation -> read at most
 //   that many bytes -> magic-byte sniff -> store. Bytes are never accepted
 //   without a reservation, and every failure after it releases the reservation.
+// Quota is held as a storage reservation (src/storage.ts) and committed in the
+// same batch that writes the row, so the bytes are counted exactly once.
 // The client declares the exact size (`size` query) before any bytes are read,
 // so quota is reserved for exactly that size, and it is enforced as a hard read
 // limit. Content-length (Doorway forwards it on requests) is not relied on: it
@@ -9,7 +11,7 @@
 import { readBoundedBytes } from "./body";
 import { E } from "./errors";
 import type { Env } from "./env";
-import { releaseStorage, reserveStorage } from "./storage";
+import { releaseReservation, reserveStorage, type Reservation } from "./storage";
 
 export type ImageType = "image/jpeg" | "image/png" | "image/webp";
 
@@ -50,19 +52,21 @@ export function declaredSize(raw: string | undefined, max: number): number {
 export interface Received<T> {
   bytes: Uint8Array;
   type: T;
-  /** Call if anything after receipt fails: gives the reserved quota back. */
+  /** The quota held for these bytes: commit it in the batch that writes the row (commitReservation). */
+  reservation: Reservation | null;
+  /** Call if anything after receipt fails: gives the reserved quota back (a no-op once committed). */
   release: () => Promise<void>;
 }
 
 export async function receive<T>(env: Env, request: Request, ownerSubject: string, size: number, sniff: (b: Uint8Array) => T | null): Promise<Received<T>> {
-  await reserveStorage(env, ownerSubject, size); // before reading a single byte
-  const release = () => releaseStorage(env.DB, ownerSubject, size);
+  const reservation = await reserveStorage(env, ownerSubject, size); // before reading a single byte
+  const release = () => releaseReservation(env.DB, reservation);
   try {
     const bytes = await readBoundedBytes(request, size);
     if (bytes.byteLength !== size) throw E.badRequest("The uploaded size did not match the declared size.", "size_mismatch");
     const type = sniff(bytes);
     if (type === null) throw E.unsupported("That file type is not accepted.");
-    return { bytes, type, release };
+    return { bytes, type, reservation, release };
   } catch (error) {
     await release();
     throw error;

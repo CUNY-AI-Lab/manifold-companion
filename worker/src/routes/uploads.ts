@@ -8,7 +8,7 @@ import { limits } from "../env";
 import { E } from "../errors";
 import { serveBody } from "../files";
 import { figureKey, pageImageKey, sourcePdfRevisionKey } from "../r2-keys";
-import { deleteRowAndRelease, releaseStorage } from "../storage";
+import { commitReservation, deleteRowAndRelease, releaseStatement } from "../storage";
 import { cleanFilename, declaredSize, imageKind, receive, sniffImage, sniffPdf } from "../uploads";
 import { isUuid, newId, nowIso } from "../util";
 import type { AppEnv } from "../app";
@@ -39,12 +39,15 @@ uploadRoutes.post("/:id/pages", async (c) => {
   try {
     await c.env.FILES.put(key, got.bytes, { httpMetadata: { contentType: got.type } });
     // The cap is re-checked inside the insert, so racing uploads cannot pass it together.
-    const res = await c.env.DB.prepare(
-      `INSERT INTO pages (id, text_id, filename, page_number, image_key, image_bytes, image_type)
-       SELECT ?1, ?2, ?3, (SELECT COALESCE(MAX(page_number), 0) + 1 FROM pages WHERE text_id = ?2), ?4, ?5, ?6
-       WHERE (SELECT COUNT(*) FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?7) < ?8`,
-    ).bind(pageId, text.id, filename, key, size, got.type, project.id, lim.maxProjectPages).run();
-    if (res.meta.changes !== 1) throw E.conflict(`A project can hold at most ${lim.maxProjectPages} pages.`, "page_limit_reached");
+    const [res] = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO pages (id, text_id, filename, page_number, image_key, image_bytes, image_type)
+         SELECT ?1, ?2, ?3, (SELECT COALESCE(MAX(page_number), 0) + 1 FROM pages WHERE text_id = ?2), ?4, ?5, ?6
+         WHERE (SELECT COUNT(*) FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?7) < ?8`,
+      ).bind(pageId, text.id, filename, key, size, got.type, project.id, lim.maxProjectPages),
+      ...commitReservation(c.env.DB, got.reservation, "EXISTS (SELECT 1 FROM pages WHERE id = ?2)", pageId),
+    ]);
+    if (res?.meta.changes !== 1) throw E.conflict(`A project can hold at most ${lim.maxProjectPages} pages.`, "page_limit_reached");
   } catch (error) {
     await c.env.FILES.delete(key).catch(() => undefined);
     await got.release();
@@ -82,19 +85,22 @@ uploadRoutes.put("/:id/source-pdf", async (c) => {
   const key = sourcePdfRevisionKey(project.id, text.id, newId());
   try {
     await c.env.FILES.put(key, got.bytes, { httpMetadata: { contentType: "application/pdf" } });
-    const res = await c.env.DB.prepare(
-      `UPDATE texts SET source_pdf_key = ?1, source_pdf_bytes = ?2, source_pdf_name = ?3, updated_at = ?4 WHERE id = ?5 AND source_pdf_key IS ?6`,
-    ).bind(key, size, filename, nowIso(), text.id, text.source_pdf_key).run();
-    if (res.meta.changes !== 1) throw E.conflict("The source PDF was changed by someone else. Reload and try again.", "edit_conflict");
+    // One transaction: the new PDF's reservation is committed and the old PDF's bytes released only if this swap landed.
+    const swapped = "EXISTS (SELECT 1 FROM texts WHERE id = ?3 AND source_pdf_key = ?4)";
+    const [res] = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE texts SET source_pdf_key = ?1, source_pdf_bytes = ?2, source_pdf_name = ?3, updated_at = ?4 WHERE id = ?5 AND source_pdf_key IS ?6`,
+      ).bind(key, size, filename, nowIso(), text.id, text.source_pdf_key),
+      ...commitReservation(c.env.DB, got.reservation, "EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND source_pdf_key = ?3)", text.id, key),
+      ...(text.source_pdf_key ? releaseStatement(c.env.DB, ownerOf(project), text.source_pdf_bytes, swapped, text.id, key) : []),
+    ]);
+    if (res?.meta.changes !== 1) throw E.conflict("The source PDF was changed by someone else. Reload and try again.", "edit_conflict");
   } catch (error) {
     await c.env.FILES.delete(key).catch(() => undefined);
     await got.release();
     throw error;
   }
-  if (text.source_pdf_key) {
-    await c.env.FILES.delete(text.source_pdf_key).catch(() => undefined);
-    await releaseStorage(c.env.DB, ownerOf(project), text.source_pdf_bytes);
-  }
+  if (text.source_pdf_key) await c.env.FILES.delete(text.source_pdf_key).catch(() => undefined);
   await touchProject(c.env.DB, project.id);
   return c.json({ ok: true, source_pdf_name: filename, bytes: size }, 201);
 });
@@ -132,10 +138,13 @@ uploadRoutes.post("/:id/figures", async (c) => {
   try {
     await c.env.FILES.put(key, got.bytes, { httpMetadata: { contentType: got.type } });
     // Conditional insert: the per-text cap is checked inside the statement, so racing uploads cannot pass it together.
-    const res = await c.env.DB.prepare(
-      "INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at, width, height) SELECT ?1,?2,?3,?4,?5,?6,?7,?9,?10 WHERE (SELECT COUNT(*) FROM figures WHERE text_id = ?2) < ?8",
-    ).bind(id, text.id, filename, key, got.type, size, nowIso(), lim.maxFiguresPerText, width, height).run();
-    if (res.meta.changes !== 1) throw E.conflict(`A text can hold at most ${lim.maxFiguresPerText} figures.`, "figure_limit_reached");
+    const [res] = await c.env.DB.batch([
+      c.env.DB.prepare(
+        "INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at, width, height) SELECT ?1,?2,?3,?4,?5,?6,?7,?9,?10 WHERE (SELECT COUNT(*) FROM figures WHERE text_id = ?2) < ?8",
+      ).bind(id, text.id, filename, key, got.type, size, nowIso(), lim.maxFiguresPerText, width, height),
+      ...commitReservation(c.env.DB, got.reservation, "EXISTS (SELECT 1 FROM figures WHERE id = ?2)", id),
+    ]);
+    if (res?.meta.changes !== 1) throw E.conflict(`A text can hold at most ${lim.maxFiguresPerText} figures.`, "figure_limit_reached");
   } catch (error) {
     await c.env.FILES.delete(key).catch(() => undefined);
     await got.release();

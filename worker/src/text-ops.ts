@@ -6,7 +6,7 @@ import { reindexText, touchProject, ownerOf } from "./content";
 import { limits, type Env } from "./env";
 import { E } from "./errors";
 import { pageImageKey, textPrefix } from "./r2-keys";
-import { releaseStorage, reserveStorage, sweepTombstone, textBytesSql } from "./storage";
+import { commitReservation, releaseReservation, reserveStorage, sweepTombstone, textBytesSql } from "./storage";
 import { newId, nowIso } from "./util";
 
 export const MAX_PAGES_PER_COPY_OP = 300;
@@ -70,8 +70,9 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
   if ((textCount?.n ?? 0) + targets.length > limits(env).maxTextsPerProject) throw E.conflict(`A project can hold at most ${limits(env).maxTextsPerProject} texts.`, "text_limit_reached");
   const need = all.reduce((n, p) => n + p.src.image_bytes, 0);
   const owner = ownerOf(project);
-  if (need > 0) await reserveStorage(env, owner, need);
+  const reservation = need > 0 ? await reserveStorage(env, owner, need) : null;
   const created: { id: string; name: string }[] = [];
+  const pageIds: string[] = [];
   const writtenKeys: string[] = [];
   const base = await env.DB.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM texts WHERE project_id = ?1").bind(project.id).first<{ m: number }>();
   const now = nowIso();
@@ -98,6 +99,7 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
       let n = 1;
       for (const { src, filename } of target.pages) {
         const pageId = newId();
+        pageIds.push(pageId);
         let key: string | null = null;
         if (src.image_key) {
           const obj = await env.FILES.get(src.image_key);
@@ -115,13 +117,16 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
         );
       }
     }
-    const results = await env.DB.batch(statements);
+    const inserts = statements.length;
+    // Committed only if THIS batch wrote every new page (their ids are unique to this request).
+    statements.push(...commitReservation(env.DB, reservation, `(SELECT COUNT(*) FROM pages WHERE id IN (SELECT value FROM json_each(?2))) = ?3`, JSON.stringify(pageIds), pageIds.length));
+    const results = (await env.DB.batch(statements)).slice(0, inserts);
     if (textStatementAt.some((i) => results[i]?.meta.changes !== 1)) throw E.conflict(`A project can hold at most ${cap.maxTextsPerProject} texts.`, "text_limit_reached");
     if (results.some((r) => r.meta.changes !== 1)) throw E.conflict(`A project can hold at most ${cap.maxProjectPages} pages.`, "page_limit_reached");
   } catch (error) {
     for (const t of created) await env.DB.prepare("DELETE FROM texts WHERE id = ?1").bind(t.id).run().catch(() => undefined);
     if (writtenKeys.length) await env.FILES.delete(writtenKeys).catch(() => undefined);
-    if (need > 0) await releaseStorage(env.DB, owner, need);
+    await releaseReservation(env.DB, reservation);
     throw error;
   }
   for (const t of created) await reindexText(env, t.id);

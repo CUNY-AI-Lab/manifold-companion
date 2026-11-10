@@ -2,7 +2,7 @@ import { E } from "./errors";
 import { projectPrefix } from "./r2-keys";
 import type { Env } from "./env";
 import { limits } from "./env";
-import { nowIso } from "./util";
+import { newId, nowIso } from "./util";
 
 // Bytes accounted to one text / one project, as SQL, so a release can be computed
 // inside the same D1 batch (transaction) that deletes the rows: the amount released
@@ -61,23 +61,85 @@ export async function projectStorageBytes(db: D1Database, projectId: string): Pr
   return row?.bytes ?? 0;
 }
 
+/** A reservation outlives the longest possible request; one abandoned by an interrupted Worker then expires. */
+export const RESERVATION_TTL_MS = 60 * 60 * 1000;
+
+/** Quota held for bytes not yet recorded in a row. Commit it in the batch that writes the row; release it otherwise. */
+export interface Reservation { id: string; owner: string; bytes: number }
+
 /**
- * Atomically add `bytes` to the OWNER's counter, refusing if it would pass the
- * quota. The check and the increment are one statement, so concurrent uploads
- * cannot jointly overshoot.
+ * Reserve `bytes` on the OWNER's counter, refusing if it would pass the quota.
+ * One transaction: the reservation row is inserted only if the bytes fit, and
+ * the counter rises only if THIS reservation row exists. Concurrent
+ * reservations are serialized by D1, so they cannot jointly overshoot.
  */
-export async function reserveStorage(env: Env, ownerSubject: string, bytes: number): Promise<void> {
-  if (bytes <= 0) return;
+export async function reserveStorage(env: Env, ownerSubject: string, bytes: number): Promise<Reservation | null> {
+  if (bytes <= 0) return null;
   const quota = limits(env).storageQuotaBytes;
-  const result = await env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + ?1 WHERE subject = ?2 AND storage_bytes + ?1 <= ?3")
-    .bind(bytes, ownerSubject, quota)
-    .run();
-  if (result.meta.changes !== 1) throw E.quota("This would exceed the storage allowance for this project's owner.");
+  const id = newId();
+  const now = Date.now();
+  const [inserted] = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO storage_reservations (id, subject, bytes, created_at, expires_at)
+       SELECT ?1, ?2, ?3, ?4, ?5 WHERE (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ?3 <= ?6`,
+    ).bind(id, ownerSubject, bytes, nowIso(now), nowIso(now + RESERVATION_TTL_MS), quota),
+    env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + ?2 WHERE subject = ?3 AND EXISTS (SELECT 1 FROM storage_reservations WHERE id = ?1)").bind(id, bytes, ownerSubject),
+  ]);
+  if (inserted?.meta.changes !== 1) throw E.quota("This would exceed the storage allowance for this project's owner.");
+  return { id, owner: ownerSubject, bytes };
+}
+
+/**
+ * The statement that commits a reservation, for the batch that writes its row:
+ * it deletes the reservation (the counter already holds the bytes, now
+ * accounted by the row) only if `rowExistsSql` holds, i.e. only if that same
+ * batch really wrote the row. Placeholders in `rowExistsSql` start at ?2.
+ */
+export function commitReservation(db: D1Database, r: Reservation | null, rowExistsSql: string, ...binds: unknown[]): D1PreparedStatement[] {
+  if (!r) return [];
+  return [db.prepare(`DELETE FROM storage_reservations WHERE id = ?1 AND ${rowExistsSql}`).bind(r.id, ...binds)];
+}
+
+/** Give a reservation back: the counter drops only if the reservation still exists, once. */
+export async function releaseReservation(db: D1Database, r: Reservation | null): Promise<void> {
+  if (!r) return;
+  await db.batch([
+    db.prepare("UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?2) WHERE subject = ?3 AND EXISTS (SELECT 1 FROM storage_reservations WHERE id = ?1)").bind(r.id, r.bytes, r.owner),
+    db.prepare("DELETE FROM storage_reservations WHERE id = ?1").bind(r.id),
+  ]);
+}
+
+/** Lower a counter by bytes that rows no longer account for, as a statement for the batch that changed the rows. */
+export function releaseStatement(db: D1Database, ownerSubject: string, bytes: number, whenSql: string, ...binds: unknown[]): D1PreparedStatement[] {
+  if (bytes <= 0) return [];
+  return [db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?1) WHERE subject = ?2 AND ${whenSql}`).bind(bytes, ownerSubject, ...binds)];
 }
 
 export async function releaseStorage(db: D1Database, ownerSubject: string, bytes: number): Promise<void> {
   if (bytes <= 0) return;
   await db.prepare("UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?1) WHERE subject = ?2").bind(bytes, ownerSubject).run();
+}
+
+// The recount, as fixed SQL (no runtime values in the text; `?1` is the time
+// that separates live from expired reservations). `own` is the owned project
+// (projectBytesSql uses t, p, v and f inside).
+const OWNED_BYTES_SQL = `(SELECT COALESCE(SUM(${projectBytesSql("own.id")}), 0) FROM projects own WHERE own.owner_subject = profiles.subject)`;
+const LIVE_RESERVED_SQL = "(SELECT COALESCE(SUM(r.bytes), 0) FROM storage_reservations r WHERE r.subject = profiles.subject AND r.expires_at > ?1)";
+const RECOUNT_SQL = `UPDATE profiles SET storage_bytes = ${OWNED_BYTES_SQL} + ${LIVE_RESERVED_SQL} WHERE storage_bytes != ${OWNED_BYTES_SQL} + ${LIVE_RESERVED_SQL}`;
+
+/**
+ * Daily backstop: expired reservations (left by an interrupted Worker) are
+ * deleted, then every counter is set to rows + live reservations, the
+ * invariant. Because a live reservation is part of the formula, an upload in
+ * progress keeps its quota. Returns how many counters changed.
+ */
+export async function recountStorage(env: Env, nowMs = Date.now()): Promise<number> {
+  const now = nowIso(nowMs);
+  const [, recount] = await env.DB.batch([
+    env.DB.prepare("DELETE FROM storage_reservations WHERE expires_at <= ?1").bind(now),
+    env.DB.prepare(RECOUNT_SQL).bind(now),
+  ]);
+  return recount?.meta.changes ?? 0;
 }
 
 /**

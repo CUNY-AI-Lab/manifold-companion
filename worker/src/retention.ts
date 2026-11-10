@@ -1,5 +1,5 @@
 import { limits, type Env } from "./env";
-import { deleteProject, processCleanup, projectBytesSql } from "./storage";
+import { deleteProject, processCleanup, recountStorage } from "./storage";
 import { addDays, nowIso, UUID_V4_SQL } from "./util";
 
 /** A project must have been warned at least this long before it may be deleted. */
@@ -16,8 +16,7 @@ export interface SweepResult {
   reconciled: number;
 }
 
-/** Owners whose projects saw no edit for this long are recounted (an upload in flight touches its project). */
-export const RECOUNT_IDLE_MINUTES = 15;
+
 
 /**
  * Daily sweep. All times are UTC ISO-8601 strings in one fixed format
@@ -34,12 +33,10 @@ export const RECOUNT_IDLE_MINUTES = 15;
  *     rows go before objects, so an edit that lands after the selection keeps
  *     the project and every one of its files.
  *  3. cleanup: tombstoned R2 prefixes are swept again.
- *  4. recount: each owner's storage counter is set to what their projects'
- *     rows account for. Quota is reserved before an upload's bytes are read
- *     and released if it fails; a Worker interrupted in between (CPU limit,
- *     eviction) would leave the reservation counted. This backstop corrects
- *     such drift daily, for owners whose projects had no edit in the last
- *     RECOUNT_IDLE_MINUTES (so an upload in progress is not miscounted).
+ *  4. recount: expired storage reservations (left by an interrupted Worker)
+ *     are dropped and every counter is set to rows + live reservations
+ *     (recountStorage), so a leak is corrected and an upload in progress keeps
+ *     its quota.
  */
 export async function runRetentionSweep(env: Env, nowMs = Date.now()): Promise<SweepResult> {
   const lim = limits(env);
@@ -95,14 +92,7 @@ export async function runRetentionSweep(env: Env, nowMs = Date.now()): Promise<S
   result.failed += cleanup.failed;
 
   try {
-    // `own` (not p/t/v/f, which projectBytesSql uses inside) is the owned project.
-    const owned = `(SELECT COALESCE(SUM(${projectBytesSql("own.id")}), 0) FROM projects own WHERE own.owner_subject = profiles.subject)`;
-    const recount = await env.DB.prepare(
-      `UPDATE profiles SET storage_bytes = ${owned}
-       WHERE storage_bytes != ${owned}
-         AND NOT EXISTS (SELECT 1 FROM projects own WHERE own.owner_subject = profiles.subject AND own.last_edited_at > ?1)`,
-    ).bind(nowIso(nowMs - RECOUNT_IDLE_MINUTES * 60_000)).run();
-    result.reconciled = recount.meta.changes ?? 0;
+    result.reconciled = await recountStorage(env, nowMs);
   } catch {
     result.failed += 1;
   }

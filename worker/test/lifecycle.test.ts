@@ -29,7 +29,8 @@ async function seedContent(projectId: string, authorSubject: string) {
     env.DB.prepare("INSERT INTO export_settings (project_id, settings_json, updated_at) VALUES (?1,'{}',?2) ON CONFLICT DO NOTHING").bind(projectId, now),
   ]);
   const owner = (await env.DB.prepare("SELECT owner_subject FROM projects WHERE id = ?").bind(projectId).first<{ owner_subject: string }>())!.owner_subject;
-  await reserveStorage(await makeEnv(), owner, 6017);
+  // The rows above account for 6017 bytes; the counter says so (no reservation: the bytes are committed).
+  await env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + 6017 WHERE subject = ?1").bind(owner).run();
   return { textId, keys };
 }
 
@@ -344,24 +345,48 @@ describe("full-text search index", () => {
   });
 });
 
-describe("storage recount backstop", () => {
-  it("corrects a leaked reservation for an idle owner, leaves an owner with a recent edit alone", async () => {
-    const { ALICE, BOB, JPEG, api, createProject, createText, storageOf, upload } = await import("./helpers");
-    const { runRetentionSweep } = await import("../src/retention");
-    const { env: e } = await import("cloudflare:workers");
-    const a = await createProject(ALICE, "Idle");
-    const ta = await createText(ALICE, a);
-    await upload(api(`/texts/${ta}/pages`), JPEG(300), ALICE, { query: { filename: "a.jpg" } });
-    const b = await createProject(BOB, "Busy");
-    const tb = await createText(BOB, b);
-    await upload(api(`/texts/${tb}/pages`), JPEG(300), BOB, { query: { filename: "b.jpg" } });
-    const [aliceTrue, bobTrue] = [await storageOf(ALICE), await storageOf(BOB)];
-    // An interrupted upload left 5000 reserved bytes on each account.
-    await e.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + 5000 WHERE subject IN (?1, ?2)").bind(ALICE, BOB).run();
-    await e.DB.prepare("UPDATE projects SET last_edited_at = '2026-01-01T00:00:00Z' WHERE id = ?1").bind(a).run(); // Alice idle; Bob edited just now
-    const r = await runRetentionSweep(await (await import("./helpers")).makeEnv());
-    expect(r.reconciled).toBeGreaterThanOrEqual(1);
-    expect(await storageOf(ALICE)).toBe(aliceTrue);
-    expect(await storageOf(BOB)).toBe(bobTrue + 5000); // in-flight work is never recounted
+describe("storage reservations and the recount", () => {
+  it("a recount during an upload keeps its reservation; an abandoned one expires; genuine drift is fixed", async () => {
+    const { ALICE, BOB, CAROL, JPEG, api, createProject, createText, storageOf, upload } = await import("./helpers");
+    const { recountStorage, reserveStorage: reserve, RESERVATION_TTL_MS } = await import("../src/storage");
+    for (const who of [ALICE, BOB, CAROL]) {
+      const p = await createProject(who, "Mine");
+      const t = await createText(who, p);
+      await upload(api(`/texts/${t}/pages`), JPEG(300), who, { query: { filename: "a.jpg" } });
+    }
+    const truth = { alice: await storageOf(ALICE), bob: await storageOf(BOB), carol: await storageOf(CAROL) };
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations").first<{ n: number }>()).toEqual({ n: 0 }); // committed uploads leave none
+    // Bob has an upload in flight: its reservation is live.
+    await reserve(await makeEnv(), BOB, 5000);
+    // Carol's Worker died mid-upload an hour ago: an expired reservation.
+    const stale = await reserve(await makeEnv(), CAROL, 4000);
+    await env.DB.prepare("UPDATE storage_reservations SET expires_at = '2000-01-01T00:00:00Z' WHERE id = ?1").bind(stale!.id).run();
+    // Alice's counter drifted with no reservation at all.
+    await env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + 777 WHERE subject = ?1").bind(ALICE).run();
+    expect(await recountStorage(await makeEnv())).toBeGreaterThanOrEqual(2);
+    expect(await storageOf(ALICE)).toBe(truth.alice);
+    expect(await storageOf(BOB)).toBe(truth.bob + 5000); // the upload in progress keeps its quota
+    expect(await storageOf(CAROL)).toBe(truth.carol);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations WHERE subject = ?1").bind(CAROL).first<{ n: number }>())!.n).toBe(0);
+    expect(RESERVATION_TTL_MS).toBeGreaterThanOrEqual(60 * 60 * 1000);
+    // A recount right after changes nothing (the invariant holds).
+    expect(await recountStorage(await makeEnv())).toBe(0);
+  });
+
+  it("a failed upload releases exactly its reservation; concurrent uploads at the quota edge cannot overshoot", async () => {
+    const { ALICE, JPEG, api, createProject, createText, storageOf, upload } = await import("./helpers");
+    const p = await createProject(ALICE, "Edge");
+    const t = await createText(ALICE, p);
+    const base = await storageOf(ALICE);
+    const tight = await makeEnv({ STORAGE_QUOTA_BYTES: String(base + 1000) });
+    // Declared 400 bytes, sent 10: size mismatch after the reservation, which is released.
+    const short = await upload(api(`/texts/${t}/pages`), JPEG(10), ALICE, { query: { filename: "short.jpg", size: "400" }, env: tight });
+    expect(short.status).toBe(400);
+    expect(await storageOf(ALICE)).toBe(base);
+    const results = await Promise.all(Array.from({ length: 6 }, (_, i) => upload(api(`/texts/${t}/pages`), JPEG(300), ALICE, { query: { filename: `e${i}.jpg` }, env: tight })));
+    expect(results.filter((r) => r.status === 201)).toHaveLength(3);
+    expect(await storageOf(ALICE)).toBe(base + 900);
+    expect(await storageOf(ALICE)).toBeLessThanOrEqual(base + 1000);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations").first<{ n: number }>())!.n).toBe(0);
   });
 });

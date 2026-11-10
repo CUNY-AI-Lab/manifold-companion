@@ -60,7 +60,7 @@ describe("migrations", () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await dump(env.DB)).toEqual(before);
     const applied = await env.DB.prepare("SELECT name FROM d1_migrations ORDER BY id").all<{ name: string }>();
-    expect(applied.results.map((r) => r.name)).toEqual(["0001_init.sql", "0002_search.sql", "0003_content.sql", "0004_uploads.sql", "0005_cleanup.sql", "0006_annotations.sql", "0007_version_reason.sql", "0008_transfer_offers.sql"]);
+    expect(applied.results.map((r) => r.name)).toEqual(["0001_init.sql", "0002_search.sql", "0003_content.sql", "0004_uploads.sql", "0005_cleanup.sql", "0006_annotations.sql", "0007_version_reason.sql", "0008_transfer_offers.sql", "0009_storage_reservations.sql"]);
   });
 
   it("matches the reviewed schema snapshot (editing an applied migration fails here)", async () => {
@@ -93,7 +93,7 @@ describe("migrations", () => {
     expect(fks.sort()).toEqual([
       "annotations.author_subject", "annotations.resolved_by", "invites.created_by", "invites.redeemed_by", "notification_preferences.subject",
       "notifications.subject", "project_members.subject", "projects.owner_subject", "text_versions.created_by",
-      "transfer_offers.from_subject", "transfer_offers.to_subject",
+      "storage_reservations.subject", "transfer_offers.from_subject", "transfer_offers.to_subject",
     ].sort());
   });
 

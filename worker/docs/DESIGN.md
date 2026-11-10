@@ -171,6 +171,26 @@ One function: `requireRole(db, subject, projectId, minRole)` in `src/authz.ts`. 
 - **No unattended bulk OCR.** OCR/HTML conversion is one page per request, started by a person (client-driven loop with a visible cancel; no server-side "run the whole document" GET, no SSE, no cron model calls). The Gateway's `/quota` (microdollars, `limit` / `estimated_used`) is shown in the UI; there is no app ledger. A page request does one Gateway attempt, no hidden retries, and honors `x-should-retry`.
 - Reasoning-model output headroom (handoff notes): see section 8.
 
+### Storage accounting (every path, one invariant)
+
+**Invariant.** For every person S, at every committed state of D1:
+
+`profiles.storage_bytes(S) = Σ bytes the rows of the projects S owns account for (projectBytesSql: texts' html, translation, compiled and source-PDF bytes; pages' image bytes; text_versions' bytes; figures' bytes) + Σ live storage_reservations of S`
+
+Every change to the counter happens in the same D1 transaction (one statement or one batch) as the change to the rows or reservations it reflects, and every follow-up statement in such a batch is conditioned on a value unique to that request (a new row id, a new R2 key, a nonce), so a repeated or concurrent request can never apply it twice. `src/storage.ts` holds the helpers.
+
+| Path | What happens to the counter, and where |
+|---|---|
+| Reserve (before any bytes are read or written) | `reserveStorage`: one batch inserts a `storage_reservations` row only if counter + bytes <= quota, then raises the counter only if THAT row exists. Concurrent reservations serialize; none overshoots. TTL 1 h. |
+| Commit (the row is written) | `commitReservation`, appended to the batch that writes the row: deletes the reservation only if that batch wrote the row (page or figure id, new content key, version id, every new page id of a split/merge). The counter does not change: the bytes move from "reserved" to "rows". Used by page upload, figure upload, source-PDF upload, `writeContent` (HTML, compiled text, translation), `writePageText` (page-version snapshot), split and merge (`copyIntoNewTexts`). |
+| Release (the write failed) | `releaseReservation`: lowers the counter only if the reservation still exists, and deletes it, in one batch; a no-op after a commit. |
+| Shrink or replace (rows now account for fewer bytes) | `releaseStatement` in the swapping batch, conditioned on the new key: smaller unversioned content (`writeContent`), the old source PDF on replace. |
+| Delete a page, figure, text or project | `deleteRowAndRelease`, `deleteTextObjects`, `deleteProject`: the release statement runs first in the deleting batch and only while the row still exists, computed from the rows themselves (`textBytesSql`, `projectBytesSql`), so a replay releases nothing. Version pruning likewise. R2 objects go after the rows (tombstones). |
+| Transfer ownership | `POST /transfers/:id/accept`: one batch claims the offer with a nonce and measures the project's bytes inside the transaction (`claim_bytes`), moves the owner only with that claim and room under the new owner's quota, then credits the new owner and debits the old one by exactly `claim_bytes`, each conditioned on the project carrying the nonce; a failed move releases the claim in the same batch. |
+| Recount (daily backstop) | `recountStorage` in the retention sweep: deletes expired reservations (left by an interrupted Worker) and sets every counter to the invariant's right-hand side (rows + live reservations), so a leak is corrected and an upload in progress keeps its quota. Logged as `_r<n>` in the `retention.sweep` slug. |
+
+Known edge: if ownership transfers while an upload to that project is in flight, the reservation stays on the old owner and the row lands in the new owner's project; the counters are off by that upload until the next daily recount.
+
 ## 7. Retention
 
 - Clock: `projects.last_edited_at`, bumped by every content edit (project, text, page, upload, HTML, summary, metadata and comment writes call `touchProject`), which also clears `retention_warned_at`.
