@@ -8,7 +8,7 @@ import CommentsPanel from '../components/CommentsPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
 import { blobToDataUri, prepareImage } from '../lib/image';
-import { convertPdf } from '../lib/tasks';
+import { checkList, convertPdf } from '../lib/tasks';
 
 /** "1, 3-5" -> Set {1,3,4,5} */
 export function parsePages(spec) {
@@ -43,6 +43,8 @@ export default function HtmlTextPage({ data, reload }) {
   const [error, setError] = useState(null);
   const controller = useRef(null);
   const done = useRef(new Map());
+  const pageWarnings = useRef(new Map());
+  const [checks, setChecks] = useState([]);
   const figureInput = useRef(null);
 
   const loadHtml = () => api.get(`/api/texts/${text.id}/html`).then((r) => { setHtml(r.html_content); setSaved(r.html_content); }, setError);
@@ -63,8 +65,10 @@ export default function HtmlTextPage({ data, reload }) {
       if (!data.text.has_source_pdf || window.confirm('Replace the stored source PDF with this file?')) {
         await api.upload(`/api/texts/${text.id}/source-pdf`, file, { method: 'PUT', filename: file.name, query: { replace: '1' } });
       }
-      const r = await convertPdf({ textId: text.id, file, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, onProgress: setProgress });
+      const r = await convertPdf({ textId: text.id, file, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, warnings: pageWarnings.current, onProgress: setProgress });
+      setChecks(checkList(r.warnings));
       done.current = new Map();
+      pageWarnings.current = new Map();
       setHtml(r.html);
       setSaved(r.html);
       reload();
@@ -98,11 +102,18 @@ export default function HtmlTextPage({ data, reload }) {
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
       <ErrorNote error={error} onDismiss={() => setError(null)} />
+      {checks.length ? (
+        <section aria-labelledby="checks-title" className="my-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          <h2 id="checks-title" className="text-sm font-semibold">Check these by eye</h2>
+          <ul className="mt-1 list-disc pl-5">{checks.map((c) => <li key={c}>{c}</li>)}</ul>
+          <button type="button" className="mt-1 underline" onClick={() => setChecks([])}>Dismiss</button>
+        </section>
+      ) : null}
       {canEdit ? (
         <section className="mt-4 space-y-3 rounded-md border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
           <h2 className="text-base">Convert a PDF</h2>
           <p className="text-sm text-slate-600 dark:text-slate-300">Each page is drawn as an image in your browser and converted one page at a time. Mark pages with mathematics or complex tables to send them to the stronger math model.</p>
-          <input type="file" accept="application/pdf" aria-label="PDF file" onChange={(e) => { setFile(e.target.files[0] ?? null); done.current = new Map(); }} />
+          <input type="file" accept="application/pdf" aria-label="PDF file" onChange={(e) => { setFile(e.target.files[0] ?? null); done.current = new Map(); pageWarnings.current = new Map(); }} />
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label><input type="checkbox" checked={allMath} onChange={(e) => setAllMath(e.target.checked)} /> Every page has math or tables</label>
             {!allMath ? <label>Math or table pages <input className="field inline-block w-40" placeholder="e.g. 2, 5-9" value={mathSpec} onChange={(e) => setMathSpec(e.target.value)} /></label> : null}

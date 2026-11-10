@@ -8,7 +8,7 @@ Decided 2026-11-10 by the owner from a live evaluation the same day. Code: `src/
 |---|---|---|---|
 | OCR (image to Markdown) | `deepseek-v4.1-flash-1017` | every vision model, measured ones first (DeepSeek, Mistral Large 3, Qwen 3.8, Gemma 4), then catalog order | thinking off (switches sent) |
 | PDF page to HTML | `deepseek-v4.1-flash-1017` | as OCR | thinking off |
-| Math / tables page | `magistral-small-2509` | **only** Magistral Small, DeepSeek Flash, Qwen 3.8 (the models that passed) | Magistral thinks; DeepSeek gets the thinking-off switches on this path too |
+| Math / tables page | `magistral-small-2509` (DeepSeek Flash second) | **only** Magistral Small, DeepSeek Flash, Qwen 3.8 (the models that passed) | Magistral thinks; DeepSeek gets the thinking-off switches on this path too |
 | Summary, translation, formula repair | `deepseek-v4.1-flash-1017` | every text model, DeepSeek, gpt-oss-120b, Mistral Large 3 first | thinking off |
 
 Never offered in any menu or chosen as a default: Kimi (`kimi-*`, the owner's call: overkill for this work). Never offered for math: Gemma (`gemma-*`). Both remain reachable by typing the model id ("Another model (type its id)" in the picker). A typed id is checked against the task's capability menu (vision for page tasks, vision plus reasoning for math when the catalog has any) before any spend, so a typo or a model without vision gets `400 model_not_allowed`.
@@ -62,10 +62,10 @@ Kimi was not run (excluded by the owner before the run). Text tasks (summary, tr
 Why these choices:
 - **DeepSeek Flash for standard pages:** every OCR and page-HTML call succeeded at about 5 to 6 s per page, at mid-range cost. Gemma is cheaper but three times slower; Mistral Large 3 is as fast but costs more and wrote fewer formulas as TeX on the same pages.
 - **Magistral Small for math:** the only model with 6/6 math pages, the fastest median, and the cheapest of the models that passed.
-- **DeepSeek thinking off on math pages.** Its one failure was ch1-p19 (twelve tables): with thinking on it spent the whole 14,000-token budget (6,000 task + 8,000 headroom) reasoning in 71 s, `finish_reason: "length"`, nothing written. The same page on the standard path (thinking off, 144 dpi) took 9 s, 1,888 tokens, every table cell correct. On ch1-p35 with thinking on it used 9,360 tokens in 51 s. A larger budget would not help: the call was already at 71 s of a 150 s deadline, and any successful longer reasoning would be slower still. So DeepSeek, when chosen for math, runs with the switches off (10,000 tokens: 6,000 + 4,000). **Not yet measured at 216 dpi on the math path**; verify with `--tasks math --models deepseek-v4.1-flash-1017` (6 calls, about $0.02).
+- **DeepSeek thinking off on math pages.** Its one failure in the first run was ch1-p19 (twelve tables): with thinking on it spent the whole 14,000-token budget (6,000 task + 8,000 headroom) reasoning in 71 s, `finish_reason: "length"`, nothing written. The same page on the standard path (thinking off, 144 dpi) took 9 s, 1,888 tokens, every table cell correct. A larger budget would not help: the call was already at 71 s of a 150 s deadline. So DeepSeek, when chosen for math, runs with the switches off (10,000 tokens: 6,000 + 4,000). The second run (below) confirmed it: 6/6 at 216 dpi, ch1-p19 in 11 s.
 - **Magistral's 63 s on ch1-p19** is output volume, not reasoning: 3,437 completion tokens, 11,742 characters of HTML (twelve full tables), the largest output of the run. The other five pages took 6 to 15 s.
 
-Formula fidelity was checked by hand on all six math pages, page image against output. Neither Magistral nor DeepSeek got a sign, exponent, coefficient or table value wrong on any of them; all 72 table cells on ch1-p19 are correct for both (DeepSeek's from the standard path). The differences are structural:
+Formula fidelity in the first run was checked by hand on all six math pages, page image against output. Neither Magistral nor DeepSeek got a sign, exponent, coefficient or table value wrong on any of them; all 72 table cells on ch1-p19 are correct for both (DeepSeek's from the standard path). The differences are structural:
 
 | Page | Magistral Small | DeepSeek Flash |
 |---|---|---|
@@ -77,6 +77,17 @@ Formula fidelity was checked by hand on all six math pages, page image against o
 | ch1-p35 (graphs, cases) | cases 31 to 36 correct, but in an `<ol>` with no `start`, so they render as 1 to 6; graphs 25 to 30 get empty captions | cases correct and numbered 31 to 36; graph descriptions wrong in 4 of 6 (25: a segment starts at (0,-2), printed (-1,-2); 26: (-1,5) for (-2,5) and (0,-3)-(4,-3) for (1,-3)-(5,-3); 29: misdescribes the left branch as a ray with an open circle at the origin; 30: the ray ends at (0,-1), printed (-1,-1)) |
 
 The DeepSeek graph descriptions matter because they become figure text a reader relies on; neither model invented a formula from a graph, as the prompt forbids.
+
+### Second run: math path with the policy in force (2026-11-10, 12 calls)
+
+Run by the coordinator with `--tasks math --models magistral-small-2509,deepseek-v4.1-flash-1017` after the policy landed (Magistral thinking on, 14,000 tokens; DeepSeek thinking off, 10,000 tokens). Gateway quota delta 11,476 µ$.
+
+| Model | OK | Latency per page | Cost µ$ | Math |
+|---|---|---|---|---|
+| magistral-small-2509 | 6/6 | 5.6-19.9 s; ch1-p19 55.7 s (3,037 completion tokens) | 21,456 | 132/132 |
+| deepseek-v4.1-flash-1017 (thinking off) | 6/6 | 5.6-11.3 s; ch1-p19 11.3 s | 12,242 | 173/173 |
+
+Both pass, and DeepSeek is faster and cheaper. Magistral stays the default on fidelity: by hand, on the second run, DeepSeek again gave wrong coordinates in its graph descriptions on ch1-p35 (25: a segment "from x=-6 to x=0", printed -6 to -1; 26 and 30 as in the first run), and on ch1-p19 it added the words "Match each equation with its table" to item 41, which does not print them (they belong to 42), and wrote "—" for the printed "_". All 72 table values were otherwise right for both. Magistral again kept the running header, numbered the cases 1-6 (an `<ol>` without `start`), left the graph captions empty, and inserted "or" between columns on ch7-p15. The prompt changes and normalisers of the same day address those (`test/page-output.test.ts`); the open question about DeepSeek with thinking off on math pages is closed.
 
 ## Re-verifying
 

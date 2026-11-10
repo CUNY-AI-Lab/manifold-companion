@@ -141,7 +141,7 @@ Flags: `--tasks ocr,html,math,summary,translate,repair`, `--models`, `--pages`, 
 - `src/sanitize/html.ts` drops KaTeX class names at storage (the same list the client uses before rendering; `isKatexClass`). Styles were already stripped.
 - The OCR prompt asks for TeX in `\(...\)` / `\[...\]` and never `$`; 6 of 12 OCR outputs in the run used `$...$`. The Markdown preview still accepts `$$...$$` and Pandoc-style `$...$` for older text. The export writes Markdown as stored; whether Manifold renders either form in Markdown is untested.
 - `scripts/live-eval.mjs` previews use the KaTeX stylesheet with its fonts as `data:` URIs, like the app; `--rerender` rebuilds a finished run's previews without network.
-- Model defaults and menus are now a policy from the run's evidence: `docs/model-policy.md`. One thing to verify with a key: DeepSeek on the math path with thinking off (`--tasks math --models deepseek-v4.1-flash-1017`, 6 calls, about $0.02).
+- Model defaults and menus are now a policy from the run's evidence: `docs/model-policy.md`. A second math run with the policy in force passed 6/6 for both Magistral and DeepSeek (thinking off); Magistral stays the default on fidelity.
 
 ## 7. Open questions for the owner
 

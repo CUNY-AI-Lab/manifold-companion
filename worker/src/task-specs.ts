@@ -6,7 +6,7 @@
 import { AppError } from "./errors";
 import type { ChatTask } from "./gateway";
 import type { ModelOption } from "./models";
-import { cleanOcr, extractHtml, postprocessPageHtml, stripReasoning, visibleLength } from "./model-output";
+import { cleanOcr, extractHtml, pageWarnings, postprocessPageHtml, stripReasoning, visibleLength, type PageWarning } from "./model-output";
 import { DEFAULT_OCR_PROMPT, FORMULA_REPAIR_SYSTEM, HTML_PAGE_SYSTEM, htmlPageUser, summarySystem, translationSystem } from "./prompts";
 import { sanitizeHtml } from "./sanitize/html";
 
@@ -64,10 +64,10 @@ export function pageHtmlTask(model: ModelOption, input: PageHtmlInput, settings:
 }
 
 /** The page HTML exactly as the route returns it: extracted, post-processed, sanitized. */
-export function parsePageHtml(raw: string, pageNumber: number): { unsanitized: string; html: string; shortOutput: boolean } {
+export function parsePageHtml(raw: string, pageNumber: number, hint = ""): { unsanitized: string; html: string; shortOutput: boolean; warnings: PageWarning[] } {
   const unsanitized = postprocessPageHtml(extractHtml(raw), pageNumber);
   const html = sanitizeHtml(unsanitized);
-  return { unsanitized, html, shortOutput: visibleLength(html) < 40 };
+  return { unsanitized, html, shortOutput: visibleLength(html) < 40, warnings: pageWarnings(html, hint) };
 }
 
 export function summaryTask(model: ModelOption, source: string, language: string): { task: ChatTask; truncatedInput: boolean } {

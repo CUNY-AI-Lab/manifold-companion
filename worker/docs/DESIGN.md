@@ -183,9 +183,9 @@ Model list comes from the Gateway catalog (`getCatalogSnapshot`, canonical prefi
 | Task | Needs (catalog `capabilities`) | Input | Notes |
 |---|---|---|---|
 | `ocr` (image to Markdown) | `vision`, `text-generation` | one page image | Default = highest-ranked (`recommended`, then `order`) vision model. Media Tools currently uses `qwen3-vl-235b-a22b-instruct` and `gemma-4-26b-a4b-it`; do not hard-code, read the catalog. |
-| `html_page` (PDF page to HTML) | `vision`, `text-generation` | page image + pdf.js text hint | Same default as OCR, with the PDF-to-HTML prompt. |
+| `html_page` (PDF page to HTML) | `vision`, `text-generation` | page image + pdf.js text hint | Same default as OCR, with the PDF-to-HTML prompt. Page normalisers: written item numbers in a plain `<ol>` become `start`/`value`; a table label in an extra empty first column becomes a `<caption>`. The reply carries `warnings` (`figure_values`: a figure description states values read off a graph; `numbering_restarted`: a list restarts at 1 though the text layer prints higher numbers), which the editor lists after a conversion. |
 | `html_page_math` | `vision` **and** `reasoning` preferred | page image + text hint | The "math/tables" path. See below. |
-| `html_cleanup` | none | assembled HTML | Deterministic (the legacy cleanup normalised callout boxes and wrapped `<article>`; no model). Output sanitized. |
+| `html_cleanup` | none | assembled HTML | Deterministic (the legacy cleanup normalised callout boxes and wrapped `<article>`; no model). Also drops running headers and footers: a first or last block repeated on three or more pages with page numbers in step (`dropRunningHeads`). Output sanitized. |
 | `summary`, `translation`, `formula_repair` | `text-generation` | compiled text, one translation chunk (<= 12,000 chars), or the failing TeX strings | Same capability filter as LanGames (the catalog also marks Whisper recommended, so filter on capability, not on `recommended`). |
 
 ### Mathematics-heavy PDF-to-HTML (required, retained)

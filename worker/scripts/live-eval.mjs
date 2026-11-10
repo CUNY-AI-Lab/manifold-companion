@@ -249,11 +249,11 @@ async function main() {
       const spec = pageSpecs.get(c.page);
       task = lib.pageHtmlTask(c.model, { imageDataUri: img.dataUri, pageNumber: spec.page, totalPages: null, hint: hints[c.page], math: c.task === "math", thinking: c.task === "math" && lib.thinksOnMath(c.model, lib.BUILTIN_POLICY) });
       parse = (rawText) => {
-        const { unsanitized, html } = lib.parsePageHtml(rawText, spec.page);
+        const { unsanitized, html, warnings } = lib.parsePageHtml(rawText, spec.page, hints[c.page]);
         // pipeline: everything the shipped post-processing + sanitizer removed from the model's HTML;
         // sanitizer: what the sanitizer alone removed after post-processing.
         const stripped = { pipeline: lib.strippedBySanitizer(lib.extractHtml(rawText), html), sanitizer: lib.strippedBySanitizer(unsanitized, html) };
-        return { output: html, ext: "html", preview: appPreview(lib, { html }), math: lib.scoreMath(html), structure: lib.htmlStructure(html), stripped };
+        return { output: html, ext: "html", preview: appPreview(lib, { html }), math: lib.scoreMath(html), structure: lib.htmlStructure(html), stripped, extra: { warnings } };
       };
     } else if (c.task === "summary") {
       const source = [...outputs.ocr.values()].join("\n\n---\n\n") || sourceGuess;

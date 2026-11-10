@@ -143,11 +143,13 @@ taskRoutes.post("/:id/parse-page", logged("/{id}/parse-page"), async (c) => {
   const catalog = await catalogFor(c);
   const model = math ? resolveModel("html_math", catalog, c.env, modelChoice(body), settings.math_model) : resolveModel("html_page", catalog, c.env, modelChoice(body), settings.model);
   const result = await runChat(c.env, principal, c.req.raw, pageHtmlTask(model, { imageDataUri: body.image as string, pageNumber, totalPages, hint, math, thinking: math && thinksOnMath(model, policyFrom(c.env)), figures }, settings));
-  const { html, shortOutput } = parsePageHtml(result.text, pageNumber);
+  const { html, shortOutput, warnings } = parsePageHtml(result.text, pageNumber, hint);
   return c.json({
     html, model: model.id, math,
     // One attempt only: a suspiciously short result is reported so the person can retry, not retried here.
     short_output: shortOutput,
+    // Things to check by eye (figure values read off a graph, list numbering restarted); reported, not retried.
+    warnings,
     usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId,
   });
 });

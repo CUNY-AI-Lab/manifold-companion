@@ -67,7 +67,7 @@ export async function translateText({ textId, text, source, target, model, signa
  * per request, math/table pages to the separate math model. Pages already
  * converted are kept if the run stops, so a person can resume.
  */
-export async function convertPdf({ textId, file, mathPages = new Set(), allMath = false, model, mathModel, signal, onProgress, done = new Map() }) {
+export async function convertPdf({ textId, file, mathPages = new Set(), allMath = false, model, mathModel, signal, onProgress, done = new Map(), warnings = new Map() }) {
   const pdf = await openPdf(file);
   const total = pdf.numPages;
   for (let n = 1; n <= total; n += 1) {
@@ -81,10 +81,21 @@ export async function convertPdf({ textId, file, mathPages = new Set(), allMath 
     onProgress?.({ stage: 'convert', page: n, total, math });
     const r = await api.post(`/api/texts/${textId}/parse-page`, { image, page_number: n, total_pages: total, text_hint, math, ...(math ? (mathModel ? { model: mathModel } : {}) : model ? { model } : {}) }, { signal });
     done.set(n, r.html);
+    if (r.warnings?.length) warnings.set(n, r.warnings);
   }
   onProgress?.({ stage: 'assemble', page: total, total });
   const assembled = `<article class="pdf-html-document">\n${[...done.entries()].sort((a, b) => a[0] - b[0]).map(([, h]) => h).join('\n')}\n</article>`;
   const { html } = await api.post(`/api/texts/${textId}/html/cleanup`, { html: assembled }, { signal });
   await api.put(`/api/texts/${textId}/html`, { html_content: html, pdf_meta: { file_name: file.name, page_count: total, math_pages: allMath ? 'all' : [...mathPages], generated_at: new Date().toISOString() } });
-  return { html, total };
+  return { html, total, warnings };
+}
+
+const CHECKS = {
+  figure_values: 'a figure description states points or values read off a graph. Models often misread graphs: compare it with the page, or replace it with a short description.',
+  numbering_restarted: 'a numbered list starts again at 1, but the page prints other numbers. Add start="..." to the <ol>, or write the numbers in the text.',
+};
+
+/** Page warnings from the conversion, one line per page and kind. */
+export function checkList(warnings) {
+  return [...warnings.entries()].sort((a, b) => a[0] - b[0]).flatMap(([page, kinds]) => kinds.filter((k) => CHECKS[k]).map((k) => `Page ${page}: ${CHECKS[k]}`));
 }

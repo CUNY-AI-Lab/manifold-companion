@@ -541,6 +541,12 @@ export function buildReport(input: ReportInput): { json: unknown; markdown: stri
     }
     lines.push("");
   }
+  const warned = input.records.filter((r) => Array.isArray(r.quality.warnings) && (r.quality.warnings as unknown[]).length > 0);
+  if (warned.length) {
+    lines.push("## Page warnings (check by eye)", "", "figure_values: a figure description states coordinates or values read off a graph. numbering_restarted: the page prints item numbers above 1 but a list in the output restarts at 1.", "");
+    for (const r of warned) lines.push(`- ${r.task} ${r.page ?? ""} \`${r.model}\`: ${(r.quality.warnings as string[]).join(", ")}`);
+    lines.push("");
+  }
   lines.push("## Settings that worked", "");
   for (const a of aggs.filter((x) => x.ok > 0 && x.truncations === 0)) lines.push(`- ${a.task} / \`${a.model}\`: max_tokens ${a.maxTokensSent}${a.thinkingSwitches ? ", enable_thinking false + reasoning_effort low" : ""}; no length stops in ${a.calls} calls.`);
   lines.push("", "## Pages", "");

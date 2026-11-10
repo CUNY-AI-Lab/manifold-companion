@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunkText, stopsRun } from '../src/lib/tasks.js';
+import { checkList, chunkText, stopsRun } from '../src/lib/tasks.js';
 import { fitWithin, rotatedSize } from '../src/lib/image.js';
 import { previewDocument } from '../src/lib/preview.js';
 
@@ -29,5 +29,11 @@ describe('client helpers', () => {
     expect(doc).toContain('class="katex-display"');
     expect(doc).not.toMatch(/<script/i);
     expect(previewDocument({ html: '<img src="f.png">', images: { 'f.png': 'data:image/png;base64,AA' } })).toContain('src="data:image/png;base64,AA"');
+  });
+  it('conversion warnings become one plain line per page and kind, in page order; unknown kinds are skipped', () => {
+    const lines = checkList(new Map([[35, ['figure_values']], [19, ['numbering_restarted', 'something_new']]]));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^Page 19: a numbered list starts again at 1/);
+    expect(lines[1]).toMatch(/^Page 35: a figure description states points or values read off a graph/);
   });
 });
