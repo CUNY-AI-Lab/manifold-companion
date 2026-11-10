@@ -86,13 +86,17 @@ async function create(c: { env: AppEnv["Bindings"]; get: (k: "principal") => { s
   const me = c.get("principal").subject;
   const id = newId();
   const now = nowIso();
-  // The parent is re-checked inside the insert: it must still exist on this text.
+  // The text and the parent are re-checked inside the insert: both must still exist.
   const res = await c.env.DB.prepare(
     `INSERT INTO annotations (id, text_id, author_subject, parent_id, anchor_type, anchor_data, body, mentions, created_at, updated_at)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9
-     WHERE ?4 IS NULL OR EXISTS (SELECT 1 FROM annotations WHERE id = ?4 AND text_id = ?2 AND parent_id IS NULL)`,
+     WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2)
+       AND (?4 IS NULL OR EXISTS (SELECT 1 FROM annotations WHERE id = ?4 AND text_id = ?2 AND parent_id IS NULL))`,
   ).bind(id, ctx.text.id, me, input.parentId, input.anchorType, input.anchorData, input.body, JSON.stringify(input.mentions), now).run();
-  if (res.meta.changes !== 1) throw E.notFound("Parent annotation not found.");
+  if (res.meta.changes !== 1) {
+    if (!(await c.env.DB.prepare("SELECT 1 AS x FROM texts WHERE id = ?1").bind(ctx.text.id).first())) throw E.notFound("Text not found.");
+    throw E.notFound("Parent annotation not found.");
+  }
   await touchProject(c.env.DB, ctx.project.id, now);
   return id;
 }

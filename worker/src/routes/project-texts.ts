@@ -53,8 +53,9 @@ projectTextRoutes.post("/", async (c) => {
   const res = await c.env.DB.prepare(
     `INSERT INTO texts (id, project_id, name, sort_order, created_at, updated_at)
      SELECT ?1, ?2, ?3, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM texts WHERE project_id = ?2), ?4, ?4
-     WHERE (SELECT COUNT(*) FROM texts WHERE project_id = ?2) < ?5`,
+     WHERE EXISTS (SELECT 1 FROM projects WHERE id = ?2) AND (SELECT COUNT(*) FROM texts WHERE project_id = ?2) < ?5`,
   ).bind(id, project.id, name, now, lim.maxTextsPerProject).run();
+  if (res.meta.changes !== 1 && !(await c.env.DB.prepare("SELECT 1 AS x FROM projects WHERE id = ?1").bind(project.id).first())) throw E.notFound("Project not found.");
   if (res.meta.changes !== 1) throw E.conflict(`A project can hold at most ${lim.maxTextsPerProject} texts.`, "text_limit_reached");
   await touchProject(c.env.DB, project.id, now);
   await reindexText(c.env, id);

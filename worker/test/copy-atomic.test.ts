@@ -67,3 +67,67 @@ describe("split and merge are all or nothing", () => {
     expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
   });
 });
+
+describe("a parent deleted while the request runs is a 404, not a 500", () => {
+  it("an upload into a text deleted meanwhile", async () => {
+    const { gatedUpload } = await import("./helpers");
+    const pid = await createProject(ALICE);
+    const tid = await createText(ALICE, pid);
+    const up = await gatedUpload(api(`/texts/${tid}/pages`), (await import("./helpers")).JPEG(300), ALICE);
+    await up.reserved;
+    expect((await call(api(`/texts/${tid}`), { method: "DELETE" })).status).toBe(200);
+    up.open();
+    expect((await up.done).status).toBe(404);
+    expect(await storageDrift()).toEqual([]);
+    expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
+  });
+
+  it("a figure into a text deleted meanwhile", async () => {
+    const { gatedUpload, PNG } = await import("./helpers");
+    const pid = await createProject(ALICE, "P", { project_type: "pdf_to_html" });
+    const tid = await createText(ALICE, pid);
+    const up = await gatedUpload(api(`/texts/${tid}/figures`), PNG(300), ALICE, { query: { filename: "f.png" } });
+    await up.reserved;
+    expect((await call(api(`/texts/${tid}`), { method: "DELETE" })).status).toBe(200);
+    up.open();
+    expect((await up.done).status).toBe(404);
+    expect(await storageDrift()).toEqual([]);
+  });
+
+  it("a merge into a project deleted meanwhile", async () => {
+    const pid = await createProject(ALICE);
+    const a = await createText(ALICE, pid, "A");
+    const b = await createText(ALICE, pid, "B");
+    await seedPage(a, { filename: "1.jpg", imageBytes: 100, pageNumber: 1 });
+    await seedPage(b, { filename: "1.jpg", imageBytes: 100, pageNumber: 1 });
+    const e = await makeEnv();
+    e.DB = racingDb(env.DB, async () => { expect((await call(api(`/projects/${pid}`), { method: "DELETE" })).status).toBe(200); });
+    const res = await call(api(`/projects/${pid}/texts/merge`), { method: "POST", env: e, body: { textIds: [a, b], name: "Merged" } });
+    expect(res.status).toBe(404);
+    expect(await storageDrift()).toEqual([]);
+    expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
+  });
+});
+
+describe("a comment on a text deleted while the request runs", () => {
+  it("is a 404", async () => {
+    const { hookedDb } = await import("./helpers");
+    const pid = await createProject(ALICE);
+    const tid = await createText(ALICE, pid);
+    const e = await makeEnv();
+    e.DB = hookedDb(env.DB, /FROM projects p JOIN project_members m/, async () => { await env.DB.prepare("DELETE FROM texts WHERE id = ?1").bind(tid).run(); });
+    const res = await call(api(`/texts/${tid}/annotations`), { method: "POST", env: e, body: { body: "late", anchor_type: "global" } });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("a text created in a project deleted while the request runs", () => {
+  it("is a 404", async () => {
+    const { hookedDb } = await import("./helpers");
+    const pid = await createProject(ALICE);
+    const e = await makeEnv();
+    e.DB = hookedDb(env.DB, /FROM projects p JOIN project_members m/, async () => { await env.DB.prepare("DELETE FROM projects WHERE id = ?1").bind(pid).run(); });
+    const res = await call(api(`/projects/${pid}/texts`), { method: "POST", env: e, body: { name: "late" } });
+    expect(res.status).toBe(404);
+  });
+});

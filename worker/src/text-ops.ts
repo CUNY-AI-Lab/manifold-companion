@@ -4,7 +4,7 @@
 import type { ProjectRow } from "./authz";
 import { reindexText, touchProject } from "./content";
 import { limits, type Env } from "./env";
-import { E } from "./errors";
+import { AppError, E } from "./errors";
 import { pageImageKey, textPrefix } from "./r2-keys";
 import { commitReservation, ownerSql, releaseReservation, reserveStorage, sweepTombstone, textBytesSql } from "./storage";
 import { newId, nowIso } from "./util";
@@ -90,7 +90,7 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
       // partial rows behind to starve the others.
       statements.push(
         env.DB.prepare(
-          "INSERT INTO texts (id, project_id, name, status, sort_order, created_at, updated_at) SELECT ?1,?2,?3,?4,?5,?6,?6 WHERE (SELECT COUNT(*) FROM texts WHERE project_id = ?2) + ?7 <= ?8",
+          "INSERT INTO texts (id, project_id, name, status, sort_order, created_at, updated_at) SELECT ?1,?2,?3,?4,?5,?6,?6 WHERE EXISTS (SELECT 1 FROM projects WHERE id = ?2) AND (SELECT COUNT(*) FROM texts WHERE project_id = ?2) + ?7 <= ?8",
         ).bind(textId, project.id, target.name, target.status, ++order, now, textsLeft--, cap.maxTextsPerProject),
       );
       let n = 1;
@@ -128,10 +128,16 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
              OR (SELECT COUNT(*) FROM pages WHERE id IN (SELECT value FROM json_each(?4))) != ?5)`,
       ).bind(project.id, JSON.stringify(created.map((t) => t.id)), created.length, JSON.stringify(pageIds), pageIds.length),
     );
+    const inserts = statements.length - (reservation ? 3 : 1);
+    const projectGone = async () => !(await env.DB.prepare("SELECT 1 AS x FROM projects WHERE id = ?1").bind(project.id).first());
     try {
-      await env.DB.batch(statements);
+      const results = (await env.DB.batch(statements)).slice(0, inserts);
+      // With the project deleted meanwhile there is no owner for the guard to trip on; nothing was written either.
+      if (results.some((r) => r.meta.changes !== 1)) throw E.notFound("Project not found.");
     } catch (error) {
+      if (error instanceof AppError) throw error;
       if (!/CHECK constraint failed/i.test(String((error as Error)?.message ?? error))) throw error;
+      if (await projectGone()) throw E.notFound("Project not found.");
       const texts = await env.DB.prepare("SELECT COUNT(*) AS n FROM texts WHERE project_id = ?1").bind(project.id).first<{ n: number }>();
       if ((texts?.n ?? 0) + targets.length > cap.maxTextsPerProject) throw E.conflict(`A project can hold at most ${cap.maxTextsPerProject} texts.`, "text_limit_reached");
       throw E.conflict(`A project can hold at most ${cap.maxProjectPages} pages.`, "page_limit_reached");

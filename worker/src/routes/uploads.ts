@@ -19,6 +19,11 @@ const isUnique = (e: unknown): boolean => e instanceof Error && /UNIQUE/i.test(e
 
 // ---- page images -----------------------------------------------------------
 
+/** The text (or its project) was deleted while the upload was in flight: answer as for a missing text. */
+async function textStillThere(db: D1Database, textId: string): Promise<void> {
+  if (!(await db.prepare("SELECT 1 AS x FROM texts WHERE id = ?1").bind(textId).first())) throw E.notFound("Text not found.");
+}
+
 uploadRoutes.post("/:id/pages", async (c) => {
   const subject = c.get("principal").subject;
   const { text, project } = await requireTextRole(c.env.DB, subject, idOf(c), "editor");
@@ -43,11 +48,14 @@ uploadRoutes.post("/:id/pages", async (c) => {
       c.env.DB.prepare(
         `INSERT INTO pages (id, text_id, filename, page_number, image_key, image_bytes, image_type)
          SELECT ?1, ?2, ?3, (SELECT COALESCE(MAX(page_number), 0) + 1 FROM pages WHERE text_id = ?2), ?4, ?5, ?6
-         WHERE (SELECT COUNT(*) FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?7) < ?8`,
+         WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2) AND (SELECT COUNT(*) FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?7) < ?8`,
       ).bind(pageId, text.id, filename, key, size, got.type, project.id, lim.maxProjectPages),
       ...commitReservation(c.env.DB, got.reservation, "EXISTS (SELECT 1 FROM pages WHERE id = ?2)", pageId),
     ]);
-    if (res?.meta.changes !== 1) throw E.conflict(`A project can hold at most ${lim.maxProjectPages} pages.`, "page_limit_reached");
+    if (res?.meta.changes !== 1) {
+      await textStillThere(c.env.DB, text.id);
+      throw E.conflict(`A project can hold at most ${lim.maxProjectPages} pages.`, "page_limit_reached");
+    }
   } catch (error) {
     await c.env.FILES.delete(key).catch(() => undefined);
     await got.release();
@@ -140,11 +148,14 @@ uploadRoutes.post("/:id/figures", async (c) => {
     // Conditional insert: the per-text cap is checked inside the statement, so racing uploads cannot pass it together.
     const [res] = await c.env.DB.batch([
       c.env.DB.prepare(
-        "INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at, width, height) SELECT ?1,?2,?3,?4,?5,?6,?7,?9,?10 WHERE (SELECT COUNT(*) FROM figures WHERE text_id = ?2) < ?8",
+        "INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at, width, height) SELECT ?1,?2,?3,?4,?5,?6,?7,?9,?10 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2) AND (SELECT COUNT(*) FROM figures WHERE text_id = ?2) < ?8",
       ).bind(id, text.id, filename, key, got.type, size, nowIso(), lim.maxFiguresPerText, width, height),
       ...commitReservation(c.env.DB, got.reservation, "EXISTS (SELECT 1 FROM figures WHERE id = ?2)", id),
     ]);
-    if (res?.meta.changes !== 1) throw E.conflict(`A text can hold at most ${lim.maxFiguresPerText} figures.`, "figure_limit_reached");
+    if (res?.meta.changes !== 1) {
+      await textStillThere(c.env.DB, text.id);
+      throw E.conflict(`A text can hold at most ${lim.maxFiguresPerText} figures.`, "figure_limit_reached");
+    }
   } catch (error) {
     await c.env.FILES.delete(key).catch(() => undefined);
     await got.release();
