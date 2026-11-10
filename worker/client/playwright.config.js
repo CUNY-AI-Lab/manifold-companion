@@ -3,6 +3,7 @@ import { defineConfig } from '@playwright/test';
 const port = Number(process.env.E2E_PORT ?? 8790);
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: /katex-compare/,
   workers: 1,
   retries: 0,
   timeout: 120_000,

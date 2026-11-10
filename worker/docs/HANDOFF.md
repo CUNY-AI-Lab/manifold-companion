@@ -136,6 +136,13 @@ node worker/scripts/live-eval-selftest.mjs           # the run path against a st
 
 Flags: `--tasks ocr,html,math,summary,translate,repair`, `--models`, `--pages`, `--budget-microdollars` (default 1500000), `--budget-mode worst|expected`, `--out`, `--mathbook`. Output (default the scratchpad `eval-out/`, never committed): `report.md`, `report.json`, `index.html` (page image next to each model's rendered output), and per call `raw.txt`, the parsed output, `preview.html` and `meta.json`. The math comparison runs last, so a budget stop never starves the cheaper tasks. Page images are made with `pdftoppm` at the client's scales (144 dpi; 216 dpi for math pages; JPEG quality 88; at most 3.5 MiB) and text-layer hints with `pdftotext`, the nearest local equivalent of what pdf.js gives the browser.
 
+### 6.5 On-screen maths: pending until the live-eval run finishes
+
+These touch files the running eval imports, so they wait:
+- `src/sanitize/html.ts`: also drop KaTeX class names at storage. Today the client drops them before rendering, and styles are already stripped at storage.
+- `src/prompts.ts` (OCR prompt): ask for TeX in `\(...\)` / `\[...\]`. 6 of 12 OCR outputs in the run used `$...$`, which the Markdown preview handles with Pandoc's rule. The export writes Markdown exactly as stored, and whether Manifold renders either form in Markdown is untested.
+- `scripts/live-eval.mjs`: pass the KaTeX stylesheet with fonts from disk to `previewDocument`, so `index.html` shows the same KaTeX look as the app. Its next bundle already renders with KaTeX, but in fallback fonts.
+
 ## 7. Open questions for the owner
 
 1. **FTS5 on remote D1.** Unconfirmed in the docs; the app works either way (LIKE fallback). Worth one look after the first deploy (6.1).

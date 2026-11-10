@@ -7,6 +7,42 @@ import { unzipSync, strFromU8 } from 'fflate';
 
 const ORIGIN = 'http://127.0.0.1:8790';
 const as = (context, who) => context.addCookies([{ name: 'e2e_as', value: who, url: ORIGIN }]);
+/**
+ * KaTeX really drew with its own fonts inside the sandboxed frame: the
+ * italic x is set in KaTeX_Math, that face is loaded in the frame's document,
+ * and the glyph is the KaTeX width (the fallback serif italic x is narrower).
+ */
+async function expectKatexFonts(frame) {
+  const glyph = frame.locator('.katex .katex-html .mathnormal').first();
+  await expect(glyph).toBeVisible();
+  const facts = await glyph.evaluate(async (el) => {
+    await document.fonts.ready;
+    const style = getComputedStyle(el);
+    return {
+      family: style.fontFamily,
+      loaded: document.fonts.check(`italic ${style.fontSize} KaTeX_Math`) && [...document.fonts].some((f) => f.family.replace(/"/g, '') === 'KaTeX_Math' && f.status === 'loaded'),
+      mainLoaded: [...document.fonts].some((f) => f.family.replace(/"/g, '') === 'KaTeX_Main' && f.status === 'loaded'),
+      // The same letter in the fallback (what a missing font would show) has a different advance.
+      ...(() => {
+        const probe = document.createElement('span');
+        probe.textContent = el.textContent;
+        probe.style.cssText = `font: italic ${style.fontSize} serif; position: absolute; visibility: hidden`;
+        document.body.appendChild(probe);
+        const fallback = probe.getBoundingClientRect().width;
+        probe.style.fontFamily = 'KaTeX_Math';
+        const katexWidth = probe.getBoundingClientRect().width;
+        probe.remove();
+        return { width: el.getBoundingClientRect().width, fallback, katexWidth };
+      })(),
+    };
+  });
+  expect(facts.family).toContain('KaTeX_Math');
+  expect(facts.loaded).toBe(true);
+  expect(facts.mainLoaded).toBe(true);
+  expect(Math.abs(facts.width - facts.katexWidth)).toBeLessThan(0.5);
+  expect(Math.abs(facts.katexWidth - facts.fallback)).toBeGreaterThan(0.2);
+}
+
 function watchCsp(page) {
   const violations = [];
   page.on('console', (m) => { if (/Content Security Policy|Refused to (load|execute|apply|connect|frame)/i.test(m.text())) violations.push(m.text()); });
@@ -46,11 +82,13 @@ test('create project, upload, OCR, edit, invite, export', async ({ page, context
   await page.getByRole('button', { name: 'Save page' }).click();
   await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
 
-  // The preview is a sandboxed srcdoc frame with no powers, and it renders MathML.
+  // The preview is a sandboxed srcdoc frame with no powers; maths is KaTeX, as in the legacy app.
   const frame = page.locator('iframe[title="Preview of page 1"]');
   await expect(frame).toHaveAttribute('sandbox', '');
-  await expect(page.frameLocator('iframe[title="Preview of page 1"]').getByText('Edited by Alice.')).toBeVisible();
-  await expect(page.frameLocator('iframe[title="Preview of page 1"]').locator('math')).toHaveCount(1);
+  const preview = page.frameLocator('iframe[title="Preview of page 1"]');
+  await expect(preview.getByText('Edited by Alice.')).toBeVisible();
+  await expect(preview.locator('.katex')).toHaveCount(1);
+  await expectKatexFonts(preview);
 
   await page.goto(projectUrl);
   await page.getByRole('button', { name: 'Share' }).click();
@@ -111,5 +149,9 @@ test('PDF to HTML: pdf.js renders pages in the browser, math pages go to the mat
   expect(parsed[0].text_hint).toContain('Theorem one');
   await expect(page.locator('iframe[title="Preview of the HTML"]')).toHaveAttribute('sandbox', '');
   await expect(page.frameLocator('iframe[title="Preview of the HTML"]').getByText('Transcribed by the stub model.').first()).toBeVisible();
+  const htmlPreview = page.frameLocator('iframe[title="Preview of the HTML"]');
+  await expect(htmlPreview.locator('.katex-display')).toHaveCount(2); // one display formula per page
+  await expect(htmlPreview.locator('.katex .katex-error')).toHaveCount(0);
+  await expectKatexFonts(htmlPreview);
   expect(violations).toEqual([]);
 });

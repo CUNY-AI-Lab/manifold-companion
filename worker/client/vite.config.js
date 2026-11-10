@@ -7,5 +7,7 @@ export default defineConfig({
   base: '/manifold-companion/',
   plugins: [react()],
   build: { outDir: 'dist', assetsInlineLimit: 0, sourcemap: false },
+  // The preview sanitizes drafts with the Worker's own sanitizer (../src/sanitize/html.ts).
+  server: { fs: { allow: ['..'] } },
   test: { include: ['test/**/*.test.js'], environment: 'node' },
 });

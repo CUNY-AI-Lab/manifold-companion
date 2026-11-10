@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chunkText, stopsRun } from '../src/lib/tasks.js';
 import { fitWithin, rotatedSize } from '../src/lib/image.js';
-import { previewDocument, texToMathml } from '../src/lib/preview.js';
+import { previewDocument } from '../src/lib/preview.js';
 
 describe('client helpers', () => {
   it('chunks text under the per-request cap on paragraph boundaries', () => {
@@ -22,13 +22,12 @@ describe('client helpers', () => {
     expect(fitWithin(800, 600)).toEqual({ width: 800, height: 600 });
     expect(rotatedSize(800, 600, 90)).toEqual({ width: 600, height: 800 });
   });
-  it('previews render TeX as MathML and carry their own restrictive CSP', () => {
-    expect(texToMathml('<p>\\(x^2\\)</p>')).toContain('<math');
+  it('previews carry their own restrictive CSP and no script', () => {
     const doc = previewDocument({ markdown: '# Title\n\n$$a+b$$', images: {} });
-    expect(doc).toContain("default-src 'none'");
+    expect(doc).toContain("default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:");
     expect(doc).toContain('<h1>Title</h1>');
-    expect(doc).toContain('<math');
-    expect(previewDocument({ markdown: 'Inline \\(x^2\\) here' })).toMatch(/<p>Inline <math[^]*<\/math> here<\/p>/);
+    expect(doc).toContain('class="katex-display"');
+    expect(doc).not.toMatch(/<script/i);
     expect(previewDocument({ html: '<img src="f.png">', images: { 'f.png': 'data:image/png;base64,AA' } })).toContain('src="data:image/png;base64,AA"');
   });
 });

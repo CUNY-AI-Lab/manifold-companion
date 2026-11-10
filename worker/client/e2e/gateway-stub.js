@@ -18,8 +18,13 @@ export default {
     }
     if (pathname === '/v1/chat/completions') {
       const body = await request.json();
-      const hasImage = JSON.stringify(body.messages).includes('image_url');
-      const content = hasImage ? 'Transcribed by the stub model.\n\nSecond paragraph of the page.' : 'A stub summary.';
+      const text = JSON.stringify(body.messages);
+      const hasImage = text.includes('image_url');
+      const page = /data-page=\\"(\d+)\\"/.exec(text)?.[1];
+      // Page-to-HTML calls get TeX in the delimiters the prompt asks for, so the preview's KaTeX path is exercised.
+      const content = hasImage && page
+        ? `<section data-page="${page}"><h2>Identities</h2><p>Transcribed by the stub model. \\(\\cos^2(t)+\\sin^2(t)=1\\)</p><p>\\[\\cos(\\theta)=\\frac{-3+\\sqrt{41}}{8}\\]</p></section>`
+        : hasImage ? 'Transcribed by the stub model.\n\nSecond paragraph of the page.' : 'A stub summary.';
       return Response.json({ id: 'stub', object: 'chat.completion', model: body.model, choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
     }
     return new Response('not found', { status: 404 });

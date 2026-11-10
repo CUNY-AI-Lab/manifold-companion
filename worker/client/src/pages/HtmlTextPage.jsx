@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import temml from 'temml';
+import { sanitizeHtml } from '../../../src/sanitize/html.ts';
 import { API, api } from '../api/client';
+import { brokenFormulas as brokenTex } from '../lib/math';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
@@ -22,16 +23,8 @@ export function parsePages(spec) {
   return out;
 }
 
-/** TeX fragments that temml cannot render (for formula repair). */
-function brokenFormulas(html) {
-  const found = [];
-  for (const re of [/\\\[([\s\S]{1,2000}?)\\\]/g, /\\\(([\s\S]{1,1000}?)\\\)/g]) {
-    for (const m of html.matchAll(re)) {
-      try { temml.renderToString(m[1], { throwOnError: true }); } catch { found.push(m[1]); }
-    }
-  }
-  return [...new Set(found)].slice(0, 50);
-}
+/** TeX fragments KaTeX (the on-screen renderer) cannot parse, found as legacy auto-render finds them. */
+const brokenFormulas = (html) => brokenTex(sanitizeHtml(html));
 
 export default function HtmlTextPage({ data, reload }) {
   const { refresh } = useSession();
@@ -127,7 +120,7 @@ export default function HtmlTextPage({ data, reload }) {
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
-          <label className="label" htmlFor="html-source">HTML (sanitized when saved; TeX in \( \) and \[ \] becomes MathML in previews and exports)</label>
+          <label className="label" htmlFor="html-source">HTML (sanitized when saved). Write formulas as TeX in \( \) or \[ \]: the preview renders them with KaTeX, and the export converts them to MathML.</label>
           <textarea id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} />
           {canEdit ? (
             <div className="flex flex-wrap gap-2">
