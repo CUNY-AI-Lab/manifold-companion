@@ -1,7 +1,7 @@
 // Property test for DESIGN 6: random batches of concurrent operations on shared
 // projects (uploads that succeed or fail, page edits that version, deletes of
 // pages, texts and many texts, splits, merges, content writes that grow and
-// shrink, giving up an edited full text, moves of texts between projects, ownership transfers, recounts, "delete my data"), and after every
+// shrink, giving up an edited full text, moves of texts between projects, role changes, the cron's tombstone sweep, ownership transfers, recounts, "delete my data"), and after every
 // batch, once all of it has finished:
 //   - every counter equals its owner's row bytes plus reservations (none left),
 //   - every R2 key a row points at exists, and no object exists that no row
@@ -10,7 +10,7 @@
 // Seeded, so a failure names a seed that reproduces it.
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { recountStorage } from "../src/storage";
+import { processCleanup, recountStorage } from "../src/storage";
 import { ALICE, BOB, CAROL, JPEG, PDF, PNG, addMember, api, call, createProject, createText, makeEnv, objectDrift, storageDrift, upload } from "./helpers";
 
 function rng(seed: number) {
@@ -134,6 +134,14 @@ function operations(r: ReturnType<typeof rng>, s: State, e: Awaited<ReturnType<t
       const to = r.pick(s.projects.filter((p) => p.id !== t.project && p.pdf === t.pdf));
       if (to) return post(`/projects/${t.project}/texts/move`, { textIds: [t.id], to: to.id });
     },
+    // the owner makes a member a viewer, or an editor again (a move or upload by them may be in flight)
+    async () => {
+      const p = r.pick(s.projects);
+      const m = p ? r.pick(PEOPLE.filter((x) => x !== p.owner)) : undefined;
+      if (p && m) return call(api(`/projects/${p.id}/members/${m}`), { method: "PUT", as: p.owner, body: { role: r.next() < 0.5 ? "viewer" : "editor" }, env: e });
+    },
+    // the cron's tombstone sweep runs while everything else goes on
+    async () => { await processCleanup(e); },
   ];
   return ops;
 }
