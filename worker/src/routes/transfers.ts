@@ -17,16 +17,18 @@ transferRoutes.get("/", async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT o.id, o.project_id, pr.name AS project_name, p.display_name AS from_name, o.created_at, o.expires_at
      FROM transfer_offers o JOIN projects pr ON pr.id = o.project_id JOIN profiles p ON p.subject = o.from_subject
-     WHERE o.to_subject = ?1 AND o.expires_at > ?2 ORDER BY o.created_at DESC LIMIT 50`,
+     WHERE o.to_subject = ?1 AND o.expires_at > ?2
+       AND EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = o.project_id AND m.subject = o.to_subject)
+     ORDER BY o.created_at DESC LIMIT 50`,
   ).bind(c.get("principal").subject, nowIso()).all();
   return c.json({ offers: rows.results });
 });
 
-/** Only the member the offer names can see or answer it; to anyone else it does not exist. */
+/** Only the member the offer names, while still a member, can see or answer it; to anyone else it does not exist. */
 async function myOffer(db: D1Database, offerId: string, subject: string): Promise<OfferRow> {
   if (!isUuid(offerId)) throw E.notFound("Transfer offer not found.");
   const row = await db.prepare(
-    "SELECT o.id, o.project_id, o.from_subject, o.to_subject, o.expires_at, pr.name AS project_name FROM transfer_offers o JOIN projects pr ON pr.id = o.project_id WHERE o.id = ?1 AND o.to_subject = ?2",
+    "SELECT o.id, o.project_id, o.from_subject, o.to_subject, o.expires_at, pr.name AS project_name FROM transfer_offers o JOIN projects pr ON pr.id = o.project_id WHERE o.id = ?1 AND o.to_subject = ?2 AND EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = o.project_id AND m.subject = ?2)",
   ).bind(offerId, subject).first<OfferRow>();
   if (!row) throw E.notFound("Transfer offer not found.");
   if (row.expires_at <= nowIso()) throw E.gone("This transfer offer has expired. Ask the owner for a new one.", "transfer_expired");

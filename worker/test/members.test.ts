@@ -155,3 +155,24 @@ describe("ownership transfer needs the new owner's consent", () => {
     expect([r[ALICE], r[BOB]].sort()).toEqual(["editor", "owner"]);
   });
 });
+
+describe("leaving a project ends what it offered you", () => {
+  const offer = (pid: string, to: string) => post(`/projects/${pid}/transfer`, { subject: to });
+
+  for (const how of ["removed by the owner", "leaving"] as const) {
+    it(`a member ${how} loses the transfer offer made to them`, async () => {
+      const { pid } = await projectWithBytes();
+      const { offer: o } = await json(await offer(pid, BOB));
+      const res = how === "leaving"
+        ? await call(api(`/projects/${pid}/members/${BOB}`), { method: "DELETE", as: BOB })
+        : await call(api(`/projects/${pid}/members/${BOB}`), { method: "DELETE" });
+      expect(res.status).toBe(200);
+      // Bob no longer sees the project's name in his offers, cannot answer, and the owner may offer to someone else.
+      expect((await json(await call(api("/transfers"), { as: BOB }))).offers).toEqual([]);
+      expect((await post(`/transfers/${o.id}/accept`, {}, BOB)).status).toBe(404);
+      expect((await post(`/transfers/${o.id}/decline`, {}, BOB)).status).toBe(404);
+      expect((await json(await call(api(`/projects/${pid}/transfer`)))).offer).toBeNull();
+      expect((await offer(pid, CAROL)).status).toBe(201);
+    });
+  }
+});

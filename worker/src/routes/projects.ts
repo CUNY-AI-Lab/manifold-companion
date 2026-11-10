@@ -144,8 +144,12 @@ projectRoutes.delete("/:id/members/:subject", async (c) => {
   if (!isSubject(target)) throw E.notFound("Member not found.");
   const { project } = await requireRole(c.env.DB, subject, c.req.param("id"), target === subject ? "viewer" : "owner");
   if (target === project.owner_subject) throw E.conflict("The owner cannot be removed. Delete the project instead.", "owner_cannot_leave");
-  const res = await c.env.DB.prepare("DELETE FROM project_members WHERE project_id = ?1 AND subject = ?2 AND role != 'owner'").bind(project.id, target).run();
-  if (res.meta.changes !== 1) throw E.notFound("Member not found.");
+  // One transaction: an ownership offer made to the member ends with their membership.
+  const [res] = await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM project_members WHERE project_id = ?1 AND subject = ?2 AND role != 'owner'").bind(project.id, target),
+    c.env.DB.prepare("DELETE FROM transfer_offers WHERE project_id = ?1 AND to_subject = ?2 AND NOT EXISTS (SELECT 1 FROM project_members WHERE project_id = ?1 AND subject = ?2)").bind(project.id, target),
+  ]);
+  if (res?.meta.changes !== 1) throw E.notFound("Member not found.");
   return c.json({ removed: true });
 });
 
