@@ -17,6 +17,7 @@ import { modelRoutes } from "./routes/models";
 import { errorTypeName, logger } from "./logging";
 import { annotationRoutes } from "./routes/annotations";
 import { notificationRoutes } from "./routes/notifications";
+import { transferRoutes } from "./routes/transfers";
 
 export interface AppVariables {
   requestId: string;
@@ -98,6 +99,7 @@ api.route("/texts", uploadRoutes);
 api.route("/texts", taskRoutes);
 api.route("/texts", annotationRoutes);
 api.route("/notifications", notificationRoutes);
+api.route("/transfers", transferRoutes);
 api.route("/", modelRoutes);
 api.route("/search", searchRoutes);
 api.all("*", (c) => errorResponse(E.notFound("No such API route."), c.get("requestId")));

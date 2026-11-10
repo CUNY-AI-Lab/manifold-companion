@@ -12,6 +12,7 @@ import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
 import { blobToDataUri, prepareImage } from '../lib/image';
 import { checkList, convertPdf } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
+import { useConfirm } from '../components/ConfirmDialog';
 
 /** "1, 3-5" -> Set {1,3,4,5} */
 export function parsePages(spec) {
@@ -31,6 +32,7 @@ const brokenFormulas = (html) => brokenTex(sanitizeHtml(html));
 
 export default function HtmlTextPage({ data, reload }) {
   const { refresh } = useSession();
+  const confirm = useConfirm();
   const { text, role } = data;
   const canEdit = role !== 'viewer';
   const [html, setHtml] = useState(null);
@@ -63,11 +65,11 @@ export default function HtmlTextPage({ data, reload }) {
 
   const convert = async () => {
     if (!file) return;
-    if (saved && done.current.size === 0 && !window.confirm(replaceWarning('Convert this PDF and replace the current HTML?'))) return;
+    if (saved && done.current.size === 0 && !(await confirm({ title: 'Replace the current HTML?', message: replaceWarning('Convert this PDF and replace the current HTML?'), confirmLabel: 'Convert and replace' }))) return;
     controller.current = new AbortController();
     setError(null);
     try {
-      if (!data.text.has_source_pdf || window.confirm('Replace the stored source PDF with this file?')) {
+      if (!data.text.has_source_pdf || (await confirm({ title: 'Replace the stored PDF?', message: 'Replace the stored source PDF with this file? The old PDF is deleted.', confirmLabel: 'Replace the PDF' }))) {
         await api.upload(`/api/texts/${text.id}/source-pdf`, file, { method: 'PUT', filename: file.name, query: { replace: '1' } });
       }
       const r = await convertPdf({ textId: text.id, file, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, warnings: pageWarnings.current, onProgress: setProgress });

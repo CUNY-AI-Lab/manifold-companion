@@ -31,22 +31,35 @@ describe("member roles", () => {
   });
 });
 
-describe("ownership transfer", () => {
-  it("moves ownership and the project's storage to the new owner; the old owner stays as editor", async () => {
+describe("ownership transfer needs the new owner's consent", () => {
+  const offer = (pid: string, to: string, as = ALICE) => post(`/projects/${pid}/transfer`, { subject: to }, as);
+  const accept = (id: string, as: string, opts: { env?: any } = {}) => post(`/transfers/${id}/accept`, {}, as, opts);
+  const totals = async () => (await storageOf(ALICE)) + (await storageOf(BOB)) + (await storageOf(CAROL));
+
+  it("an offer moves nothing; only the member's own accept moves ownership and storage; the old owner stays as editor", async () => {
     const { pid } = await projectWithBytes();
     const bytes = await projectStorageBytes(env.DB, pid);
-    expect(bytes).toBeGreaterThan(0);
     const [aliceBefore, bobBefore] = [await storageOf(ALICE), await storageOf(BOB)];
-    expect(await json(await post(`/projects/${pid}/transfer`, { subject: BOB }))).toEqual({ owner: BOB, previous_owner_role: "editor" });
+    const res = await offer(pid, BOB);
+    expect(res.status).toBe(201);
+    const { offer: o } = await json(res);
+    // Nothing changed yet.
+    expect(await roles(pid)).toMatchObject({ [ALICE]: "owner", [BOB]: "editor" });
+    expect([await storageOf(ALICE), await storageOf(BOB)]).toEqual([aliceBefore, bobBefore]);
+    // Both sides see the pending offer; Bob was notified.
+    expect((await json(await call(api(`/projects/${pid}/transfer`)))).offer).toMatchObject({ id: o.id, to_subject: BOB });
+    expect((await json(await call(api("/transfers"), { as: BOB }))).offers).toEqual([expect.objectContaining({ id: o.id, project_id: pid, project_name: "Owned" })]);
+    expect((await json(await call(api("/notifications"), { as: BOB }))).notifications[0].title).toMatch(/offered you ownership of "Owned"/);
+    // Only Bob can answer it.
+    for (const who of [ALICE, CAROL]) expect((await accept(o.id, who)).status).toBe(404);
+    expect(await json(await accept(o.id, BOB))).toEqual({ project_id: pid, owner: BOB, previous_owner_role: "editor" });
     expect(await roles(pid)).toMatchObject({ [ALICE]: "editor", [BOB]: "owner", [CAROL]: "viewer" });
     expect(await storageOf(ALICE)).toBe(aliceBefore - bytes);
     expect(await storageOf(BOB)).toBe(bobBefore + bytes);
-    expect((await json(await call(api(`/projects/${pid}`), { as: BOB }))).project.role).toBe("owner");
-    // Alice is no longer the owner: she cannot delete it or transfer it back; Bob can.
-    expect((await call(api(`/projects/${pid}`), { method: "DELETE" })).status).toBe(403);
-    expect((await post(`/projects/${pid}/transfer`, { subject: ALICE })).status).toBe(403);
-    const notes = (await json(await call(api("/notifications"), { as: BOB }))).notifications;
-    expect(notes[0].title).toMatch(/made you the owner of "Owned"/);
+    expect((await json(await call(api("/notifications")))).notifications[0].title).toMatch(/accepted ownership of "Owned"; you are now an editor/);
+    // The offer is gone; accepting again does nothing.
+    expect((await accept(o.id, BOB)).status).toBe(404);
+    expect(await storageOf(BOB)).toBe(bobBefore + bytes);
     // New uploads are charged to the new owner.
     const tid = (await json(await post(`/projects/${pid}/texts`, { name: "New" }, BOB))).text.id;
     const before = await storageOf(BOB);
@@ -54,30 +67,58 @@ describe("ownership transfer", () => {
     expect(await storageOf(BOB)).toBe(before + 500);
   });
 
-  it("refuses a non-member, the owner themselves, and a new owner without room; nothing changes", async () => {
+  it("one pending offer per project; revoke, decline and expiry each end it; accept after revoke fails", async () => {
     const { pid } = await projectWithBytes();
-    const before = [await storageOf(ALICE), await storageOf(BOB), JSON.stringify(await roles(pid))];
-    expect((await post(`/projects/${pid}/transfer`, { subject: "cail-v1-nobody" })).status).toBe(400);
-    expect((await post(`/projects/${pid}/transfer`, { subject: canonicalTestSubject("zed") })).status).toBe(404); // valid subject, not a member
-    expect((await post(`/projects/${pid}/transfer`, { subject: ALICE })).status).toBe(409);
-    const tight = await makeEnv({ STORAGE_QUOTA_BYTES: "100" });
-    const res = await post(`/projects/${pid}/transfer`, { subject: BOB }, ALICE, { env: tight });
-    expect(res.status).toBe(409);
-    expect((await json(res)).error.code).toBe("transfer_quota_exceeded");
-    expect([await storageOf(ALICE), await storageOf(BOB), JSON.stringify(await roles(pid))]).toEqual(before);
+    const { offer: o } = await json(await offer(pid, BOB));
+    expect((await offer(pid, CAROL)).status).toBe(409);
+    expect((await call(api(`/projects/${pid}/transfer`), { method: "DELETE" })).status).toBe(200);
+    expect((await accept(o.id, BOB)).status).toBe(404); // accept after revoke
+    const { offer: o2 } = await json(await offer(pid, CAROL));
+    expect((await post(`/transfers/${o2.id}/decline`, {}, CAROL)).status).toBe(200);
+    expect((await accept(o2.id, CAROL)).status).toBe(404);
+    const { offer: o3 } = await json(await offer(pid, BOB));
+    await env.DB.prepare("UPDATE transfer_offers SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?1").bind(o3.id).run();
+    expect((await accept(o3.id, BOB)).status).toBe(410);
+    expect((await offer(pid, CAROL)).status).toBe(201); // an expired offer gives way
+    expect(await roles(pid)).toMatchObject({ [ALICE]: "owner" });
   });
 
-  it("two racing transfers to different members: exactly one wins and the storage adds up", async () => {
+  it("refuses offers to a non-member and to the owner; a member without room cannot accept, and the offer stays pending", async () => {
+    const { pid } = await projectWithBytes();
+    expect((await offer(pid, canonicalTestSubject("zed"))).status).toBe(404);
+    expect((await offer(pid, "not-a-subject")).status).toBe(400);
+    expect((await offer(pid, ALICE)).status).toBe(409);
+    const { offer: o } = await json(await offer(pid, BOB));
+    const before = [await storageOf(ALICE), await storageOf(BOB), JSON.stringify(await roles(pid))];
+    const res = await accept(o.id, BOB, { env: await makeEnv({ STORAGE_QUOTA_BYTES: "100" }) });
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toMatchObject({ code: "transfer_quota_exceeded", message: expect.stringMatching(/not have enough storage/) });
+    expect([await storageOf(ALICE), await storageOf(BOB), JSON.stringify(await roles(pid))]).toEqual(before);
+    expect((await json(await call(api("/transfers"), { as: BOB }))).offers).toHaveLength(1); // still pending, claim released
+    expect((await accept(o.id, BOB)).status).toBe(200);
+  });
+
+  it("two concurrent accepts of one offer: exactly one moves the storage, once", async () => {
     const { pid } = await projectWithBytes();
     const bytes = await projectStorageBytes(env.DB, pid);
-    const total = (await storageOf(ALICE)) + (await storageOf(BOB)) + (await storageOf(CAROL));
-    const results = await Promise.all([post(`/projects/${pid}/transfer`, { subject: BOB }), post(`/projects/${pid}/transfer`, { subject: CAROL })]);
-    const ok = results.filter((r) => r.status === 200);
-    expect(ok).toHaveLength(1);
-    expect(results.find((r) => r.status !== 200)!.status).toBeGreaterThanOrEqual(403);
-    expect((await storageOf(ALICE)) + (await storageOf(BOB)) + (await storageOf(CAROL))).toBe(total);
-    const owners = Object.entries(await roles(pid)).filter(([, r]) => r === "owner");
-    expect(owners).toHaveLength(1);
-    expect(await storageOf(owners[0]![0])).toBeGreaterThanOrEqual(bytes);
+    const total = await totals();
+    const bobBefore = await storageOf(BOB);
+    const { offer: o } = await json(await offer(pid, BOB));
+    const results = await Promise.all([accept(o.id, BOB), accept(o.id, BOB), accept(o.id, BOB)]);
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    for (const r of results.filter((x) => x.status !== 200)) expect([404, 409]).toContain(r.status);
+    expect(await storageOf(BOB)).toBe(bobBefore + bytes);
+    expect(await totals()).toBe(total);
+    expect(Object.values(await roles(pid)).filter((r) => r === "owner")).toHaveLength(1);
+  });
+
+  it("an accept racing a revoke: either the move happens once or not at all", async () => {
+    const { pid } = await projectWithBytes();
+    const total = await totals();
+    const { offer: o } = await json(await offer(pid, BOB));
+    await Promise.all([accept(o.id, BOB), call(api(`/projects/${pid}/transfer`), { method: "DELETE" })]);
+    expect(await totals()).toBe(total);
+    const r = await roles(pid);
+    expect([r[ALICE], r[BOB]].sort()).toEqual(["editor", "owner"]);
   });
 });

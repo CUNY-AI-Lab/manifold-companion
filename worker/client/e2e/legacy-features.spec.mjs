@@ -140,25 +140,60 @@ test('member roles and ownership transfer, with an accessible confirmation', asy
   const bobRow = share.getByRole('listitem').filter({ hasText: 'Bob (editor' });
   const makeOwner = bobRow.getByRole('button', { name: 'Make owner' });
   await makeOwner.click();
-  const confirmDialog = page.getByRole('alertdialog', { name: 'Transfer ownership?' });
+  const confirmDialog = page.getByRole('alertdialog', { name: 'Offer ownership?' });
   await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog).toContainText('Nothing changes unless they accept');
   await expect(confirmDialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirmDialog).toHaveCount(0);
   await expect(makeOwner).toBeFocused();
-  await expect(page.getByRole('heading', { name: /Shared project/ })).toBeVisible();
 
   await makeOwner.click();
-  await confirmDialog.getByRole('button', { name: 'Make Bob the owner' }).click();
-  await expect(share).toHaveCount(0);
-  await expect(page.getByText('you are a editor')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Share' })).toHaveCount(0);
+  await confirmDialog.getByRole('button', { name: 'Offer to Bob' }).click();
+  await expect(share.getByText(/Ownership offered to\s*Bob, waiting for them to accept/)).toBeVisible();
+  await expect(makeOwner).toBeDisabled(); // one pending offer per project
+  await share.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByText('you are the owner')).toBeVisible(); // nothing moved yet
 
+  await bob.page.goto('/manifold-companion/');
+  await expect(bob.page.getByRole('region', { name: 'Ownership offered to you' }).getByRole('link', { name: 'Shared project' })).toBeVisible();
   await bob.page.goto(projectUrl);
+  await expect(bob.page.getByText('you are a editor')).toBeVisible();
+  await bob.page.getByRole('button', { name: 'Accept ownership' }).click();
+  await bob.page.getByRole('alertdialog', { name: 'Become the owner?' }).getByRole('button', { name: 'Accept ownership' }).click();
   await expect(bob.page.getByText('you are the owner')).toBeVisible();
   await expect(bob.page.getByRole('button', { name: 'Share' })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText('you are a editor')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Share' })).toHaveCount(0);
   await carol.page.goto(projectUrl);
   await expect(carol.page.getByText('you are a editor')).toBeVisible();
   await bob.context.close();
   await carol.context.close();
+});
+
+test('destructive actions ask in an in-app dialog: Cancel keeps, Escape keeps, the danger button deletes', async ({ page, context }) => {
+  await as(context, 'alice');
+  let nativeDialogs = 0;
+  page.on('dialog', (d) => { nativeDialogs += 1; d.dismiss(); });
+  const { projectUrl } = await newImageText(page, 'Dialogs project', 'Doomed');
+  await page.goto(projectUrl);
+  const del = page.getByRole('listitem').filter({ hasText: 'Doomed' }).getByRole('button', { name: 'Delete' });
+  await del.click();
+  const dialog = page.getByRole('alertdialog', { name: 'Delete this text?' });
+  await expect(dialog).toContainText('cannot be undone');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(del).toBeFocused();
+  await del.click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Doomed' })).toBeVisible();
+  await del.click();
+  await dialog.getByRole('button', { name: 'Delete text' }).click();
+  await expect(page.getByRole('link', { name: 'Doomed' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Delete project' }).click();
+  await page.getByRole('alertdialog', { name: 'Delete this project?' }).getByRole('button', { name: 'Delete project' }).click();
+  await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  expect(nativeDialogs).toBe(0);
 });

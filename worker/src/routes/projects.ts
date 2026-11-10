@@ -3,7 +3,7 @@ import { requireRole } from "../authz";
 import { optionalString, readJsonObject, requiredString } from "../body";
 import { limits } from "../env";
 import { E } from "../errors";
-import { deleteProject, projectBytesSql } from "../storage";
+import { deleteProject } from "../storage";
 import { notify } from "../notify";
 import { addDays, isSubject, newId, nowIso } from "../util";
 import { projectInviteRoutes as inviteRoutes } from "./project-invites";
@@ -160,45 +160,57 @@ projectRoutes.put("/:id/members/:subject", async (c) => {
   return c.json({ member: { subject: target, role: body.role } });
 });
 
-// Transfer ownership to an existing member. One D1 transaction: the project
-// row's owner moves only if the new owner is a member, has room for the
-// project's bytes in their storage and is under their project limit; the
-// bytes move from the old owner's account to the new one's (computed in the
-// same transaction, so a concurrent upload cannot make them drift); the old
-// owner stays on as an editor.
+// ---- ownership transfer: offered by the owner, accepted by the member --------
+// The owner offers the project to one member; nothing moves until that member
+// accepts with their own request (src/routes/transfers.ts). The old owner stays
+// on as an editor and may leave afterwards. One pending offer per project.
+
+export const TRANSFER_OFFER_DAYS = 7;
+
+projectRoutes.get("/:id/transfer", async (c) => {
+  const { project } = await requireRole(c.env.DB, c.get("principal").subject, c.req.param("id"), "owner");
+  const offer = await c.env.DB.prepare(
+    `SELECT o.id, o.to_subject, p.display_name AS to_name, o.created_at, o.expires_at FROM transfer_offers o JOIN profiles p ON p.subject = o.to_subject
+     WHERE o.project_id = ?1 AND o.expires_at > ?2`,
+  ).bind(project.id, nowIso()).first();
+  return c.json({ offer: offer ?? null });
+});
+
 projectRoutes.post("/:id/transfer", async (c) => {
   const { subject } = c.get("principal");
-  const lim = limits(c.env);
   const { project } = await requireRole(c.env.DB, subject, c.req.param("id"), "owner");
-  const body = await readJsonObject(c.req.raw, lim.maxJsonBytes);
+  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
   const target = body.subject;
   if (typeof target !== "string" || !isSubject(target)) throw E.badRequest("subject must name a member.");
   if (target === project.owner_subject) throw E.conflict("You already own this project.", "already_owner");
-  const member = await c.env.DB.prepare("SELECT role FROM project_members WHERE project_id = ?1 AND subject = ?2").bind(project.id, target).first<{ role: Role }>();
-  if (!member) throw E.notFound("Member not found.");
-  const bytes = projectBytesSql("?1");
-  const [moved] = await c.env.DB.batch([
+  const now = nowIso();
+  const id = newId();
+  const expiresAt = addDays(now, TRANSFER_OFFER_DAYS);
+  // An expired offer gives way; a live one must be revoked first. The member check is in the insert.
+  const [, inserted] = await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM transfer_offers WHERE project_id = ?1 AND expires_at <= ?2 AND claim_nonce IS NULL").bind(project.id, now),
     c.env.DB.prepare(
-      `UPDATE projects SET owner_subject = ?2, updated_at = ?6
-       WHERE id = ?1 AND owner_subject = ?3
-         AND EXISTS (SELECT 1 FROM project_members WHERE project_id = ?1 AND subject = ?2 AND role != 'owner')
-         AND (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ${bytes} <= ?4
-         AND (SELECT COUNT(*) FROM projects WHERE owner_subject = ?2) < ?5`,
-    ).bind(project.id, target, subject, lim.storageQuotaBytes, lim.maxProjectsPerPerson, nowIso()),
-    c.env.DB.prepare(`UPDATE profiles SET storage_bytes = storage_bytes + ${bytes} WHERE subject = ?2 AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2`).bind(project.id, target),
-    c.env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${bytes}) WHERE subject = ?3 AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2`).bind(project.id, target, subject),
-    c.env.DB.prepare("UPDATE project_members SET role = 'editor' WHERE project_id = ?1 AND subject = ?3 AND role = 'owner' AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2").bind(project.id, target, subject),
-    c.env.DB.prepare("UPDATE project_members SET role = 'owner' WHERE project_id = ?1 AND subject = ?2 AND (SELECT owner_subject FROM projects WHERE id = ?1) = ?2").bind(project.id, target),
+      `INSERT INTO transfer_offers (id, project_id, from_subject, to_subject, created_at, expires_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6
+       WHERE EXISTS (SELECT 1 FROM project_members WHERE project_id = ?2 AND subject = ?4 AND role != 'owner')
+         AND NOT EXISTS (SELECT 1 FROM transfer_offers WHERE project_id = ?2)`,
+    ).bind(id, project.id, subject, target, now, expiresAt),
   ]);
-  if (moved?.meta.changes !== 1) {
-    const room = await c.env.DB.prepare(`SELECT (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ${bytes} <= ?3 AS fits, (SELECT COUNT(*) FROM projects WHERE owner_subject = ?2) < ?4 AS under FROM projects WHERE id = ?1`).bind(project.id, target, lim.storageQuotaBytes, lim.maxProjectsPerPerson).first<{ fits: number; under: number }>();
-    if (room && !room.fits) throw E.conflict("The new owner does not have enough storage left for this project.", "transfer_quota_exceeded");
-    if (room && !room.under) throw E.conflict("The new owner already owns as many projects as allowed.", "transfer_project_limit");
-    throw E.conflict("The project changed while transferring. Reload and try again.", "transfer_conflict");
+  if (inserted?.meta.changes !== 1) {
+    const live = await c.env.DB.prepare("SELECT 1 AS x FROM transfer_offers WHERE project_id = ?1").bind(project.id).first();
+    if (live) throw E.conflict("This project already has a pending transfer offer. Revoke it first.", "transfer_pending");
+    throw E.notFound("Member not found.");
   }
   const who = await c.env.DB.prepare("SELECT display_name FROM profiles WHERE subject = ?1").bind(subject).first<{ display_name: string | null }>();
-  await notify(c.env.DB, [target], subject, { type: "project_shared", title: `${who?.display_name || "Someone"} made you the owner of "${project.name.slice(0, 80)}"`, link: `/projects/${project.id}` });
-  return c.json({ owner: target, previous_owner_role: "editor" });
+  await notify(c.env.DB, [target], subject, { type: "project_shared", title: `${who?.display_name || "Someone"} offered you ownership of "${project.name.slice(0, 80)}"`, link: `/projects/${project.id}` });
+  return c.json({ offer: { id, to_subject: target, created_at: now, expires_at: expiresAt } }, 201);
+});
+
+projectRoutes.delete("/:id/transfer", async (c) => {
+  const { project } = await requireRole(c.env.DB, c.get("principal").subject, c.req.param("id"), "owner");
+  const res = await c.env.DB.prepare("DELETE FROM transfer_offers WHERE project_id = ?1 AND claim_nonce IS NULL").bind(project.id).run();
+  if (res.meta.changes !== 1) throw E.notFound("No pending transfer offer.");
+  return c.json({ revoked: true });
 });
 
 projectRoutes.route("/:id/invites", inviteRoutes);

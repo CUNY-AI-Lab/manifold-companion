@@ -7,6 +7,32 @@ import SharePanel from '../components/SharePanel';
 import { ErrorNote, MoveButtons, Spinner, useMoveFocus } from '../components/ui';
 import { RetentionBanner } from './Dashboard';
 import * as toc from '../lib/toc';
+import { useConfirm } from '../components/ConfirmDialog';
+
+/** A pending ownership offer made to me for this project: accept (after a confirmation) or decline. */
+function TransferOffer({ projectId, onAccepted }) {
+  const confirm = useConfirm();
+  const [offer, setOffer] = useState(null);
+  const [error, setError] = useState(null);
+  const load = useCallback(() => api.get('/api/transfers').then((r) => setOffer(r.offers.find((o) => o.project_id === projectId) ?? null), () => {}), [projectId]);
+  useEffect(() => { load(); }, [load]);
+  if (!offer) return error ? <ErrorNote error={error} onDismiss={() => setError(null)} /> : null;
+  const from = offer.from_name || 'The owner';
+  return (
+    <section aria-labelledby="transfer-offer" className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+      <h2 id="transfer-offer" className="text-base">Ownership offered to you</h2>
+      <p className="mt-1">{from} asks you to become the owner of this project (offer expires {offer.expires_at.slice(0, 10)}). If you accept, its storage counts against your allowance, only you can share it, transfer it or delete it, and {from} stays on as an editor.</p>
+      <ErrorNote error={error} onDismiss={() => setError(null)} />
+      <div className="mt-2 flex gap-2">
+        <button type="button" className="btn-primary" onClick={async () => {
+          if (!(await confirm({ title: 'Become the owner?', message: `Take over this project from ${from}? Its stored files count against your storage allowance from now on.`, confirmLabel: 'Accept ownership' }))) return;
+          try { await api.post(`/api/transfers/${offer.id}/accept`, {}); setOffer(null); onAccepted(); } catch (e) { setError(e); load(); }
+        }}>Accept ownership</button>
+        <button type="button" className="btn-quiet" onClick={async () => { try { await api.post(`/api/transfers/${offer.id}/decline`, {}); setOffer(null); } catch (e) { setError(e); } }}>Decline</button>
+      </div>
+    </section>
+  );
+}
 
 /** Project-level metadata (the owner's): name, description and default language, the export's fallbacks. */
 function ProjectDetails({ project, onSaved }) {
@@ -149,6 +175,7 @@ export default function ProjectPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { refresh } = useSession();
+  const confirm = useConfirm();
   const [project, setProject] = useState(null);
   const [texts, setTexts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -193,6 +220,7 @@ export default function ProjectPage() {
       </div>
       {project.description ? <p className="mt-2 max-w-prose text-slate-600 dark:text-slate-300">{project.description}</p> : null}
       <div className="mt-3"><RetentionBanner project={project} /></div>
+      <TransferOffer projectId={id} onAccepted={() => { load(); refresh(); }} />
       {isOwner ? <ProjectDetails project={project} onSaved={load} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       <ul className="rowlist mt-6 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
@@ -202,7 +230,7 @@ export default function ProjectPage() {
             {canEdit && texts.length > 1 ? <MoveButtons label={t.name} index={texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
             <span className="text-xs text-slate-500 dark:text-slate-400">{project.project_type === 'pdf_to_html' ? (t.has_html ? 'converted' : 'not converted yet') : `${t.page_count} pages, ${t.status}`}</span>
-            {canEdit ? <button className="btn-quiet ml-auto" type="button" onClick={async () => { if (!window.confirm(`Delete “${t.name}” and its files?`)) return; try { await api.del(`/api/texts/${t.id}`); load(); refresh(); } catch (e) { setError(e); } }}>Delete</button> : null}
+            {canEdit ? <button className="btn-quiet ml-auto" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this text?', message: `Delete “${t.name}”, its pages, files and versions, for every member? This cannot be undone.`, confirmLabel: 'Delete text', danger: true }))) return; try { await api.del(`/api/texts/${t.id}`); load(); refresh(); } catch (e) { setError(e); } }}>Delete</button> : null}
           </li>
         ))}
       </ul>
@@ -216,11 +244,11 @@ export default function ProjectPage() {
         </form>
       ) : null}
       <div className="mt-10 flex gap-2">
-        {isOwner ? <button className="btn-danger" type="button" onClick={async () => { if (!window.confirm('Delete this project, all its texts and files, for every member?')) return; try { await api.del(`/api/projects/${id}`); refresh(); navigate('/'); } catch (e) { setError(e); } }}>Delete project</button> : (
-          <button className="btn-quiet" type="button" onClick={async () => { try { const me = (await api.get(`/api/projects/${id}/members`)).members.find((m) => m.me); await api.del(`/api/projects/${id}/members/${me.subject}`); navigate('/'); } catch (e) { setError(e); } }}>Leave project</button>
+        {isOwner ? <button className="btn-danger" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this project?', message: 'Delete this project, all its texts and files, for every member? This cannot be undone. Export first if you want to keep a copy.', confirmLabel: 'Delete project', danger: true }))) return; try { await api.del(`/api/projects/${id}`); refresh(); navigate('/'); } catch (e) { setError(e); } }}>Delete project</button> : (
+          <button className="btn-quiet" type="button" onClick={async () => { if (!(await confirm({ title: 'Leave this project?', message: 'You lose access until the owner invites you again.', confirmLabel: 'Leave project', danger: true }))) return; try { const me = (await api.get(`/api/projects/${id}/members`)).members.find((m) => m.me); await api.del(`/api/projects/${id}/members/${me.subject}`); navigate('/'); } catch (e) { setError(e); } }}>Leave project</button>
         )}
       </div>
-      {panel === 'share' ? <SharePanel projectId={id} onClose={() => setPanel(null)} onTransferred={() => { setPanel(null); load(); refresh(); }} /> : null}
+      {panel === 'share' ? <SharePanel projectId={id} onClose={() => setPanel(null)} /> : null}
       {panel === 'export' ? <ExportPanel project={project} texts={texts} onClose={() => setPanel(null)} /> : null}
     </div>
   );

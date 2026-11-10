@@ -11,11 +11,13 @@ import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
 import { runOcr, translateText } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'nl', 'pl', 'el', 'tr', 'he', 'uk', 'la'];
 
 export default function ImageTextPage({ data, reload }) {
   const { refresh } = useSession();
+  const confirm = useConfirm();
   const { text, pages, role } = data;
   const canEdit = role !== 'viewer';
   const [selected, setSelected] = useState(pages[0]?.id ?? null);
@@ -63,7 +65,7 @@ export default function ImageTextPage({ data, reload }) {
   const startOcr = async (overwrite) => {
     const targets = overwrite ? pages : pages.filter((p) => !p.ocr_text);
     if (targets.length === 0) return;
-    if (overwrite && targets.some((p) => p.ocr_text) && !window.confirm(replaceWarning('Read every page again with the model? This replaces the text of every page.').replace('The current text', 'The current text of each page'))) return;
+    if (overwrite && targets.some((p) => p.ocr_text) && !(await confirm({ title: 'Read every page again?', message: replaceWarning('Read every page again with the model? This replaces the text of every page.').replace('The current text', 'The current text of each page'), confirmLabel: 'Read every page again' }))) return;
     const controller = new AbortController();
     setRun({ done: 0, total: targets.length, current: targets[0].filename, failures: [], controller });
     setError(null);
@@ -96,7 +98,7 @@ export default function ImageTextPage({ data, reload }) {
   };
 
   const ocrOne = async () => {
-    if (page.ocr_text && !window.confirm(replaceWarning(`Read page ${page.page_number} again with the model?${draft !== page.ocr_text ? ' Your unsaved changes to this page will be lost.' : ''}`))) return;
+    if (page.ocr_text && !(await confirm({ title: 'Read this page again?', message: replaceWarning(`Read page ${page.page_number} again with the model?${draft !== page.ocr_text ? ' Your unsaved changes to this page will be lost.' : ''}`), confirmLabel: 'Read again' }))) return;
     setBusy('Reading this page');
     setConflict(null);
     try {
@@ -158,7 +160,7 @@ export default function ImageTextPage({ data, reload }) {
                 <div className="flex flex-wrap gap-2">
                   <button className="btn-primary" type="button" onClick={savePage} disabled={draft === (page.ocr_text ?? '')}>Save page</button>
                   <button className="btn-quiet" type="button" onClick={ocrOne} disabled={!!busy || !!run}>Read this page again</button>
-                  <button className="btn-danger" type="button" onClick={async () => { if (!window.confirm('Delete this page and its image?')) return; await api.del(`/api/texts/${text.id}/pages/${page.id}`); reload(); refresh(); }}>Delete page</button>
+                  <button className="btn-danger" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this page?', message: `Delete page ${page.page_number} (${page.filename}), its image and its saved versions? This cannot be undone.`, confirmLabel: 'Delete page', danger: true }))) return; await api.del(`/api/texts/${text.id}/pages/${page.id}`); reload(); refresh(); }}>Delete page</button>
                 </div>
               ) : null}
               <SandboxedPreview markdown={draft} title={`Preview of page ${page.page_number}`} className="min-h-[14rem]" />

@@ -104,7 +104,7 @@ for (const [size, viewport] of Object.entries(VIEWPORTS)) {
       await page.getByRole('button', { name: 'Share' }).click();
       await expect(page.getByRole('dialog')).toBeVisible();
       found.push(...(await violations(page, 'share dialog')));
-      // The confirmation dialog, on top of the share dialog (bob is a member to transfer to).
+      // The confirmation dialog, on top of the share dialog (bob is a member to offer ownership to).
       const memberRow = page.getByRole('dialog').getByRole('listitem').filter({ has: page.getByRole('button', { name: 'Make owner' }) }).first();
       await memberRow.getByRole('button', { name: 'Make owner' }).click();
       await expect(page.getByRole('alertdialog')).toBeVisible();

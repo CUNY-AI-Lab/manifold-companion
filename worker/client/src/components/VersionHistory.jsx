@@ -4,6 +4,7 @@ import { useSession } from '../api/session.jsx';
 import { formatBytes, ErrorNote } from './ui';
 import SandboxedPreview from './SandboxedPreview';
 import { formatWhen, replaceWarning, versionLabel } from '../lib/versions';
+import { useConfirm } from './ConfirmDialog';
 
 /**
  * Version history of one text's HTML (type "html") or of one page's text
@@ -13,6 +14,7 @@ import { formatWhen, replaceWarning, versionLabel } from '../lib/versions';
  */
 export default function VersionHistory({ textId, type, pageId, canRestore, onRestored, refreshKey, images, dirty = false }) {
   const { session } = useSession();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState(null);
   const [viewing, setViewing] = useState(null); // { id, content, created_at }
@@ -29,7 +31,7 @@ export default function VersionHistory({ textId, type, pageId, canRestore, onRes
   };
 
   const restore = async (v) => {
-    if (!window.confirm(replaceWarning(`Restore the version from ${formatWhen(v.created_at)}?${dirty ? ' Your unsaved changes in the editor will be lost.' : ''}`))) return;
+    if (!(await confirm({ title: 'Restore this version?', message: replaceWarning(`Restore the version from ${formatWhen(v.created_at)}?${dirty ? ' Your unsaved changes in the editor will be lost.' : ''}`), confirmLabel: 'Restore' }))) return;
     setBusy(true);
     try {
       await api.post(`/api/texts/${textId}/versions/${v.id}/revert`, {});

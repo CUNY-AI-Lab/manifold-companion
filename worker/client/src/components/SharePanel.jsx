@@ -5,7 +5,9 @@ import { ErrorNote } from './ui';
 import { useConfirm } from './ConfirmDialog';
 
 /** Owner-only: invite links (role, expiry, single use), members, revoke and remove. */
-export default function SharePanel({ projectId, onClose, onTransferred }) {
+const OFFER_DAYS = 7;
+
+export default function SharePanel({ projectId, onClose }) {
   const dialog = useRef(null);
   useFocusTrap(dialog, true, onClose);
   const [members, setMembers] = useState([]);
@@ -15,13 +17,15 @@ export default function SharePanel({ projectId, onClose, onTransferred }) {
   const [created, setCreated] = useState(null);
   const [error, setError] = useState(null);
   const [status, setStatus] = useState('');
+  const [offer, setOffer] = useState(null);
   const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
-      const [m, i] = await Promise.all([api.get(`/api/projects/${projectId}/members`), api.get(`/api/projects/${projectId}/invites`)]);
+      const [m, i, t] = await Promise.all([api.get(`/api/projects/${projectId}/members`), api.get(`/api/projects/${projectId}/invites`), api.get(`/api/projects/${projectId}/transfer`)]);
       setMembers(m.members);
       setInvites(i.invites);
+      setOffer(t.offer);
     } catch (e) { setError(e); }
   }, [projectId]);
   useEffect(() => { load(); }, [load]);
@@ -65,6 +69,12 @@ export default function SharePanel({ projectId, onClose, onTransferred }) {
           </div>
         ) : null}
         <ErrorNote error={error} onDismiss={() => setError(null)} />
+        {offer ? (
+          <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+            <p>Ownership offered to <strong>{offer.to_name || 'a member'}</strong>, waiting for them to accept (expires {offer.expires_at.slice(0, 10)}).</p>
+            <button type="button" className="btn-quiet mt-2" onClick={async () => { try { await api.del(`/api/projects/${projectId}/transfer`); setStatus('Ownership offer revoked.'); load(); } catch (e) { setError(e); } }}>Revoke the offer</button>
+          </div>
+        ) : null}
         <h3 className="mt-5 text-sm">Members</h3>
         <p className="sr-only" role="status">{status}</p>
         <ul className="rowlist mt-1 text-sm">
@@ -80,13 +90,13 @@ export default function SharePanel({ projectId, onClose, onTransferred }) {
                     <option value="editor">Editor</option>
                     <option value="viewer">Viewer</option>
                   </select>
-                  <button type="button" className="btn-quiet" onClick={async () => {
+                  <button type="button" className="btn-quiet" disabled={!!offer} onClick={async () => {
                     const name = m.display_name || 'this member';
-                    const ok = await confirm({ title: 'Transfer ownership?', message: `${name} becomes the owner of this project. Its storage is counted against their allowance from now on, and only they can share it, transfer it again or delete it.\n\nYou stay on as an editor.`, confirmLabel: `Make ${name} the owner`, danger: true });
+                    const ok = await confirm({ title: 'Offer ownership?', message: `${name} is asked to become the owner of this project. Nothing changes unless they accept within ${OFFER_DAYS} days. If they accept, the project's storage counts against their allowance, only they can share it, transfer it again or delete it, and you stay on as an editor (you can leave afterwards).`, confirmLabel: `Offer to ${name}` });
                     if (!ok) return;
-                    try { await api.post(`/api/projects/${projectId}/transfer`, { subject: m.subject }); onTransferred?.(); } catch (err) { setError(err); }
+                    try { await api.post(`/api/projects/${projectId}/transfer`, { subject: m.subject }); setStatus(`Ownership offered to ${name}.`); load(); } catch (err) { setError(err); }
                   }}>Make owner</button>
-                  <button type="button" className="btn-danger" onClick={async () => { try { await api.del(`/api/projects/${projectId}/members/${m.subject}`); load(); } catch (e) { setError(e); } }}>Remove</button>
+                  <button type="button" className="btn-danger" onClick={async () => { if (!(await confirm({ title: 'Remove this member?', message: `${m.display_name || 'This member'} loses access to the project. Their comments and edits stay.`, confirmLabel: 'Remove', danger: true }))) return; try { await api.del(`/api/projects/${projectId}/members/${m.subject}`); load(); } catch (e) { setError(e); } }}>Remove</button>
                 </span>
               ) : null}
             </li>

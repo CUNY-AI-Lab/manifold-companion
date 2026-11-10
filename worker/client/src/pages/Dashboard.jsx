@@ -22,7 +22,9 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ name: '', project_type: 'image_to_markdown', default_language: 'en' });
 
+  const [offers, setOffers] = useState([]);
   useEffect(() => { api.get('/api/projects').then((r) => setProjects(r.projects), setError); }, []);
+  useEffect(() => { api.get('/api/transfers').then((r) => setOffers(r.offers), () => {}); }, []);
 
   const create = async (e) => {
     e.preventDefault();
@@ -40,6 +42,12 @@ export default function Dashboard() {
       <h1 className="text-2xl">Your projects</h1>
       <div className="mt-2 mb-6"><DataNotice /></div>
       <ErrorNote error={error} onDismiss={() => setError(null)} />
+      {offers.length ? (
+        <section aria-labelledby="offers-title" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          <h2 id="offers-title" className="text-base">Ownership offered to you</h2>
+          <ul className="mt-1 list-disc pl-5">{offers.map((o) => <li key={o.id}><Link to={`/projects/${o.project_id}`}>{o.project_name}</Link> from {o.from_name || 'its owner'}, until {o.expires_at.slice(0, 10)}</li>)}</ul>
+        </section>
+      ) : null}
       {projects === null ? <Spinner /> : projects.length === 0 ? (
         <section aria-labelledby="welcome-title" className="space-y-4 rounded-md border border-slate-200 bg-white p-5 text-sm leading-relaxed dark:border-slate-700 dark:bg-slate-800">
           <h2 id="welcome-title" className="text-lg">Welcome to Manifold Companion</h2>

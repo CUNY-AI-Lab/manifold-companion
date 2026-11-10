@@ -124,8 +124,16 @@ test('create project, upload, OCR, edit, invite, export', async ({ page, context
 test('version history: edit a page, read it again with the model, restore the edit', async ({ page, context }) => {
   await as(context, 'alice');
   const violations = watchCsp(page);
-  const dialogs = [];
-  page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  // Confirmations are in-app dialogs (no window.confirm): answer them as a person would.
+  const confirmWith = async (title, button) => {
+    const dialog = page.getByRole('alertdialog', { name: title });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    const message = await dialog.locator('#confirm-message').innerText();
+    await dialog.getByRole('button', { name: button }).click();
+    await expect(dialog).toHaveCount(0);
+    return message;
+  };
   await page.goto('/manifold-companion/');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Versions');
   await page.getByRole('button', { name: 'Create project' }).click();
@@ -142,8 +150,8 @@ test('version history: edit a page, read it again with the model, restore the ed
   await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
 
   await page.getByRole('button', { name: 'Read this page again' }).click();
+  expect(await confirmWith('Read this page again?', 'Read again')).toMatch(/Read page 1 again with the model\? The current text will be saved as a version first/);
   await expect(text).toHaveValue(/Transcribed by the stub model\./, { timeout: 30_000 });
-  expect(dialogs.at(-1)).toMatch(/Read page 1 again with the model\? The current text will be saved as a version first/);
 
   await page.getByRole('button', { name: 'Version history of this page' }).click();
   const versions = page.getByRole('list', { name: 'Earlier versions, newest first' });
@@ -157,7 +165,7 @@ test('version history: edit a page, read it again with the model, restore the ed
   await expect(page.locator('iframe[title^="Version from"]')).toHaveAttribute('sandbox', '');
 
   await versions.getByRole('listitem').first().getByRole('button', { name: /^Restore/ }).click();
-  expect(dialogs.at(-1)).toMatch(/^Restore the version from .+\? The current text will be saved as a version first/);
+  expect(await confirmWith('Restore this version?', 'Restore')).toMatch(/^Restore the version from .+\? The current text will be saved as a version first/);
   await expect(text).toHaveValue('A careful hand correction.');
   await expect(versions.getByRole('listitem')).toHaveCount(3);
   await expect(versions.getByRole('listitem').first()).toContainText(/Before a restore by you/);
