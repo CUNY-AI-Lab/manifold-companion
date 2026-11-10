@@ -5,7 +5,7 @@ import { requireRole } from "../authz";
 import { readJsonObject } from "../body";
 import { byteLength } from "../content";
 import { E } from "../errors";
-import { exportFileNames, parseMeta, parseToc, planExport, streamExport } from "../export";
+import { exportFileNames, parseExcluded, parseMeta, parseSavedMeta, parseToc, parseTocFlat, planExport, streamExport } from "../export";
 import { nowIso } from "../util";
 import type { AppEnv } from "../app";
 
@@ -30,8 +30,9 @@ exportRoutes.get("/:id/export-settings", async (c) => {
 exportRoutes.put("/:id/export-settings", async (c) => {
   const { project } = await requireRole(c.env.DB, c.get("principal").subject, c.req.param("id"), "editor");
   const body = await readJsonObject(c.req.raw, MAX_SETTINGS_BYTES + 1024);
-  await saveSettings(c.env.DB, project.id, { tocFlat: Array.isArray(body.tocFlat) ? body.tocFlat : [], meta: body.meta && typeof body.meta === "object" ? body.meta : {} });
-  return c.json({ ok: true });
+  const settings = { tocFlat: parseTocFlat(body.tocFlat), excluded: parseExcluded(body.excluded), meta: parseSavedMeta(body.meta) };
+  await saveSettings(c.env.DB, project.id, settings);
+  return c.json({ ok: true, settings });
 });
 
 exportRoutes.post("/:id/export", async (c) => {
@@ -39,12 +40,12 @@ exportRoutes.post("/:id/export", async (c) => {
   const body = await readJsonObject(c.req.raw, 1024 * 1024);
   const toc = parseToc(body.toc);
   const meta = parseMeta(body.meta, project, nowIso().slice(0, 10));
+  const saving = RANK[role] >= RANK.editor && (body.tocFlat !== undefined || body.meta !== undefined);
+  const settings = saving ? { tocFlat: parseTocFlat(body.tocFlat), excluded: parseExcluded(body.excluded), meta: parseSavedMeta(body.meta) } : null;
   const plan = await planExport(c.env, project, toc, meta);
   // Legacy saved the export choices for next time on every export, even a viewer's.
   // Here only someone who may edit the project changes its saved settings.
-  if (RANK[role] >= RANK.editor && (body.tocFlat !== undefined || body.meta !== undefined)) {
-    await saveSettings(c.env.DB, project.id, { tocFlat: Array.isArray(body.tocFlat) ? body.tocFlat : [], meta: body.meta ?? {} });
-  }
+  if (settings) await saveSettings(c.env.DB, project.id, settings);
   const names = exportFileNames(project.name);
   return new Response(streamExport(c.env, plan), {
     headers: {

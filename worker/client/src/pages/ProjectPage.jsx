@@ -6,6 +6,7 @@ import { useSession } from '../api/session.jsx';
 import SharePanel from '../components/SharePanel';
 import { ErrorNote, MoveButtons, Spinner, useMoveFocus } from '../components/ui';
 import { RetentionBanner } from './Dashboard';
+import * as toc from '../lib/toc';
 
 /** Project-level metadata (the owner's): name, description and default language, the export's fallbacks. */
 function ProjectDetails({ project, onSaved }) {
@@ -43,45 +44,102 @@ function ProjectDetails({ project, onSaved }) {
   );
 }
 
+function TocEditor({ items, setItems, texts }) {
+  const [section, setSection] = useState('');
+  const [adding, setAdding] = useState('');
+  const missing = texts.filter((t) => !items.some((i) => i.type === 'text' && i.textId === t.id));
+  const btn = 'btn-icon';
+  return (
+    <fieldset className="mt-3">
+      <legend className="label">Table of contents</legend>
+      <p className="mb-2 text-xs text-slate-600 dark:text-slate-300">The export follows this order. Indent an item to nest it under the item above; sections become their own pages in Manifold.</p>
+      {items.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">Nothing to export yet. Add a text or a section.</p> : null}
+      <ol className="space-y-1" aria-label="Table of contents items">
+        {items.map((item, i) => (
+          <li key={item.id} className="flex flex-wrap items-center gap-1 text-sm" style={{ paddingLeft: `${item.depth * 1.25}rem` }}>
+            <span className="sr-only">Level {item.depth + 1}, </span>
+            {item.type === 'section' ? (
+              <label className="flex flex-1 items-center gap-1"><span className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-300">Section</span>
+                <input className="field min-w-0 flex-1" aria-label={`Section label, item ${i + 1}`} value={item.label} maxLength={toc.MAX_LABEL} onChange={(e) => setItems(toc.relabel(items, i, e.target.value))} />
+              </label>
+            ) : <span className="flex-1 truncate">{item.label}</span>}
+            <button type="button" className={btn} aria-label={`Move ${item.label} up`} disabled={i === 0} onClick={() => setItems(toc.move(items, i, -1))}><span aria-hidden="true">↑</span></button>
+            <button type="button" className={btn} aria-label={`Move ${item.label} down`} disabled={i === items.length - 1} onClick={() => setItems(toc.move(items, i, 1))}><span aria-hidden="true">↓</span></button>
+            <button type="button" className={btn} aria-label={`Outdent ${item.label}`} disabled={item.depth === 0} onClick={() => setItems(toc.indent(items, i, -1))}><span aria-hidden="true">←</span></button>
+            <button type="button" className={btn} aria-label={`Indent ${item.label}`} disabled={item.depth >= toc.MAX_DEPTH || i === 0} onClick={() => setItems(toc.indent(items, i, 1))}><span aria-hidden="true">→</span></button>
+            <button type="button" className={btn} aria-label={`Remove ${item.label} from the export`} onClick={() => setItems(toc.remove(items, i))}><span aria-hidden="true">×</span></button>
+          </li>
+        ))}
+      </ol>
+      <div className="mt-2 flex flex-wrap items-end gap-2">
+        <label className="text-sm"><span className="label">New section</span><input className="field" value={section} maxLength={toc.MAX_LABEL} onChange={(e) => setSection(e.target.value)} /></label>
+        <button type="button" className="btn-quiet" disabled={!section.trim()} onClick={() => { setItems(toc.addSection(items, section)); setSection(''); }}>Add section</button>
+        {missing.length ? (
+          <>
+            <label className="text-sm"><span className="label">Text not in the export</span>
+              <select className="field" value={adding} onChange={(e) => setAdding(e.target.value)}><option value="">Choose a text</option>{missing.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+            </label>
+            <button type="button" className="btn-quiet" disabled={!adding} onClick={() => { const t = texts.find((x) => x.id === adding); if (t) setItems(toc.addText(items, t)); setAdding(''); }}>Add text</button>
+          </>
+        ) : null}
+      </div>
+    </fieldset>
+  );
+}
+
 function ExportPanel({ project, texts, onClose }) {
-  const [selected, setSelected] = useState(() => texts.map((t) => t.id));
+  const canSave = project.role !== 'viewer';
+  const [items, setItems] = useState(() => toc.reconcileToc([], texts));
   const [meta, setMeta] = useState({ title: project.name, creators: '', date: new Date().toISOString().slice(0, 10), language: project.default_language, rights: '', description: project.description ?? '' });
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
   const dialog = useRef(null);
   useFocusTrap(dialog, true, onClose);
   useEffect(() => {
-    api.get(`/api/projects/${project.id}/export-settings`).then((r) => { if (r.settings?.meta) setMeta((m) => ({ ...m, ...r.settings.meta })); }, () => {});
-  }, [project.id]);
+    api.get(`/api/projects/${project.id}/export-settings`).then((r) => {
+      if (r.settings?.meta) setMeta((m) => ({ ...m, ...Object.fromEntries(Object.entries(r.settings.meta).filter(([, v]) => v)) }));
+      if (Array.isArray(r.settings?.tocFlat) && r.settings.tocFlat.length) setItems(toc.reconcileToc(r.settings.tocFlat, texts, r.settings.excluded));
+    }, () => {});
+  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tocFlat = items.map(({ id, type, label, depth, textId }) => ({ id, type, label, depth, ...(textId ? { textId } : {}) }));
+  const excluded = toc.excludedIds(items, texts);
+  const saveOnly = async () => {
+    setError(null);
+    try { await api.put(`/api/projects/${project.id}/export-settings`, { meta, tocFlat, excluded }); setStatus('Export settings saved.'); } catch (e) { setError(e); }
+  };
   const run = async () => {
     setBusy(true);
     setError(null);
     try {
-      const toc = texts.filter((t) => selected.includes(t.id)).map((t) => ({ type: 'text', textId: t.id, label: t.name, children: [] }));
-      const res = await api.raw(`/api/projects/${project.id}/export`, { method: 'POST', body: { meta, toc, tocFlat: selected } });
+      const res = await api.raw(`/api/projects/${project.id}/export`, { method: 'POST', body: { meta, toc: toc.flatToNested(items), ...(canSave ? { tocFlat, excluded } : {}) } });
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement('a');
       a.href = url;
       a.download = `${project.name.replace(/[^\w-]+/g, '_') || 'export'}.zip`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      if (canSave) setStatus('Exported; these settings are saved for next time.');
     } catch (e) { setError(e); } finally { setBusy(false); }
   };
+  const hasText = items.some((i) => i.type === 'text');
   return (
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="export-title" tabIndex={-1} className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4">
-      <div className="mt-12 w-full max-w-xl rounded-lg bg-white p-5 shadow-xl dark:bg-slate-800">
+      <div className="mt-12 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl dark:bg-slate-800">
         <div className="flex items-center justify-between"><h2 id="export-title" className="text-lg">Export for Manifold</h2><button className="btn-quiet" type="button" onClick={onClose}>Close</button></div>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">A ZIP with one file per text and a manifest.yml, in the order listed. Mathematics is converted to MathML.</p>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">A ZIP with one file per text and section and a manifest.yml. Mathematics is converted to MathML.{canSave ? '' : ' As a viewer you can export; your changes here are not saved for the project.'}</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {['title', 'creators', 'date', 'language', 'rights', 'description'].map((k) => (
             <label key={k} className={k === 'description' ? 'sm:col-span-2' : ''}><span className="label">{k === 'creators' ? 'Creators (separate with ;)' : k[0].toUpperCase() + k.slice(1)}</span><input className="field" value={meta[k] ?? ''} onChange={(e) => setMeta({ ...meta, [k]: e.target.value })} /></label>
           ))}
         </div>
-        <fieldset className="mt-3"><legend className="label">Texts to include</legend>
-          {texts.map((t) => <label key={t.id} className="block text-sm"><input type="checkbox" checked={selected.includes(t.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, t.id] : selected.filter((x) => x !== t.id))} /> {t.name}</label>)}
-        </fieldset>
+        <TocEditor items={items} setItems={(next) => { setItems(next); setStatus(''); }} texts={texts} />
         <ErrorNote error={error} />
-        <button className="btn-primary mt-4" type="button" disabled={busy || selected.length === 0} onClick={run}>{busy ? 'Building the ZIP' : 'Download ZIP'}</button>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button className="btn-primary" type="button" disabled={busy || !hasText} onClick={run}>{busy ? 'Building the ZIP' : 'Download ZIP'}</button>
+          {canSave ? <button className="btn-quiet" type="button" onClick={saveOnly}>Save settings</button> : null}
+          <span role="status" className="text-sm text-slate-600 dark:text-slate-300">{status}</span>
+        </div>
       </div>
     </div>
   );

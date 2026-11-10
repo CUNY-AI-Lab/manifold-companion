@@ -75,3 +75,50 @@ test('Dublin Core metadata: the editor saves it, the export carries it, a viewer
   await expect(viewer.page.getByRole('button', { name: 'Project details' })).toHaveCount(0);
   await viewer.context.close();
 });
+
+test('export sections: build a nested table of contents, save it, export it; a viewer cannot change it', async ({ page, context, browser }) => {
+  await as(context, 'alice');
+  const { projectUrl, projectId } = await newImageText(page, 'Sections project', 'Alpha');
+  for (const name of ['Beta', 'Gamma']) {
+    const r = await page.request.fetch(`/manifold-companion/api/projects/${projectId}/texts`, { method: 'POST', headers, data: { name } });
+    expect(r.ok()).toBe(true);
+  }
+  await page.goto(projectUrl);
+  await page.getByRole('button', { name: 'Export' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Export for Manifold' });
+  const items = dialog.getByRole('list', { name: 'Table of contents items' }).getByRole('listitem');
+  await expect(items).toHaveCount(3);
+  await dialog.getByLabel('New section').fill('Part One');
+  await dialog.getByRole('button', { name: 'Add section' }).click();
+  for (let i = 0; i < 3; i += 1) await dialog.getByRole('button', { name: 'Move Part One up' }).click();
+  await dialog.getByRole('button', { name: 'Indent Alpha' }).click();
+  await dialog.getByRole('button', { name: 'Indent Beta' }).click();
+  await dialog.getByRole('button', { name: 'Remove Gamma from the export' }).click();
+  await expect(items).toHaveCount(3);
+  await dialog.getByLabel('Title').fill('Collected letters');
+  await dialog.getByRole('button', { name: 'Save settings' }).click();
+  await expect(dialog.getByText('Export settings saved.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Export' }).click();
+  await expect(items.first()).toContainText('Section');
+  await expect(dialog.getByLabel('Section label, item 1')).toHaveValue('Part One');
+  await expect(dialog.getByLabel('Title')).toHaveValue('Collected letters');
+  await expect(dialog.getByRole('combobox', { name: 'Text not in the export' })).toBeVisible(); // Gamma can be added back
+  const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Download ZIP' }).click()]);
+  const files = unzipSync(new Uint8Array(readFileSync(await download.path())));
+  expect(Object.keys(files)).toEqual(['section-01-part-one.md', 'text-02-alpha.md', 'text-03-beta.md', 'manifest.yml']);
+  const manifest = strFromU8(files['manifest.yml']);
+  expect(manifest).toMatch(/- label: "Part One"\n\s+source_path: "section-01-part-one\.md"\n\s+start_section: true\n\s+children:\n\s+- label: "Alpha"/);
+  expect(manifest).toContain('title: "Collected letters"');
+
+  const viewer = await inviteAs(page, browser, projectId, 'viewer', 'bob');
+  await viewer.page.goto(projectUrl);
+  await viewer.page.getByRole('button', { name: 'Export' }).click();
+  const vd = viewer.page.getByRole('dialog', { name: 'Export for Manifold' });
+  await expect(vd.getByLabel('Section label, item 1')).toHaveValue('Part One');
+  await expect(vd.getByRole('button', { name: 'Save settings' })).toHaveCount(0);
+  await expect(vd.getByText('your changes here are not saved')).toBeVisible();
+  await viewer.context.close();
+});

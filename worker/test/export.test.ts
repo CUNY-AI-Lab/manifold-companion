@@ -85,11 +85,40 @@ describe("export behaviour", () => {
     await addMember(ALICE, pid, BOB, "editor");
     await addMember(ALICE, pid, CAROL, "viewer");
     const tid = await createText(ALICE, pid);
-    const body = { toc: [{ type: "text", textId: tid, label: "x" }], meta: { title: "Viewer's" }, tocFlat: [{ id: tid }] };
+    const body = { toc: [{ type: "text", textId: tid, label: "x" }], meta: { title: "Viewer's" }, tocFlat: [{ id: 1, type: "text", textId: tid, label: "x", depth: 0 }] };
     expect((await exportZip(pid, body, CAROL)).res.status).toBe(200);
     expect((await json(await call(api(`/projects/${pid}/export-settings`), { as: CAROL }))).settings).toBeNull();
     expect((await exportZip(pid, { ...body, meta: { title: "Editor's" } }, BOB)).res.status).toBe(200);
     expect((await json(await call(api(`/projects/${pid}/export-settings`), { as: CAROL }))).settings.meta.title).toBe("Editor's");
+  });
+
+  it("saved sections: validated, bounded, editors only; the export of the nested sections matches its manifest", async () => {
+    const pid = await createProject(ALICE, "Sections");
+    await addMember(ALICE, pid, CAROL, "viewer");
+    const [a, b] = [await createText(ALICE, pid, "A"), await createText(ALICE, pid, "B")];
+    await seedPage(a, { ocr: "Alpha text" });
+    await seedPage(b, { ocr: "Beta text" });
+    const tocFlat = [
+      { id: 7, type: "section", label: "Part One", depth: 0 },
+      { id: 8, type: "text", textId: a, label: "A", depth: 1 },
+      { id: 9, type: "section", label: "Chapter", depth: 1 },
+      { id: 3, type: "text", textId: b, label: "B", depth: 9 }, // clamped to 5
+    ];
+    const put = (as: string, settings: unknown) => call(api(`/projects/${pid}/export-settings`), { method: "PUT", body: settings, as });
+    const saved = await json(await put(ALICE, { tocFlat, excluded: [b, b], meta: { title: "Book", ignored: "x" } }));
+    expect(saved.settings.excluded).toEqual([b]);
+    expect(saved.settings.tocFlat.map((i: any) => [i.id, i.depth])).toEqual([[1, 0], [2, 1], [3, 1], [4, 5]]);
+    expect(saved.settings.meta).toEqual({ title: "Book" });
+    expect((await put(CAROL, { tocFlat })).status).toBe(403);
+    for (const bad of [{ tocFlat: [{ type: "section", label: "" }] }, { tocFlat: [{ type: "text", textId: "nope" }] }, { tocFlat: "x" }, { tocFlat: Array.from({ length: 501 }, () => ({ type: "section", label: "s" })) }, { meta: { title: 5 } }, { excluded: ["x"] }]) {
+      expect((await put(ALICE, bad)).status, JSON.stringify(bad).slice(0, 80)).toBe(400);
+    }
+    const toc = [{ type: "section", label: "Part One", children: [{ type: "text", textId: a, label: "A", children: [] }, { type: "section", label: "Chapter", children: [{ type: "text", textId: b, label: "B", children: [] }] }] }];
+    const { files } = await exportZip(pid, { toc, meta: { title: "Book" } }, CAROL);
+    expect(Object.keys(files!)).toEqual(["section-01-part-one.md", "text-02-a.md", "section-03-chapter.md", "text-04-b.md", "manifest.yml"]);
+    const manifest = strFromU8(files!["manifest.yml"]!);
+    expect(manifest).toMatch(/- label: "Part One"\n\s+source_path: "section-01-part-one\.md"\n\s+start_section: true\n\s+children:\n\s+- label: "A"/);
+    expect(manifest.indexOf('label: "Chapter"')).toBeLessThan(manifest.indexOf('label: "B"'));
   });
 
   it("refuses texts of another project, with the same answer as a missing text", async () => {

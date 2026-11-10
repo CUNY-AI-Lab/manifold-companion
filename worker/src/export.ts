@@ -80,6 +80,47 @@ export function parseToc(value: unknown): TocNode[] {
   return walk(value, 0);
 }
 
+/** One saved table-of-contents item, as the export panel edits it (flat, with a depth). */
+export interface TocFlatItem { id: number; type: "section" | "text"; label: string; depth: number; textId?: string }
+export const TOC_FLAT_LIMITS = { items: 500, depth: 5 } as const;
+
+/** The saved list, validated: bounded, known shapes only; a bad item is a 400, never stored. */
+export function parseTocFlat(value: unknown): TocFlatItem[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw E.badRequest("tocFlat must be a list.", "toc_invalid");
+  if (value.length > TOC_FLAT_LIMITS.items) throw E.badRequest(`The table of contents can hold at most ${TOC_FLAT_LIMITS.items} items.`, "toc_too_large");
+  return value.map((raw, n) => {
+    const i = raw as Record<string, unknown>;
+    if (i === null || typeof i !== "object" || (i.type !== "section" && i.type !== "text")) throw E.badRequest("Each item must be a section or a text.", "toc_invalid");
+    const label = typeof i.label === "string" ? i.label.trim().slice(0, EXPORT_LIMITS.labelChars) : "";
+    if (i.type === "section" && label === "") throw E.badRequest("Sections need a label.", "toc_invalid");
+    if (i.type === "text" && (typeof i.textId !== "string" || !isUuid(i.textId))) throw E.badRequest("Text items need a text id.", "toc_invalid");
+    const depth = typeof i.depth === "number" && Number.isInteger(i.depth) ? Math.max(0, Math.min(TOC_FLAT_LIMITS.depth, i.depth)) : 0;
+    return { id: n + 1, type: i.type, label, depth, ...(i.type === "text" ? { textId: i.textId as string } : {}) };
+  });
+}
+
+/** Texts the person removed from the saved table of contents (so the panel does not add them back). */
+export function parseExcluded(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > TOC_FLAT_LIMITS.items || value.some((v) => typeof v !== "string" || !isUuid(v))) throw E.badRequest("excluded must be a list of text ids.", "toc_invalid");
+  return [...new Set(value as string[])];
+}
+
+/** Saved export metadata: the six known keys, strings only. */
+export function parseSavedMeta(value: unknown): Partial<ExportMeta> {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) throw E.badRequest("meta must be an object.");
+  const out: Partial<ExportMeta> = {};
+  for (const k of ["title", "creators", "date", "language", "rights", "description"] as const) {
+    const v = (value as Record<string, unknown>)[k];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string" || v.length > EXPORT_LIMITS.metaChars) throw E.badRequest(`meta.${k} must be a string of at most ${EXPORT_LIMITS.metaChars} characters.`);
+    out[k] = v;
+  }
+  return out;
+}
+
 export function parseMeta(value: unknown, project: ProjectRow, today: string): ExportMeta {
   const m = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const str = (k: string): string => {
