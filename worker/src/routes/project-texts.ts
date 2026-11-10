@@ -1,6 +1,8 @@
 // Text collection routes, mounted at /projects/:id/texts.
 import { Hono } from "hono";
 import { requireRole } from "../authz";
+import { AppError } from "../errors";
+import { MOVE_LIMITS, moveText, planText, type MoveOutcome } from "../move";
 import { optionalString, readJsonObject, requiredString } from "../body";
 import { CAPS, reindexText, touchProject } from "../content";
 import { limits } from "../env";
@@ -132,4 +134,55 @@ projectTextRoutes.post("/merge", async (c) => {
   if (found.results.length !== ids.length) throw E.badRequest("Every text must belong to this project.");
   const merged = await mergeTexts(c.env, project, ids, name);
   return c.json({ text: merged }, 201);
+});
+
+// Move texts to another project the caller can edit (DESIGN 6, "Move a text").
+// The source is authorized here like every route (requireRole on :id, editor);
+// the destination is authorized the same way, as editor, before anything is
+// read from it. With preview: true nothing changes and the answer says what a
+// move would carry (pages, versions, bytes) and what it would delete (comments).
+projectTextRoutes.post("/move", async (c) => {
+  const { subject } = c.get("principal");
+  const { project: src } = await requireRole(c.env.DB, subject, c.req.param("id") as string, "editor");
+  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
+  const ids = uuidList(body.textIds, MOVE_LIMITS.textsPerRequest, "textIds");
+  if (typeof body.to !== "string") throw E.badRequest("to must be the id of the destination project.");
+  if (body.to === src.id) throw E.badRequest("The texts are already in this project.", "same_project");
+  let dst;
+  try {
+    ({ project: dst } = await requireRole(c.env.DB, subject, body.to, "editor"));
+  } catch (error) {
+    if (error instanceof AppError && error.status === 404) throw E.notFound("The destination project was not found, or you are not a member of it.");
+    if (error instanceof AppError && error.status === 403) throw E.forbidden("Moving texts into a project needs the editor or owner role there.", "insufficient_role");
+    throw error;
+  }
+  if (dst.project_type !== src.project_type) throw E.badRequest("Texts can only move to a project of the same kind (image to Markdown, or PDF to HTML).", "wrong_project_type");
+  const plans = [];
+  for (const id of ids) {
+    const plan = await planText(c.env.DB, src, id);
+    if (!plan) throw E.badRequest("Every text must belong to this project.");
+    plans.push(plan);
+  }
+  const objects = plans.reduce((n, p) => n + p.objects.length, 0);
+  const bytes = plans.reduce((n, p) => n + p.objects.reduce((m, [, b]) => m + b, 0), 0);
+  const summary = {
+    texts: plans.map((p) => ({ id: p.text.id, name: p.text.name, pages: p.pages, figures: p.figures, versions: p.versions, comments: p.comments, bytes: p.bytes })),
+    totals: { texts: plans.length, pages: plans.reduce((n, p) => n + p.pages, 0), versions: plans.reduce((n, p) => n + p.versions, 0), comments: plans.reduce((n, p) => n + p.comments, 0), bytes: plans.reduce((n, p) => n + p.bytes, 0) },
+    destination: { id: dst.id, name: dst.name, same_owner: dst.owner_subject === src.owner_subject },
+  };
+  if (objects > MOVE_LIMITS.objectsPerRequest || bytes > MOVE_LIMITS.bytesPerRequest) {
+    throw E.tooLarge(`That is too much to move at once (${objects} files, ${Math.ceil(bytes / 1048576)} MB; at most ${MOVE_LIMITS.objectsPerRequest} files and ${MOVE_LIMITS.bytesPerRequest / 1048576} MB). Move fewer texts at a time.`, "move_too_large");
+  }
+  if (body.preview === true) return c.json({ preview: summary });
+  const moved: MoveOutcome[] = [];
+  const failed: { id: string; name: string; code: string; message: string }[] = [];
+  for (const plan of plans) {
+    try {
+      moved.push(await moveText(c.env, src, dst, plan));
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error;
+      failed.push({ id: plan.text.id, name: plan.text.name, code: error.code, message: error.message });
+    }
+  }
+  return c.json({ moved, failed, destination: summary.destination });
 });

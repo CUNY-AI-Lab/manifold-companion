@@ -1,7 +1,7 @@
 // Property test for DESIGN 6: random batches of concurrent operations on shared
 // projects (uploads that succeed or fail, page edits that version, deletes of
 // pages, texts and many texts, splits, merges, content writes that grow and
-// shrink, giving up an edited full text, ownership transfers, recounts, "delete my data"), and after every
+// shrink, giving up an edited full text, moves of texts between projects, ownership transfers, recounts, "delete my data"), and after every
 // batch, once all of it has finished:
 //   - every counter equals its owner's row bytes plus reservations (none left),
 //   - every R2 key a row points at exists, and no object exists that no row
@@ -28,13 +28,13 @@ function rng(seed: number) {
 const PEOPLE = [ALICE, BOB, CAROL];
 
 interface State {
-  projects: { id: string; owner: string }[];
+  projects: { id: string; owner: string; pdf: number }[];
   texts: { id: string; project: string; pdf: number }[];
   pages: { id: string; text: string; number: number }[];
   figures: { id: string; text: string }[];
 }
 async function state(): Promise<State> {
-  const projects = (await env.DB.prepare("SELECT id, owner_subject AS owner FROM projects").all<{ id: string; owner: string }>()).results;
+  const projects = (await env.DB.prepare("SELECT id, owner_subject AS owner, project_type = 'pdf_to_html' AS pdf FROM projects").all<{ id: string; owner: string; pdf: number }>()).results;
   const texts = (await env.DB.prepare("SELECT t.id, t.project_id AS project, pr.project_type = 'pdf_to_html' AS pdf FROM texts t JOIN projects pr ON pr.id = t.project_id").all<{ id: string; project: string; pdf: number }>()).results;
   const pages = (await env.DB.prepare("SELECT id, text_id AS text, page_number AS number FROM pages").all<{ id: string; text: string; number: number }>()).results;
   const figures = (await env.DB.prepare("SELECT id, text_id AS text FROM figures").all<{ id: string; text: string }>()).results;
@@ -52,6 +52,9 @@ async function setup() {
   await addMember(BOB, bobs, ALICE, "editor");
   await createText(BOB, bobs);
   await createText(BOB, bobs);
+  // A second PDF project (another owner), so PDF texts can move between owners too.
+  const alicesPdf = await createProject(ALICE, "Alice's PDFs", { project_type: "pdf_to_html" });
+  await addMember(ALICE, alicesPdf, BOB, "editor");
   for (const [p, owner] of [[shared, ALICE], [shared, ALICE], [carols, CAROL]] as const) {
     const t = await createText(owner, p);
     for (let i = 0; i < 3; i += 1) expect((await upload(api(`/texts/${t}/pages`), JPEG(400 + i), owner, { query: { filename: `s${i}.jpg` } })).status).toBe(201);
@@ -124,6 +127,13 @@ function operations(r: ReturnType<typeof rng>, s: State, e: Awaited<ReturnType<t
       if (t) return upload(api(`/texts/${t.id}/figures`), PNG(r.int(100, 1500)), who(), { query: { filename: `f${r.int(0, 1e9)}.png` }, env: e });
     },
     async () => { const f = r.pick(s.figures); if (f) return call(api(`/texts/${f.text}/figures/${f.id}`), { method: "DELETE", as: who(), env: e }); },
+    // move a text to another project of the same kind (refused when the actor cannot edit both, or the destination is full)
+    async () => {
+      const t = text();
+      if (!t) return;
+      const to = r.pick(s.projects.filter((p) => p.id !== t.project && p.pdf === t.pdf));
+      if (to) return post(`/projects/${t.project}/texts/move`, { textIds: [t.id], to: to.id });
+    },
   ];
   return ops;
 }

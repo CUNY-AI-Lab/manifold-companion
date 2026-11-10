@@ -89,7 +89,7 @@ describe("a delete authorized before ownership moved releases from the new owner
   it("deleting a page", async () => {
     const { tid, stale } = await transferredAfterRead();
     const page = (await env.DB.prepare("SELECT id FROM pages WHERE text_id = ?1").bind(tid).first<{ id: string }>())!;
-    expect(await deleteRowAndRelease(env.DB, stale.id, "pages", page.id, "image_bytes")).toBe(true);
+    expect(await deleteRowAndRelease(env.DB, stale.id, "pages", page.id, "image_bytes", tid)).toBe(true);
     expect(await storageDrift()).toEqual([]);
   });
 

@@ -28,15 +28,19 @@ export const projectBytesSql = (id: string): string =>
 export const ownerSql = (placeholder: string): string => `(SELECT owner_subject FROM projects WHERE id = ${placeholder})`;
 
 /**
- * Delete one row of project `projectId` and release its bytes from the
- * project's current owner in ONE atomic batch. The release statement runs first
- * and only if the row still exists, so a second concurrent delete of the same
- * row releases nothing. Returns whether THIS call removed the row.
+ * Delete one row (a page or figure of text `textId` in project `projectId`)
+ * and release its bytes from the project's current owner in ONE atomic batch.
+ * The release statement runs first and only if the row still exists and still
+ * belongs to that text, so a second concurrent delete of the same row releases
+ * nothing, and a row moved to another project meanwhile (its text moved) is
+ * neither deleted nor released from the wrong owner. Returns whether THIS call
+ * removed the row.
  */
-export async function deleteRowAndRelease(db: D1Database, projectId: string, table: "pages" | "figures", id: string, bytesColumn: string): Promise<boolean> {
+export async function deleteRowAndRelease(db: D1Database, projectId: string, table: "pages" | "figures", id: string, bytesColumn: string, textId: string): Promise<boolean> {
+  const here = `EXISTS (SELECT 1 FROM ${table} x JOIN texts t ON t.id = x.text_id WHERE x.id = ?1 AND x.text_id = ?3 AND t.project_id = ?2)`;
   const [, del] = await db.batch([
-    db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - COALESCE((SELECT ${bytesColumn} FROM ${table} WHERE id = ?1), 0)) WHERE subject = ${ownerSql("?2")} AND EXISTS (SELECT 1 FROM ${table} WHERE id = ?1)`).bind(id, projectId),
-    db.prepare(`DELETE FROM ${table} WHERE id = ?1`).bind(id),
+    db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - COALESCE((SELECT ${bytesColumn} FROM ${table} WHERE id = ?1), 0)) WHERE subject = ${ownerSql("?2")} AND ${here}`).bind(id, projectId, textId),
+    db.prepare(`DELETE FROM ${table} WHERE id = ?1 AND text_id = ?3 AND EXISTS (SELECT 1 FROM texts WHERE id = ?3 AND project_id = ?2)`).bind(id, projectId, textId),
   ]);
   return (del?.meta.changes ?? 0) > 0;
 }

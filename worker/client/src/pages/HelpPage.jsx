@@ -25,6 +25,10 @@ export default function HelpPage() {
         <h2 id="help-fulltext" className="text-lg">Full text of an image text</h2>
         <p className="mt-1">The export joins the text of each page. Under “Full text” you can instead edit the whole text at once, for example to join a paragraph that runs across two pages. Once you save it, the export uses that full text, and later edits to single pages no longer reach the export. “Use the pages again” switches back; the full text is kept in its version history.</p>
       </section>
+      <section aria-labelledby="help-move">
+        <h2 id="help-move" className="text-lg">Moving texts to another project</h2>
+        <p className="mt-1">Select texts in a project and choose “Move to project”. You can move them into any project of the same kind where you are an editor or the owner. Their pages, files, version history, metadata and model settings go with them; their comments are deleted, because they were written for the members of the project they were in. Moved texts get new addresses, so old links to them stop working. If the other project has a different owner, the texts' storage counts against that owner from then on. The confirmation says all of this, with the numbers, before anything moves.</p>
+      </section>
       <section aria-labelledby="help-unsaved">
         <h2 id="help-unsaved" className="text-lg">Unsaved changes</h2>
         <p className="mt-1">If you try to leave a text, close the tab or open another page of the text while an edit is not saved, the app asks first. This browser also keeps a copy of the unsaved edit, for that text only, and offers it the next time you open the text here: restore it, then save, or discard it. The copy is removed when you save or discard, after 7 days, when someone else signs in on this browser, and from Settings. It never leaves this browser, and nobody else sees it; only Save makes an edit part of the project.</p>

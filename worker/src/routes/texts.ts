@@ -151,7 +151,7 @@ textRoutes.post("/:id/pages/:pageId", async (c) => {
 textRoutes.delete("/:id/pages/:pageId", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
   const page = await loadPage(c.env.DB, ctx.text.id, c.req.param("pageId") as string);
-  if (!(await deleteRowAndRelease(c.env.DB, ctx.project.id, "pages", page.id, "image_bytes"))) throw E.notFound("Page not found.");
+  if (!(await deleteRowAndRelease(c.env.DB, ctx.project.id, "pages", page.id, "image_bytes", ctx.text.id))) throw E.notFound("Page not found.");
   if (page.image_key) await c.env.FILES.delete(page.image_key).catch(() => undefined);
   await touchProject(c.env.DB, ctx.project.id);
   await reindexText(c.env, ctx.text.id);
@@ -251,7 +251,7 @@ textRoutes.post("/:id/metadata", async (c) => {
   if (given.length > 0) {
     const cols = given.map((g) => g.field);
     await c.env.DB.prepare(
-      `INSERT INTO metadata (text_id, ${cols.join(", ")}, updated_at) VALUES (?1, ${cols.map((_, i) => `?${i + 2}`).join(", ")}, ?${cols.length + 2})
+      `INSERT INTO metadata (text_id, ${cols.join(", ")}, updated_at) SELECT ?1, ${cols.map((_, i) => `?${i + 2}`).join(", ")}, ?${cols.length + 2} WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?1)
        ON CONFLICT(text_id) DO UPDATE SET ${cols.map((f) => `${f} = excluded.${f}`).join(", ")}, updated_at = excluded.updated_at`,
     ).bind(ctx.text.id, ...given.map((g) => g.value), now).run();
     await touchProject(c.env.DB, ctx.project.id, now);
@@ -294,7 +294,7 @@ textRoutes.post("/:id/settings", async (c) => {
     else next.max_tokens = m;
   }
   await c.env.DB.prepare(
-    `INSERT INTO text_settings (text_id, prompt, model, math_model, temperature, max_tokens, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7)
+    `INSERT INTO text_settings (text_id, prompt, model, math_model, temperature, max_tokens, updated_at) SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?1)
      ON CONFLICT(text_id) DO UPDATE SET prompt = excluded.prompt, model = excluded.model, math_model = excluded.math_model, temperature = excluded.temperature, max_tokens = excluded.max_tokens, updated_at = excluded.updated_at`,
   ).bind(ctx.text.id, next.prompt, next.model, next.math_model, next.temperature, next.max_tokens, nowIso()).run();
   const row = await c.env.DB.prepare("SELECT prompt, model, math_model, temperature, max_tokens, updated_at FROM text_settings WHERE text_id = ?1").bind(ctx.text.id).first();

@@ -188,7 +188,7 @@ uploadRoutes.delete("/:id/figures/:figureId", async (c) => {
   const fig = isUuid(fid) ? await c.env.DB.prepare("SELECT id, image_key FROM figures WHERE id = ?1 AND text_id = ?2").bind(fid, text.id).first<{ id: string; image_key: string }>() : null;
   if (!fig) throw E.notFound("Figure not found.");
   // Only the request whose DELETE removes the row releases the bytes (one atomic batch).
-  if (!(await deleteRowAndRelease(c.env.DB, project.id, "figures", fig.id, "bytes"))) throw E.notFound("Figure not found.");
+  if (!(await deleteRowAndRelease(c.env.DB, project.id, "figures", fig.id, "bytes", text.id))) throw E.notFound("Figure not found.");
   await c.env.FILES.delete(fig.image_key).catch(() => undefined);
   await touchProject(c.env.DB, project.id);
   await reindexText(c.env, text.id);

@@ -268,12 +268,13 @@ export async function writePageText(env: Env, project: ProjectRow, textId: strin
       statements.push(
         env.DB.prepare(
           `INSERT INTO text_versions (id, text_id, content_type, page_filename, r2_key, bytes, created_by, created_at, reason)
-           SELECT ?1, ?2, 'page', ?3, ?4, ?5, ?6, ?7, ?10 WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?8 AND ocr_text IS ?9)`,
+           SELECT ?1, ?2, 'page', ?3, ?4, ?5, ?6, ?7, ?10 WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?8 AND text_id = ?2 AND ocr_text IS ?9)`,
         ).bind(versionId, textId, page.filename, vKey, snapBytes, authorSubject, now, page.id, old, reason),
       );
     }
     // A model write records which model produced the text; a human edit leaves the field as it was.
-    statements.push(env.DB.prepare("UPDATE pages SET ocr_text = ?1, processed_at = ?2, ocr_model = COALESCE(?5, ocr_model) WHERE id = ?3 AND ocr_text IS ?4").bind(newText, now, page.id, old, ocrModel ?? null));
+    // Only while the page is still in this text: a page whose text moved to another project is not written by a request authorized here.
+    statements.push(env.DB.prepare("UPDATE pages SET ocr_text = ?1, processed_at = ?2, ocr_model = COALESCE(?5, ocr_model) WHERE id = ?3 AND text_id = ?6 AND ocr_text IS ?4").bind(newText, now, page.id, old, ocrModel ?? null, textId));
     const swapAt = statements.length - 1;
     // The snapshot's reservation is committed only if THIS batch wrote the version row.
     statements.push(...commitReservation(env.DB, reservation, "EXISTS (SELECT 1 FROM text_versions WHERE id = ?2)", versionId));

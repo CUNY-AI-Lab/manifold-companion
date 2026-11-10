@@ -81,6 +81,8 @@ const ROUTES: Route[] = [
   { name: "POST /projects/:id/texts/:textId/move", min: "editor", ok: 200, run: ({ id, textB }, as) => j(`/projects/${id}/texts/${textB}/move`, as, "POST", { to: 1 }) },
   { name: "POST /projects/:id/texts/bulk-status", min: "editor", ok: 200, run: ({ id, textId }, as) => j(`/projects/${id}/texts/bulk-status`, as, "POST", { textIds: [textId], status: "reviewed" }) },
   { name: "POST /projects/:id/texts/bulk-delete", min: "editor", ok: 200, run: ({ id, textB }, as) => j(`/projects/${id}/texts/bulk-delete`, as, "POST", { textIds: [textB] }) },
+  // The destination is a project every actor can edit, so the outcome is decided by the role on the source.
+  { name: "POST /projects/:id/texts/move", min: "editor", ok: 200, run: async ({ id, textB }, as) => { const dest = await createProject(ALICE, "Dest"); for (const s of [BOB, CAROL, DAVE]) await addMember(ALICE, dest, s, "editor"); return j(`/projects/${id}/texts/move`, as, "POST", { textIds: [textB], to: dest }); } },
   { name: "POST /projects/:id/texts/merge", min: "editor", ok: 201, run: ({ id, textId, textB }, as) => j(`/projects/${id}/texts/merge`, as, "POST", { textIds: [textId, textB], name: "Merged" }) },
   { name: "GET /texts/:id", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}`, as) },
   { name: "PUT /texts/:id", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}`, as, "PUT", { name: "Renamed text" }) },

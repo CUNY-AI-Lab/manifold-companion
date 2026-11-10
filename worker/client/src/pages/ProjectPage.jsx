@@ -35,12 +35,57 @@ function BulkBar({ project, texts, onDone, onError, onClear }) {
           <button type="button" className="btn-quiet" disabled={!name.trim()} onClick={() => run(async () => { const { text } = await api.post(`/api/projects/${project.id}/texts/merge`, { textIds: ids, name: name.trim() }); return `Merged into ${text.name}; the original texts are kept.`; })}>Merge into a new text</button>
         </>
       ) : null}
+      <MoveTexts project={project} ids={ids} onDone={onDone} onError={onError} />
       <button type="button" className="btn-danger" onClick={async () => {
         if (!(await confirm({ title: `Delete ${n} text${n === 1 ? '' : 's'}?`, message: `Delete ${texts.map((t) => `“${t.name}”`).join(', ')}, with their pages, files and versions, for every member? This cannot be undone.`, confirmLabel: 'Delete selected', danger: true }))) return;
         run(async () => { const r = await api.post(`/api/projects/${project.id}/texts/bulk-delete`, { textIds: ids }); return `${r.deleted} text${r.deleted === 1 ? '' : 's'} deleted.`; });
       }}>Delete selected</button>
       <button type="button" className="btn-quiet" onClick={onClear}>Clear selection</button>
     </section>
+  );
+}
+
+const formatMb = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** The confirmation text for a move, from the Worker's preview (what goes, what is deleted, whose storage). */
+export function moveMessage(preview) {
+  const { totals: t, destination: d } = preview;
+  return [
+    `Move ${plural(t.texts, 'text')} (${plural(t.pages, 'page')}, ${plural(t.versions, 'saved version')}, ${formatMb(t.bytes)}) to “${d.name}”?`,
+    'Their pages, files, version history, metadata and model settings go with them. They get new addresses, so links to them stop working, and they leave this project\'s export.',
+    t.comments ? `Their ${plural(t.comments, 'comment')} will be deleted: comments stay with the project whose members they were written for. Copy anything you need from them first.` : 'They have no comments.',
+    d.same_owner ? '' : `From now on their storage counts against the owner of “${d.name}”, not this project's owner.`,
+  ].filter(Boolean).join('\n\n');
+}
+
+/** Move the selected texts to another project the person can edit, of the same kind. */
+function MoveTexts({ project, ids, onDone, onError }) {
+  const confirm = useConfirm();
+  const [targets, setTargets] = useState(null);
+  const [to, setTo] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.get('/api/projects').then((r) => setTargets(r.projects.filter((p) => p.id !== project.id && p.project_type === project.project_type && p.role !== 'viewer')), () => setTargets([]));
+  }, [project.id, project.project_type]);
+  if (!targets?.length) return null;
+  const go = async () => {
+    setBusy(true);
+    try {
+      const { preview } = await api.post(`/api/projects/${project.id}/texts/move`, { textIds: ids, to, preview: true });
+      if (!(await confirm({ title: `Move to “${preview.destination.name}”?`, message: moveMessage(preview), confirmLabel: 'Move', danger: preview.totals.comments > 0 }))) return;
+      const r = await api.post(`/api/projects/${project.id}/texts/move`, { textIds: ids, to });
+      if (r.failed.length) onError({ message: `${r.moved.length ? `Moved ${plural(r.moved.length, 'text')} to “${r.destination.name}”. ` : ''}Not moved: ${r.failed.map((f) => `“${f.name}” (${f.message})`).join('; ')}` });
+      if (r.moved.length) onDone(`Moved ${plural(r.moved.length, 'text')} to “${r.destination.name}”.`, { keepError: r.failed.length > 0 });
+    } catch (e) { onError(e); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <label><span className="label">Move to project</span>
+        <select className="field w-auto" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose a project</option>{targets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+      </label>
+      <button type="button" className="btn-quiet" disabled={!to || busy} onClick={go}>{busy ? 'Moving' : 'Move'}</button>
+    </>
   );
 }
 
@@ -309,8 +354,8 @@ export default function ProjectPage() {
         ))}
       </ul>
       <Pager page={page} total={total} onPage={goToPage} />
-      {canEdit && chosen.length ? <BulkBar project={project} texts={texts.filter((t) => chosen.includes(t.id))} onDone={(msg) => { setChosen([]); setMoved(msg); load(); refresh(); }} onError={setError} onClear={() => setChosen([])} /> : null}
-      <p className="sr-only" role="status">{moved}</p>
+      {canEdit && chosen.length ? <BulkBar project={project} texts={texts.filter((t) => chosen.includes(t.id))} onDone={(msg, opts) => { setChosen([]); setMoved(msg); if (!opts?.keepError) setError(null); load(); refresh(); }} onError={setError} onClear={() => setChosen([])} /> : null}
+      <p className="mt-2 text-sm text-slate-700 dark:text-slate-200" role="status">{moved}</p>
       {canEdit && total > 1 ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Texts export in this order. Use the arrows to move a text up or down{total > TEXTS_PER_PAGE ? '; the first or last text of a page moves onto the next page' : ''}.</p> : null}
       {canEdit ? (
         <form className="mt-4 flex gap-2" onSubmit={async (e) => { e.preventDefault(); try { const { text } = await api.post(`/api/projects/${id}/texts`, { name }); navigate(`/texts/${text.id}`); } catch (err) { setError(err); } }}>
