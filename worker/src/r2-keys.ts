@@ -28,3 +28,6 @@ export type ContentKind = "html" | "compiled" | "translation";
 export const contentKey = (p: string, t: string, kind: ContentKind, revision: string): string => `p/${p}/t/${t}/c/${kind}/${revision}`;
 // A version snapshot of one page's OCR text (page text itself lives in D1).
 export const pageVersionKey = (p: string, t: string, v: string): string => `p/${p}/t/${t}/v/${v}`;
+
+// Source PDFs are revisioned so a replacement never overwrites in place.
+export const sourcePdfRevisionKey = (p: string, t: string, rev: string): string => `p/${p}/t/${t}/pdf/${rev}`;

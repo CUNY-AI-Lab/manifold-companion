@@ -16,7 +16,8 @@ export async function textStorageBytes(db: D1Database, textId: string): Promise<
     .prepare(
       `SELECT COALESCE((SELECT html_bytes + translation_bytes + source_pdf_bytes + compiled_bytes FROM texts WHERE id = ?1), 0)
             + COALESCE((SELECT SUM(image_bytes) FROM pages WHERE text_id = ?1), 0)
-            + COALESCE((SELECT SUM(bytes) FROM text_versions WHERE text_id = ?1), 0) AS bytes`,
+            + COALESCE((SELECT SUM(bytes) FROM text_versions WHERE text_id = ?1), 0)
+            + COALESCE((SELECT SUM(bytes) FROM figures WHERE text_id = ?1), 0) AS bytes`,
     )
     .bind(textId)
     .first<{ bytes: number }>();

@@ -11,6 +11,7 @@ import { projectRoutes } from "./routes/projects";
 import { inviteRoutes } from "./routes/invites";
 import { textRoutes } from "./routes/texts";
 import { searchRoutes } from "./routes/search";
+import { uploadRoutes } from "./routes/uploads";
 
 export interface AppVariables {
   requestId: string;
@@ -72,6 +73,7 @@ api.route("/", sessionRoutes);
 api.route("/projects", projectRoutes);
 api.route("/invites", inviteRoutes);
 api.route("/texts", textRoutes);
+api.route("/texts", uploadRoutes);
 api.route("/search", searchRoutes);
 api.all("*", (c) => errorResponse(E.notFound("No such API route."), c.get("requestId")));
 

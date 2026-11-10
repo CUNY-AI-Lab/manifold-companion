@@ -15,6 +15,8 @@ export interface Env {
   STORAGE_QUOTA_BYTES?: string;
   /** Per-uploaded-file cap in bytes (default 10 MB). */
   MAX_FILE_BYTES?: string;
+  /** Per-source-PDF cap in bytes (default 25 MB). */
+  MAX_PDF_BYTES?: string;
   /** Per-project page cap (default 300). */
   MAX_PROJECT_PAGES?: string;
   /** Days after last edit before a project is deleted (default 180). */
@@ -34,6 +36,8 @@ export function canonicalOrigin(env: Env): string {
 export interface Limits {
   storageQuotaBytes: number;
   maxFileBytes: number;
+  maxPdfBytes: number;
+  maxFiguresPerText: number;
   maxProjectPages: number;
   retentionDays: number;
   retentionWarnDays: number;
@@ -54,6 +58,8 @@ export function limits(env: Env): Limits {
   return {
     storageQuotaBytes: positiveInt(env.STORAGE_QUOTA_BYTES, 500 * 1024 * 1024),
     maxFileBytes: positiveInt(env.MAX_FILE_BYTES, 10 * 1024 * 1024),
+    maxPdfBytes: positiveInt(env.MAX_PDF_BYTES, 25 * 1024 * 1024),
+    maxFiguresPerText: 200,
     maxProjectPages: positiveInt(env.MAX_PROJECT_PAGES, 300),
     retentionDays: positiveInt(env.RETENTION_DAYS, 180),
     retentionWarnDays: positiveInt(env.RETENTION_WARN_DAYS, 30),
@@ -106,7 +112,7 @@ export function validateConfig(env: Env): { ok: true } | { ok: false; errors: Co
   if (missing(env.ASSETS)) errors.push("assets_binding_missing");
   if (env.CAIL_CANONICAL_ORIGIN !== undefined && !validOrigin(env.CAIL_CANONICAL_ORIGIN)) errors.push("canonical_origin_invalid");
   if (env.CAIL_API_BASE !== undefined && !validHttpsUrl(env.CAIL_API_BASE)) errors.push("api_base_invalid");
-  for (const v of [env.STORAGE_QUOTA_BYTES, env.MAX_FILE_BYTES, env.MAX_PROJECT_PAGES, env.RETENTION_DAYS, env.RETENTION_WARN_DAYS]) {
+  for (const v of [env.STORAGE_QUOTA_BYTES, env.MAX_FILE_BYTES, env.MAX_PDF_BYTES, env.MAX_PROJECT_PAGES, env.RETENTION_DAYS, env.RETENTION_WARN_DAYS]) {
     if (v !== undefined && v !== "" && positiveInt(v, -1) === -1) {
       errors.push("limit_invalid");
       break;

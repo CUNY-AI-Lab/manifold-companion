@@ -41,7 +41,7 @@ sessionRoutes.get("/session", async (c) => {
     subject,
     profile: profileBody(profile),
     storage: { used_bytes: profile.storage_bytes, quota_bytes: lim.storageQuotaBytes },
-    limits: { max_file_bytes: lim.maxFileBytes, max_project_pages: lim.maxProjectPages, max_projects: lim.maxProjectsPerPerson },
+    limits: { max_file_bytes: lim.maxFileBytes, max_pdf_bytes: lim.maxPdfBytes, max_project_pages: lim.maxProjectPages, max_projects: lim.maxProjectsPerPerson },
     retention: { days: lim.retentionDays, warn_days: lim.retentionWarnDays },
     base_path: BASE_PATH,
     origin: canonicalOrigin(c.env),

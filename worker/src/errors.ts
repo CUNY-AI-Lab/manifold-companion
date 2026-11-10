@@ -29,6 +29,7 @@ export const E = {
   gone: (message: string, code: string) => new AppError({ code, message, status: 410 }),
   tooLarge: (message: string, code = "payload_too_large") => new AppError({ code, message, status: 413 }),
   quota: (message: string, code = "storage_quota_exceeded") => new AppError({ code, message, status: 413 }),
+  unsupported: (message: string, code = "unsupported_media_type") => new AppError({ code, message, status: 415 }),
   unavailable: (message: string, code: string) => new AppError({ code, message, status: 503, retryable: true }),
 };
 

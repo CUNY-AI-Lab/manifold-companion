@@ -10,7 +10,7 @@ const KINDS: Record<FileKind, { type: string; disposition: "inline" | "attachmen
   "image-jpeg": { type: "image/jpeg", disposition: "inline" },
   "image-webp": { type: "image/webp", disposition: "inline" },
   "image-gif": { type: "image/gif", disposition: "inline" },
-  pdf: { type: "application/pdf", disposition: "inline" },
+  pdf: { type: "application/pdf", disposition: "attachment" },
   html: { type: "text/html; charset=utf-8", disposition: "attachment" },
   markdown: { type: "text/markdown; charset=utf-8", disposition: "attachment" },
   text: { type: "text/plain; charset=utf-8", disposition: "inline" },

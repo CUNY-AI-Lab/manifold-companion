@@ -40,7 +40,7 @@ describe("migrations", () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await dump(env.DB)).toEqual(before);
     const applied = await env.DB.prepare("SELECT name FROM d1_migrations ORDER BY id").all<{ name: string }>();
-    expect(applied.results.map((r) => r.name)).toEqual(["0001_init.sql", "0002_search.sql", "0003_content.sql"]);
+    expect(applied.results.map((r) => r.name)).toEqual(["0001_init.sql", "0002_search.sql", "0003_content.sql", "0004_uploads.sql"]);
   });
 
   it("matches the reviewed schema snapshot (editing an applied migration fails here)", async () => {

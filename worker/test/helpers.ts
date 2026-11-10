@@ -59,7 +59,7 @@ export async function legs(subject: string = ALICE, gatewaySubject: string = sub
 
 export interface CallOptions {
   method?: string;
-  body?: unknown;
+  body?: unknown | Uint8Array | ReadableStream;
   /** Subject to sign in as; null sends no credentials. Default ALICE. */
   as?: string | null;
   headers?: Record<string, string>;
@@ -74,7 +74,10 @@ export async function call(path: string, opts: CallOptions = {}): Promise<Respon
   const origin = opts.origin === undefined ? ORIGIN : opts.origin;
   if (origin !== null && method !== "GET") headers.origin = origin;
   let body: BodyInit | undefined;
-  if (opts.body !== undefined) {
+  if (opts.body instanceof Uint8Array) {
+    headers["content-type"] = "application/octet-stream";
+    body = opts.body as unknown as BodyInit;
+  } else if (opts.body !== undefined) {
     headers["content-type"] = "application/json";
     body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
   }
@@ -150,4 +153,14 @@ export function dbWithoutFts(real: D1Database): D1Database {
     batch: (s: D1PreparedStatement[]) => real.batch(s),
     exec: (s: string) => real.exec(s),
   } as unknown as D1Database;
+}
+
+export const JPEG = (n = 64): Uint8Array => { const b = new Uint8Array(n).fill(1); b.set([0xff, 0xd8, 0xff, 0xe0]); return b; };
+export const PNG = (n = 64): Uint8Array => { const b = new Uint8Array(n).fill(2); b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]); return b; };
+export const WEBP = (n = 64): Uint8Array => { const b = new Uint8Array(n).fill(3); b.set([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]); return b; };
+export const PDF = (n = 64): Uint8Array => { const b = new Uint8Array(n).fill(32); b.set(new TextEncoder().encode("%PDF-1.7\n")); return b; };
+
+export function upload(path: string, bytes: Uint8Array, as: string = ALICE, opts: { method?: string; query?: Record<string, string>; env?: Env } = {}): Promise<Response> {
+  const q = new URLSearchParams({ size: String(bytes.byteLength), ...(opts.query ?? {}) });
+  return call(`${path}${path.includes("?") ? "&" : "?"}${q}`, { method: opts.method ?? "POST", as, body: bytes, ...(opts.env ? { env: opts.env } : {}) });
 }

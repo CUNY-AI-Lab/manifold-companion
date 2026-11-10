@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALICE, BOB, CAROL, addMember, api, call, createProject, createText, invite, json, seedPage } from "./helpers";
+import { ALICE, BOB, CAROL, JPEG, PDF, addMember, api, call, createProject, createText, invite, json, seedPage, upload } from "./helpers";
 import { canonicalTestSubject } from "@cuny-ai-lab/cail-identity/testing";
 
 const DAVE = canonicalTestSubject("dave");
@@ -9,7 +9,7 @@ const ACTORS: Actor[] = ["owner", "editor", "viewer", "stranger"];
 const WHO: Record<Actor, string> = { owner: ALICE, editor: BOB, viewer: CAROL, stranger: DAVE };
 const RANK = { stranger: 0, viewer: 1, editor: 2, owner: 3 } as const;
 
-interface Ctx { id: string; inviteId: string; textId: string; pageId: string; pageVersionId: string; hid: string; htextId: string; htmlVersionId: string; textB: string }
+interface Ctx { figureId: string; id: string; inviteId: string; textId: string; pageId: string; pageVersionId: string; hid: string; htextId: string; htmlVersionId: string; textB: string }
 
 async function setup(): Promise<Ctx> {
   const id = await createProject(ALICE, "Matrix");
@@ -18,7 +18,7 @@ async function setup(): Promise<Ctx> {
   const inv = await invite(ALICE, id, "viewer");
   const textId = await createText(ALICE, id, "T1");
   const textB = await createText(ALICE, id, "T2");
-  const pageId = await seedPage(textId, { filename: "a.jpg", ocr: "first", pageNumber: 1 });
+  const pageId = await seedPage(textId, { filename: "a.jpg", ocr: "first", pageNumber: 1, imageBytes: 5 });
   await call(api(`/texts/${textId}/pages/${pageId}`), { method: "POST", body: { text: "second" } });
   const pageVersionId = (await json(await call(api(`/texts/${textId}/versions?type=page`)))).versions[0].id;
   // a second, PDF-to-HTML project for the html routes
@@ -28,8 +28,11 @@ async function setup(): Promise<Ctx> {
   const htextId = await createText(ALICE, hid, "H1");
   await call(api(`/texts/${htextId}/html`), { method: "PUT", body: { html_content: "<p>one</p>" } });
   await call(api(`/texts/${htextId}/html`), { method: "PUT", body: { html_content: "<p>two</p>" } });
+  expect((await upload(api(`/texts/${htextId}/source-pdf`), PDF(), ALICE, { method: "PUT", query: { filename: "s.pdf" } })).status).toBe(201);
+  const fig = await upload(api(`/texts/${htextId}/figures`), JPEG(), ALICE, { query: { filename: "f.jpg" } });
+  const figureId = (await json(fig)).figure.id as string;
   const htmlVersionId = (await json(await call(api(`/texts/${htextId}/versions?type=html`)))).versions[0].id;
-  return { id, inviteId: inv.id, textId, textB, pageId, pageVersionId, hid, htextId, htmlVersionId };
+  return { figureId, id, inviteId: inv.id, textId, textB, pageId, pageVersionId, hid, htextId, htmlVersionId };
 }
 
 interface Route {
@@ -65,6 +68,14 @@ const ROUTES: Route[] = [
   { name: "PUT /texts/:id/pages/reorder", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/reorder`, as, "PUT", { pageIds: [pageId] }) },
   { name: "POST /texts/:id/pages/:pageId", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/${pageId}`, as, "POST", { text: "edited" }) },
   { name: "DELETE /texts/:id/pages/:pageId", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/${pageId}`, as, "DELETE") },
+  { name: "POST /texts/:id/pages", min: "editor", ok: 201, run: ({ textId }, as) => upload(api(`/texts/${textId}/pages`), JPEG(), as, { query: { filename: "new.jpg" } }) },
+  { name: "GET /texts/:id/pages/:pageId/image", min: "viewer", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/${pageId}/image`, as) },
+  { name: "PUT /texts/:id/source-pdf", min: "editor", ok: 201, run: ({ htextId }, as) => upload(api(`/texts/${htextId}/source-pdf`), PDF(), as, { method: "PUT", query: { filename: "n.pdf", replace: "1" } }) },
+  { name: "GET /texts/:id/source-pdf", min: "viewer", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/source-pdf`, as) },
+  { name: "POST /texts/:id/figures", min: "editor", ok: 201, run: ({ htextId }, as) => upload(api(`/texts/${htextId}/figures`), JPEG(), as, { query: { filename: "g.jpg" } }) },
+  { name: "GET /texts/:id/figures", min: "viewer", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/figures`, as) },
+  { name: "GET /texts/:id/figures/:figureId", min: "viewer", ok: 200, run: ({ htextId, figureId }, as) => j(`/texts/${htextId}/figures/${figureId}`, as) },
+  { name: "DELETE /texts/:id/figures/:figureId", min: "editor", ok: 200, run: ({ htextId, figureId }, as) => j(`/texts/${htextId}/figures/${figureId}`, as, "DELETE") },
   { name: "GET /texts/:id/result", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/result`, as) },
   { name: "GET /texts/:id/compiled", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/compiled`, as) },
   { name: "POST /texts/:id/save", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/save`, as, "POST", { text: "# compiled" }) },

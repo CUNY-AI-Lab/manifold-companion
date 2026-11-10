@@ -19,6 +19,17 @@
     "settings_json TEXT NOT NULL",
     "updated_at TEXT NOT NULL"
   ],
+  "figures": [
+    "id TEXT PK",
+    "text_id TEXT NOT NULL",
+    "filename TEXT NOT NULL",
+    "image_key TEXT NOT NULL",
+    "image_type TEXT NOT NULL",
+    "bytes INTEGER NOT NULL",
+    "width INTEGER",
+    "height INTEGER",
+    "created_at TEXT NOT NULL"
+  ],
   "invites": [
     "id TEXT PK",
     "project_id TEXT NOT NULL",
@@ -77,7 +88,8 @@
     "ocr_model TEXT",
     "processed_at TEXT",
     "image_key TEXT",
-    "image_bytes INTEGER NOT NULL"
+    "image_bytes INTEGER NOT NULL",
+    "image_type TEXT"
   ],
   "profiles": [
     "subject TEXT PK",
@@ -154,6 +166,7 @@
     "updated_at TEXT NOT NULL",
     "compiled_key TEXT",
     "compiled_bytes INTEGER NOT NULL",
-    "search_text TEXT"
+    "search_text TEXT",
+    "source_pdf_revision TEXT"
   ]
 }
