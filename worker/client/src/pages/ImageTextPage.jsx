@@ -111,9 +111,9 @@ export default function ImageTextPage({ data, reload }) {
     <div>
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
-      <p className="text-xs text-slate-500">{pages.length} pages, {text.status}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{pages.length} pages, {text.status}</p>
       <ErrorNote error={error} onDismiss={() => setError(null)} />
-      {busy ? <p role="status" className="text-sm text-cail-azure">{busy}</p> : null}
+      {busy ? <p role="status" className="text-sm text-cail-azure dark:text-cail-link-dark">{busy}</p> : null}
 
       {canEdit ? (
         <section className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
@@ -164,7 +164,7 @@ export default function ImageTextPage({ data, reload }) {
               <VersionHistory key={page.id} textId={text.id} type="page" pageId={page.id} canRestore={canEdit} refreshKey={page.ocr_text} dirty={draft !== (page.ocr_text ?? '')} onRestored={reload} />
             </div>
           </div>
-        ) : <p className="text-sm text-slate-500">No pages yet.{canEdit ? ' Upload photos, scans or a PDF; PDFs are turned into page images in your browser.' : ''}</p>}
+        ) : <p className="text-sm text-slate-500 dark:text-slate-400">No pages yet.{canEdit ? ' Upload photos, scans or a PDF; PDFs are turned into page images in your browser.' : ''}</p>}
       </div>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
@@ -186,7 +186,7 @@ export default function ImageTextPage({ data, reload }) {
               }}>Translate</button>
             </div>
           ) : null}
-          {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500">No translation yet.</p>}
+          {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
         </div>
       </section>
       <CommentsPanel textId={text.id} canWrite={canEdit} />

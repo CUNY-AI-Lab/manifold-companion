@@ -15,7 +15,7 @@ export function ErrorNote({ error, onDismiss }) {
 }
 
 export const Spinner = ({ label = 'Loading' }) => (
-  <div className="flex items-center gap-2 py-8 text-sm text-slate-500" role="status">
+  <div className="flex items-center gap-2 py-8 text-sm text-slate-500 dark:text-slate-400" role="status">
     <span className="h-4 w-4 animate-spin rounded-full border-2 border-cail-blue border-t-transparent" aria-hidden="true" />
     {label}
   </div>
@@ -48,7 +48,7 @@ export function ModelPicker({ task, value, onChange, label }) {
     api.get('/api/models').then((r) => setMenu(r.tasks[task]), setError);
   }, [task]);
   if (error) return <span className="text-xs text-red-700">Model list unavailable: {error.message}</span>;
-  if (!menu) return <span className="text-xs text-slate-500">Loading models</span>;
+  if (!menu) return <span className="text-xs text-slate-500 dark:text-slate-400">Loading models</span>;
   const listed = !value || menu.models.some((m) => m.id === value);
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-sm">
@@ -87,7 +87,7 @@ export function QuotaLine() {
     api.get('/api/quota').then((r) => { setQuota(r.quota); setState('ok'); }, () => setState('unavailable'));
   }, []);
   if (state === 'loading') return null;
-  if (state === 'unavailable' || !quota) return <span className="text-xs text-slate-500">Model allowance: not available right now</span>;
+  if (state === 'unavailable' || !quota) return <span className="text-xs text-slate-500 dark:text-slate-400">Model allowance: not available right now</span>;
   const used = (quota.estimated_used ?? 0) / 1e6;
   const limit = (quota.limit ?? 0) / 1e6;
   return <span className="text-xs text-slate-600 dark:text-slate-300">Model allowance: about ${used.toFixed(2)} of ${limit.toFixed(2)} used this period (estimate, updates with a delay)</span>;

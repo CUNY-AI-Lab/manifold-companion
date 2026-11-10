@@ -15,11 +15,11 @@ export default function SearchPage() {
       <ErrorNote error={error} />
       {hits === null && !error ? <Spinner /> : null}
       <ul className="rowlist mt-4">
-        {hits?.length === 0 ? <li className="py-3 text-sm text-slate-500">No text in your projects matches.</li> : null}
+        {hits?.length === 0 ? <li className="py-3 text-sm text-slate-500 dark:text-slate-400">No text in your projects matches.</li> : null}
         {hits?.map((h) => (
           <li key={h.text_id} className="py-3">
             <Link to={`/texts/${h.text_id}`} className="doc-title text-lg">{h.text_name}</Link>
-            <span className="ml-2 text-xs text-slate-500">in {h.project_name}</span>
+            <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">in {h.project_name}</span>
             {h.snippet ? <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{h.snippet}</p> : null}
           </li>
         ))}

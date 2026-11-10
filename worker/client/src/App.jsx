@@ -10,6 +10,7 @@ import InvitePage from './pages/InvitePage';
 import SettingsPage from './pages/SettingsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import SearchPage from './pages/SearchPage';
+import HelpPage from './pages/HelpPage';
 
 function NotFound() {
   return <div className="mx-auto max-w-3xl px-4 py-10"><h1 className="text-xl">Page not found</h1><p className="mt-2 text-sm">Go back to <a href="./">your projects</a>.</p></div>;
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/help" element={<HelpPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>

@@ -27,7 +27,7 @@ export default function CommentsPanel({ textId, canWrite }) {
       <h2 id="comments-title" className="text-lg">Comments</h2>
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       <ul className="rowlist mt-2 text-sm">
-        {items.length === 0 ? <li className="py-2 text-slate-500">No open comments.</li> : null}
+        {items.length === 0 ? <li className="py-2 text-slate-500 dark:text-slate-400">No open comments.</li> : null}
         {items.map((a) => (
           <li key={a.id} className="py-2">
             <p><span className="font-medium">{a.author_name || 'A member'}</span>: {a.body}</p>

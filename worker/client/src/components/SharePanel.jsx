@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import useFocusTrap from '../hooks/useFocusTrap';
 import { api } from '../api/client';
 import { ErrorNote } from './ui';
 
 /** Owner-only: invite links (role, expiry, single use), members, revoke and remove. */
 export default function SharePanel({ projectId, onClose }) {
+  const dialog = useRef(null);
+  useFocusTrap(dialog, true, onClose);
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [role, setRole] = useState('viewer');
@@ -30,7 +33,7 @@ export default function SharePanel({ projectId, onClose }) {
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="share-title" className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4">
+    <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="share-title" tabIndex={-1} className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4">
       <div className="mt-12 w-full max-w-xl rounded-lg bg-white p-5 shadow-xl dark:bg-slate-800">
         <div className="flex items-center justify-between">
           <h2 id="share-title" className="text-lg">Share this project</h2>
@@ -63,14 +66,14 @@ export default function SharePanel({ projectId, onClose }) {
         <ul className="rowlist mt-1 text-sm">
           {members.map((m) => (
             <li key={m.subject} className="flex items-center justify-between py-2">
-              <span>{m.display_name || 'Unnamed member'} <span className="text-slate-500">({m.role}{m.me ? ', you' : ''})</span></span>
+              <span>{m.display_name || 'Unnamed member'} <span className="text-slate-500 dark:text-slate-400">({m.role}{m.me ? ', you' : ''})</span></span>
               {m.role !== 'owner' ? <button type="button" className="btn-danger" onClick={async () => { try { await api.del(`/api/projects/${projectId}/members/${m.subject}`); load(); } catch (e) { setError(e); } }}>Remove</button> : null}
             </li>
           ))}
         </ul>
         <h3 className="mt-5 text-sm">Invite links</h3>
         <ul className="rowlist mt-1 text-sm">
-          {invites.length === 0 ? <li className="py-2 text-slate-500">No invite links yet.</li> : null}
+          {invites.length === 0 ? <li className="py-2 text-slate-500 dark:text-slate-400">No invite links yet.</li> : null}
           {invites.map((i) => (
             <li key={i.id} className="flex items-center justify-between py-2">
               <span>{i.role}, {i.status}{i.status === 'redeemed' ? ` by ${i.redeemed_by_name || 'a member'}` : `, expires ${i.expires_at.slice(0, 10)}`}</span>

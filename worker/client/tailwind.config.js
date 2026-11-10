@@ -11,6 +11,9 @@ export default {
         'cail-azure': '#2A6FB8',
         'cail-dark': '#0F172A',
         'cail-cream': '#FAFCF8',
+        // Text and button blue: cail-blue (#3B73E6) gives white text only 4.4:1, below WCAG AA.
+        'cail-link': '#2A5DC9',
+        'cail-link-dark': '#93C5FD',
       },
       // System fonts only: the page CSP allows no third-party font host.
       fontFamily: {

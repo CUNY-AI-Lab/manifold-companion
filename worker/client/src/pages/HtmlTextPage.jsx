@@ -151,7 +151,7 @@ export default function HtmlTextPage({ data, reload }) {
               <button className="btn-quiet" type="button" onClick={() => figureInput.current?.click()}>Add a figure image</button>
             </div>
           ) : null}
-          {figures.length ? <p className="text-xs text-slate-500">Figures (reference with &lt;img src="name"&gt;): {figures.map((f) => f.filename).join(', ')}</p> : null}
+          {figures.length ? <p className="text-xs text-slate-500 dark:text-slate-400">Figures (reference with &lt;img src="name"&gt;): {figures.map((f) => f.filename).join(', ')}</p> : null}
           {data.text.has_source_pdf ? <a className="text-sm" href={`${API}/texts/${text.id}/source-pdf`}>Download the source PDF</a> : null}
         </div>
         <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />

@@ -4,7 +4,7 @@
 // signing key (cail-identity test issuer), forwards the ORIGINAL path to the
 // Worker, answers /launch/manifold-companion with a redirect to the app, and
 // answers signed-out API calls with 401 authentication_required. Who is signed
-// in is chosen by the test with a cookie (e2e_as=alice|bob|none).
+// in is chosen by the test with a cookie (e2e_as=alice|bob|carol|dave|none).
 //
 // It starts `wrangler dev` itself (real workerd, local D1 and R2, the Gateway
 // stub on the GATEWAY service binding) with the issuer's JWKS as a var.
@@ -13,7 +13,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
-import { createTestIdentityIssuer, TEST_SUBJECTS } from '@cuny-ai-lab/cail-identity/testing';
+import { canonicalTestSubject, createTestIdentityIssuer, TEST_SUBJECTS } from '@cuny-ai-lab/cail-identity/testing';
 
 const here = import.meta.dirname;
 const worker = resolve(here, '../..');
@@ -33,7 +33,8 @@ process.on('exit', () => dev.kill());
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { dev.kill(); process.exit(0); });
 
 let launches = 0;
-const SUBJECTS = { alice: TEST_SUBJECTS.alice, bob: TEST_SUBJECTS.bob };
+// dave never creates anything: the first-run screens.
+const SUBJECTS = { alice: TEST_SUBJECTS.alice, bob: TEST_SUBJECTS.bob, carol: TEST_SUBJECTS.carol, dave: canonicalTestSubject('dave') };
 const who = (cookie = '') => /(?:^|;\s*)e2e_as=([a-z]+)/.exec(cookie)?.[1] ?? 'alice';
 
 createServer(async (req, res) => {

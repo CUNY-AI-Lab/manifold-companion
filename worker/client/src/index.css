@@ -6,11 +6,11 @@
 .dark { color-scheme: dark; }
 body { @apply bg-cail-cream text-slate-800 dark:bg-slate-900 dark:text-slate-200 font-sans antialiased; }
 h1, h2, h3 { @apply text-cail-navy dark:text-slate-100 font-semibold tracking-tight; }
-a { @apply text-cail-blue hover:underline; }
+a { @apply text-cail-link hover:underline dark:text-cail-link-dark; }
 :focus-visible { outline: 2px solid #3B73E6; outline-offset: 2px; }
 
 .btn { @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
-.btn-primary { @apply btn bg-cail-blue text-white hover:bg-cail-azure; }
+.btn-primary { @apply btn bg-cail-link text-white hover:bg-cail-navy; }
 .btn-quiet { @apply btn border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800; }
 .btn-icon { @apply btn h-8 w-8 justify-center border border-slate-300 px-0 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800; }
 .btn-danger { @apply btn border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950; }

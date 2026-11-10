@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import DisplayNamePrompt from '../components/DisplayNamePrompt';
 import { DataNotice, ErrorNote, formatBytes, QuotaLine, Spinner } from '../components/ui';
+import { LegacyDifferences, ToolRules, WhatItDoes } from '../components/ToolFacts';
 
 export function RetentionBanner({ project }) {
   if (!project?.retention?.warning) return null;
@@ -39,14 +40,26 @@ export default function Dashboard() {
       <h1 className="text-2xl">Your projects</h1>
       <div className="mt-2 mb-6"><DataNotice /></div>
       <ErrorNote error={error} onDismiss={() => setError(null)} />
-      {projects === null ? <Spinner /> : (
+      {projects === null ? <Spinner /> : projects.length === 0 ? (
+        <section aria-labelledby="welcome-title" className="space-y-4 rounded-md border border-slate-200 bg-white p-5 text-sm leading-relaxed dark:border-slate-700 dark:bg-slate-800">
+          <h2 id="welcome-title" className="text-lg">Welcome to Manifold Companion</h2>
+          <p>You have no projects yet. Create one below and choose a workflow:</p>
+          <WhatItDoes />
+          <h3 className="text-base">Before you start</h3>
+          <ToolRules session={session} />
+          <details>
+            <summary className="cursor-pointer font-medium">Used the earlier version? What is different</summary>
+            <div className="mt-2"><LegacyDifferences /></div>
+          </details>
+          <p><Link to="/help">More help</Link></p>
+        </section>
+      ) : (
         <ul className="rowlist rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-          {projects.length === 0 ? <li className="p-4 text-sm text-slate-600 dark:text-slate-300">No projects yet. Create one below: image to Markdown for scans and photos, PDF to HTML for documents with tables and mathematics.</li> : null}
           {projects.map((p) => (
             <li key={p.id} className="p-4">
               <div className="flex flex-wrap items-baseline gap-x-3">
                 <Link to={`/projects/${p.id}`} className="doc-title text-lg">{p.name}</Link>
-                <span className="text-xs text-slate-500">{p.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}, {p.role}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{p.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}, {p.role}</span>
               </div>
               {p.retention.warning ? <div className="mt-2"><RetentionBanner project={p} /></div> : null}
             </li>
@@ -71,7 +84,7 @@ export default function Dashboard() {
           <div className="mt-1 h-2 rounded bg-slate-200 dark:bg-slate-700" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Storage used"><div className={`h-2 rounded ${pct >= 80 ? 'bg-red-500' : 'bg-cail-teal'}`} style={{ width: `${pct}%` }} /></div>
         </div>
         <QuotaLine />
-        <p className="text-xs text-slate-500">Projects are deleted {session.retention.days} days after their last edit; you are warned {session.retention.warn_days} days before.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Projects are deleted {session.retention.days} days after their last edit; you are warned {session.retention.warn_days} days before.</p>
       </section>
     </div>
   );

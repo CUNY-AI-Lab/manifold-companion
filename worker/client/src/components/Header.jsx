@@ -13,9 +13,9 @@ function Bell() {
     return () => { live = false; clearInterval(t); };
   }, []);
   return (
-    <NavLink to="/notifications" className="relative text-sm text-slate-700 hover:text-cail-blue dark:text-slate-200" aria-label={`Notifications, ${unread} unread`}>
+    <NavLink to="/notifications" className="relative text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200" aria-label={`Notifications, ${unread} unread`}>
       Notifications
-      {unread > 0 ? <span className="ml-1 rounded-full bg-cail-blue px-1.5 text-xs text-white">{unread}</span> : null}
+      {unread > 0 ? <span className="ml-1 rounded-full bg-cail-link px-1.5 text-xs text-white">{unread}</span> : null}
     </NavLink>
   );
 }
@@ -33,8 +33,9 @@ export default function Header() {
           <input id="site-search" className="field w-56" placeholder="Search your texts" value={q} onChange={(e) => setQ(e.target.value)} />
         </form>
         <nav className="flex items-center gap-4">
+          <NavLink to="/help" className="text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200">Help</NavLink>
           <Bell />
-          <NavLink to="/settings" className="text-sm text-slate-700 hover:text-cail-blue dark:text-slate-200">{session?.profile?.display_name || 'Settings'}</NavLink>
+          <NavLink to="/settings" className="text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200">{session?.profile?.display_name || 'Settings'}</NavLink>
         </nav>
       </div>
     </header>
