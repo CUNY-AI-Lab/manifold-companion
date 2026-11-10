@@ -22,6 +22,11 @@ export default {
       const hasImage = text.includes('image_url');
       const page = /data-page=\\"(\d+)\\"/.exec(text)?.[1];
       // Page-to-HTML calls get TeX in the delimiters the prompt asks for, so the preview's KaTeX path is exercised.
+      // Formula repair: one repaired string per formula sent (closing what was left open).
+      if (text.includes('You repair TeX math')) {
+        const sent = JSON.parse(body.messages[body.messages.length - 1].content);
+        return Response.json({ id: 'stub', object: 'chat.completion', model: body.model, choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify(sent.map((t) => `${t}2}`)) }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+      }
       const content = hasImage && page
         ? `<section data-page="${page}"><h2>Identities</h2><p>Transcribed by the stub model. \\(\\cos^2(t)+\\sin^2(t)=1\\)</p><p>\\[\\cos(\\theta)=\\frac{-3+\\sqrt{41}}{8}\\]</p></section>`
         : hasImage ? 'Transcribed by the stub model.\n\nSecond paragraph of the page.' : 'A stub summary.';

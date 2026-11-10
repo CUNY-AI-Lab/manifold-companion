@@ -11,7 +11,7 @@ import { isRangeAnchor, locate, makeAnchor } from '../lib/anchor';
  * comment is shown as detached. Everything from other people (bodies, quotes)
  * is rendered as plain text.
  */
-export default function CommentsPanel({ textId, canWrite, source = null, pages = [], onGoToPage }) {
+export default function CommentsPanel({ textId, canWrite, source = null, pages = [], onGoToPage, onNeedSource }) {
   const [items, setItems] = useState([]);
   const [members, setMembers] = useState([]);
   const [open, setOpen] = useState(null);
@@ -36,12 +36,17 @@ export default function CommentsPanel({ textId, canWrite, source = null, pages =
     setAnchor(a);
     setStatus('');
   };
-  const showInText = (range) => {
+  const selectRange = (range) => {
     const el = source?.textareaRef?.current;
     if (!el) return;
     el.focus();
     el.setSelectionRange(range.start, range.end);
     setStatus('The commented text is selected in the editor.');
+  };
+  // Comment ranges are places in the HTML source: from the visual editor, switch to it first.
+  const showInText = (range) => {
+    if (source?.selectable === false && onNeedSource) { onNeedSource(); setTimeout(() => selectRange(range), 60); return; }
+    selectRange(range);
   };
 
   const send = async (e) => {
@@ -129,7 +134,10 @@ export default function CommentsPanel({ textId, canWrite, source = null, pages =
       {canWrite ? (
         <form className="mt-2 space-y-2" onSubmit={send}>
           <label className="label" htmlFor="comment-body">{open ? 'Reply' : 'New comment'}</label>
-          {!open && source ? (
+          {!open && source && source.selectable === false ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">To attach a comment to a stretch of the text, <button type="button" className="underline" onClick={onNeedSource}>switch to the HTML source</button> and select it there.</p>
+          ) : null}
+          {!open && source && source.selectable !== false ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <button type="button" className="btn-quiet" onClick={useSelection}>Comment on the selected text</button>
               {anchor ? <><span className="line-clamp-1 max-w-md">On “{anchor.quote}”</span><button type="button" className="text-xs underline" onClick={() => setAnchor(null)}>Comment on the whole text instead</button></> : <span className="text-xs text-slate-600 dark:text-slate-300">Select words in the editor, then press this to attach the comment to them.</span>}

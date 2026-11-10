@@ -231,6 +231,7 @@ test('closing the tab asks first; the next visit offers the edit; discard remove
   const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Chapter' })).text;
   await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<p>Saved.</p>' });
   await page.goto(`/manifold-companion/texts/${text.id}`);
+  await page.getByRole('button', { name: 'HTML source', exact: true }).click();
   const source = page.getByLabel(/^HTML/);
   await expect(source).toHaveValue('<p>Saved.</p>');
   await source.fill('<p>Saved, then edited.</p>');
@@ -288,7 +289,7 @@ test('keyboard shortcuts: a visible list, ? and /, N and P outside fields, Mod+S
   await page.keyboard.press('?');
   const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('table', { name: 'Keyboard shortcuts' }).getByRole('row')).toHaveCount(8);
+  await expect(dialog.getByRole('table', { name: 'Keyboard shortcuts' }).getByRole('row')).toHaveCount(14);
   expect(await axe(page, 'shortcuts dialog')).toEqual([]);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
@@ -355,6 +356,7 @@ test('Mod+S saves the HTML of a PDF text', async ({ page, context }) => {
   const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Chapter' })).text;
   await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<p>One.</p>' });
   await page.goto(`/manifold-companion/texts/${text.id}`);
+  await page.getByRole('button', { name: 'HTML source', exact: true }).click();
   const source = page.getByLabel(/^HTML/);
   await expect(source).toHaveValue('<p>One.</p>');
   await source.fill('<p>One, saved from the keyboard.</p>');

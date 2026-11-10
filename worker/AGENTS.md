@@ -31,4 +31,4 @@ Never deploy, push, call a real model, or read `.env`/secrets from here. Local c
 - Use `@cuny-ai-lab/cail-identity/testing` and `@cuny-ai-lab/cail-client/testing` in tests; substitute only the Gateway binding.
 - Logging only through `src/logging.ts` (cail-log); `scripts/check-logging.sh` fails on anything else.
 - No migration may create an FTS5 object (runtime `ensureSearchIndex`); deletion is rows first with an `r2_cleanup` tombstone, then R2.
-- In the client, stored HTML/Markdown is rendered only by `components/SandboxedPreview.jsx` (`sandbox=""`).
+- In the client, stored HTML/Markdown is rendered only by `components/SandboxedPreview.jsx` (`sandbox=""`), except that the visual editor (`components/RichEditor.jsx`) shows a document built by parsing SANITIZED HTML into its allowlisted schema (`lib/editor/`; DESIGN 8b): never assign stored or pasted HTML to the page as markup, never render a document's `id`/`class`/`role`, keep KaTeX's `trust: false`, and keep `client/test/editor-roundtrip.test.js` and `editor-security.test.js` passing.

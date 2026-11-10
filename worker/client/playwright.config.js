@@ -8,7 +8,7 @@ export default defineConfig({
   retries: 0,
   timeout: 120_000,
   forbidOnly: !!process.env.CI,
-  use: { baseURL: `http://127.0.0.1:${port}`, browserName: 'chromium', acceptDownloads: true },
+  use: { baseURL: `http://127.0.0.1:${port}`, browserName: 'chromium', acceptDownloads: true, navigationTimeout: 60_000 },
   webServer: {
     command: 'node e2e/doorway-double.mjs',
     url: `http://127.0.0.1:${port}/manifold-companion/api-wait`,

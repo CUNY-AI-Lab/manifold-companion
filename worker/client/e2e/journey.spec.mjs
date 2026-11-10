@@ -242,7 +242,9 @@ test('PDF to HTML: pdf.js renders pages in the browser, math pages go to the mat
   await page.getByLabel('PDF file').setInputFiles('e2e/fixtures/two-pages.pdf');
   await page.getByLabel('Math or table pages').fill('2');
   await page.getByRole('button', { name: 'Convert PDF' }).click();
-  await expect(page.getByLabel(/^HTML/)).toHaveValue(/Transcribed by the stub model/, { timeout: 60_000 });
+  await expect(page.locator('.mc-editor')).toContainText('Transcribed by the stub model', { timeout: 60_000 });
+  await page.getByRole('button', { name: 'HTML source', exact: true }).click();
+  await expect(page.getByLabel(/^HTML/)).toHaveValue(/Transcribed by the stub model/);
   expect(parsed.map((p) => [p.page_number, p.math, p.image.slice(0, 23)])).toEqual([[1, false, 'data:image/jpeg;base64,'], [2, true, 'data:image/jpeg;base64,']]);
   expect(parsed[0].text_hint).toContain('Theorem one');
   await expect(page.locator('iframe[title="Preview of the HTML"]')).toHaveAttribute('sandbox', '');

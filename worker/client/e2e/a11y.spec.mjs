@@ -73,7 +73,7 @@ for (const [size, viewport] of Object.entries(VIEWPORTS)) {
         ['image project', `/manifold-companion/projects/${ids.image}`, page.getByRole('heading', { name: 'Letters a11y' })],
         ['image text', `/manifold-companion/texts/${ids.text}`, page.getByLabel(/Text of page 1/)],
         ['pdf project', `/manifold-companion/projects/${ids.pdf}`, page.getByRole('heading', { name: 'Maths a11y' })],
-        ['html text', `/manifold-companion/texts/${ids.htext}`, page.getByLabel(/^HTML/)],
+        ['html text, visual editor', `/manifold-companion/texts/${ids.htext}`, page.getByRole('toolbar', { name: 'Formatting' })],
         ['settings', '/manifold-companion/settings', page.getByRole('heading', { level: 1 })],
         ['notifications', '/manifold-companion/notifications', page.getByRole('heading', { level: 1 })],
         ['search', '/manifold-companion/search?q=friend', page.getByRole('heading', { level: 1 })],
@@ -87,6 +87,16 @@ for (const [size, viewport] of Object.entries(VIEWPORTS)) {
         if (scheme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/);
         found.push(...(await violations(page, label)));
       }
+      // The HTML text in the source view, and the formula dialog of the visual editor.
+      await page.goto(`/manifold-companion/texts/${ids.htext}`);
+      await page.locator('.mc-editor .mc-math').first().click();
+      await expect(page.getByRole('dialog', { name: 'Edit formula' })).toBeVisible();
+      found.push(...(await violations(page, 'formula dialog')));
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'HTML source', exact: true }).click();
+      await expect(page.getByLabel(/^HTML/)).toBeVisible();
+      found.push(...(await violations(page, 'html text, source view')));
+      await page.getByRole('button', { name: 'Visual editor' }).click();
       // Open states: version history with a version shown, the export and share dialogs.
       await page.goto(`/manifold-companion/texts/${ids.text}`);
       await page.getByRole('button', { name: 'Version history of this page' }).click();

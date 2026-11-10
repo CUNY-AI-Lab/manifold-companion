@@ -1,6 +1,6 @@
 # Handoff: Manifold Companion on the CAIL stack
 
-State on 2026-11-10. **Live**: `be19329` deployed by the coordinator (version `6a1805df…`, tag `mc-be19329`) behind the Doorway mount (cail-tools-admission #383, merged), migrations 0001-0007 applied to the real D1, accepted by the owner on 2026-11-10. Later commits are on branch `cail-stack` (pushed, CI green), not yet deployed; they add migrations 0008, 0009 and 0010, all additive. Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
+State on 2026-11-10. **Live**: `ddd17dc` (tag `mc-ddd17dc`) behind the Doorway mount (cail-tools-admission #383), migrations 0001-0010 applied to the real D1. The commits after it on branch `cail-stack` (pushed, Worker CI green) are not deployed: the owner's remaining list (section 9), built in order. **They add no migration**: the deployed schema serves them, and the deployed Worker runs unchanged against it, so a rollback is code only. Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
 
 ## 1. Run it
 
@@ -10,10 +10,10 @@ From `worker/`:
 npm ci
 npm run typecheck
 npm run check:logging          # fails on any console use or other logging library in src/
-npm test                       # Worker suite in workerd (Miniflare D1/R2), 510 tests
+npm test                       # Worker suite in workerd (Miniflare D1/R2), 532 tests
 npm run build:client           # worker/client: npm ci + vite build -> worker/client/dist
-npm run test:client            # client unit tests, 143
-npm run test:e2e               # Playwright: wrangler dev + Doorway double + Gateway stub: 11 journeys, axe WCAG 2.2 A/AA on every screen (desktop and phone, light and dark), a keyboard-only walk
+npm run test:client            # client unit tests, 283 (the editor's round-trip and security tests run in jsdom)
+npm run test:e2e               # Playwright: wrangler dev + Doorway double + Gateway stub: 35 tests (journeys, uploads, editing, move, figures, the visual editor), axe WCAG 2.2 A/AA on every screen (desktop and phone, light and dark), a keyboard-only walk
 npx wrangler deploy --dry-run --outdir .wrangler/dry-run   # needs client/dist
 ```
 
@@ -92,15 +92,16 @@ Reviewed and found sound: the transfer batch's nonce discipline (concurrent acce
 | Keyboard shortcuts | see git log | one list (`client/src/lib/shortcuts.js`) shown in a dialog (header button, or `?`) and on Help: `?`, `/`, Mod+S (save the editor in use), Mod+Shift+S (save the page, open the next), N/P (next/previous page); single-key ones only outside text fields and can be turned off (WCAG 2.1.4), remembered in this browser | 521 |
 | Move texts to another project | see git log | `POST /projects/:id/texts/move` (`src/move.ts`, DESIGN 6 "Move a text"): new text id, objects copied then rows re-parented in one guarded batch per text, bytes moved between owners in SQL, old prefix tombstoned; version history, metadata and settings carried, comments deleted (stated in the confirmation, which comes from a preview); editor on both projects, same project kind, destination caps and owner quota; writers authorized on the old text now fail cleanly after a move (page edit and delete check the text); in the storage property test. UI: "Move to project" in the selection bar | 531 |
 | Figure extraction (client-side) | see git log | `client/src/lib/figures.js` (placeholders, attach, names, crop maths, pdf.js image data), `lib/pdf-figures.js`, `components/FigurePanel.jsx`; Help and the dialog say vector drawings need the crop | 532 |
+| Visual editor (PDF texts) | see git log | ProseMirror over an allowlisted schema built only from sanitized HTML; math atoms holding TeX drawn by KaTeX (trust off), with a TeX dialog, live preview and repair; links http/https/mailto; images only this text's figures; paste through the schema; the fidelity gate opens anything the schema cannot hold as source with a note; unchanged documents save byte for byte; source view a toggle; sandboxed preview kept as "As exported"; CSP unchanged (DESIGN 8b) | 532 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
 ## 4. Not built, stubbed, or different from legacy
 
-Not built yet (owner's list of 2026-11-10, in order): moving texts between projects (bulk "move"; needs R2 copies, a storage move between owners and tombstones); drag-and-drop upload, keyboard shortcuts, unsaved-draft protection with local recovery, pagination beyond 50 texts, HEIC verification under the page CSP; client-side figure extraction from PDFs; the rich-text editor. See the end of this file for the plan.
+Everything on the owner's list of 2026-11-10 is built (section 3 and 9).
 
 Replaced or reduced:
-- Rich HTML editing (contenteditable with KaTeX, find and replace, colours) is replaced by an HTML source editor next to a sandboxed preview. Deliberate for safety; a richer editor must still never render stored HTML in the app origin.
+- Rich HTML editing: legacy's contenteditable (KaTeX auto-render on the live DOM, find and replace, text and highlight colours, `execCommand`) is replaced by a schema-based visual editor (DESIGN 8b) with the HTML source as a toggle. No colours and no find and replace; table rows and columns are changed in the source. Image texts keep a Markdown textarea per page (as legacy) plus the full-text editor.
 - **Figure extraction from PDFs** (`pdftohtml -xml` on the server, every embedded picture at once) is replaced by extraction in the browser, one placeholder at a time ("Figures to add"): pdf.js operator-list images for embedded pictures, or a crop of the rendered page (drag or typed edges) for vector drawings, which the server could never take. Uploaded through the figure route (reserved quota); the placeholder gets the `<img>`. The model prompt supports a figure list but the client does not send one, so conversion always leaves placeholders.
 - Native-PDF model input is gone (the Gateway rejects PDF parts): pages are rasterised with pdf.js in the browser; the text layer goes along as a hint.
 - No server-side bulk OCR or SSE: the browser drives one page per request with Cancel.
@@ -111,7 +112,7 @@ Unverified client risks: very large PDFs (each page is rendered and held as one 
 
 ## 5. Infrastructure (provisioned and live)
 
-Provisioned 2026-11-10 in the CUNY AI Lab account: D1 `cail-manifold-companion` (`67481a76-aaf2-4035-b261-04e37d099246`, in `wrangler.jsonc`; `test/config.test.ts` fails if a placeholder comes back) and R2 `cail-manifold-companion-files`. The migration rehearsal on a scratch remote D1 passed (0001-0007, 15 tables plus `d1_migrations`, matching the snapshot), and FTS5 works on remote D1. Done by the coordinator on 2026-11-10: migrations 0001-0007 applied to the real D1, the JWKS secret set, `be19329` deployed with tag `mc-be19329`, the self-check cron ran clean, the Doorway mount (cail-tools-admission #383) merged, anonymous `/manifold-companion/api/session` returns 401 with `/launch/manifold-companion`. Before deploying a later commit, apply its new migrations first (0008, 0009, 0010: all additive, so the running version keeps working against the newer schema and a rollback stays safe).
+Provisioned 2026-11-10 in the CUNY AI Lab account: D1 `cail-manifold-companion` (`67481a76-aaf2-4035-b261-04e37d099246`, in `wrangler.jsonc`; `test/config.test.ts` fails if a placeholder comes back) and R2 `cail-manifold-companion-files`. The migration rehearsal on a scratch remote D1 passed (0001-0007, 15 tables plus `d1_migrations`, matching the snapshot), and FTS5 works on remote D1. Done by the coordinator on 2026-11-10: migrations 0001-0007 applied to the real D1, the JWKS secret set, `be19329` deployed with tag `mc-be19329`, the self-check cron ran clean, the Doorway mount (cail-tools-admission #383) merged, anonymous `/manifold-companion/api/session` returns 401 with `/launch/manifold-companion`. Migrations 0001-0010 are applied (with `ddd17dc`); the commits after it add none. Before deploying a later commit that adds one, apply it first (additive only, so the running version keeps working against the newer schema and a rollback stays safe).
 
 ## 6. Release runbook (in order; receiver first)
 
@@ -274,24 +275,42 @@ Flags: `--tasks ocr,html,math,summary,translate,repair`, `--models`, `--pages`, 
 5. **Email.** In-app only at launch. The retention warning reaches only people who sign in; the Admission-owned notice capability (DESIGN section 9) remains a design.
 6. **Gateway `tool` attribution** (6.2): leave unattributed for launch, or ask Stephen for the enum change?
 7. **Doorway body size.** Closed: Doorway sets no body cap of its own and its tests pass a 25 MiB body through; this Worker's caps (10 MB files, 25 MB PDFs, page-image JSON under 6 MB) are the limits.
-8. **Missing UI** (section 4): version history and reordering are built; split/merge, metadata editing, TOC nesting and a rich editor are follow-ups. Confirm none is needed for the first release.
+8. **Missing UI**: closed; everything on the list is built. Open choices: find and replace in the visual editor; table row and column editing outside the source view.
 9. **Public canary route.** Not granted: `/manifold-companion/api/health` stays behind sign-in (a public route would publish the version id and tie Doorway releases to this tool's health). Readiness signals are the RPC and the 15-minute self-check (6.3).
 
 ## 8. Rules for whoever continues
 
 - Every route calls `requireRole`/`requireTextRole` once and gets an authz-matrix row; never read a subject from a request body or header other than through `authenticate`.
 - No hidden retry, no server-side bulk model loop, no provider key, no spend ledger, no lookup of people by email or name.
-- Stored HTML passes `sanitizeHtml` and is shown only in the sandboxed preview; never in the app origin.
+- Stored HTML passes `sanitizeHtml`; it is shown in the sandboxed preview, or in the app page only as a document of the visual editor's allowlisted schema (DESIGN 8b), never assigned as markup.
 - Logging goes through `src/logging.ts` only (`npm run check:logging`); never log prompts, files, names, subjects, tokens or exception messages.
 - Never edit an applied migration; add a new one and regenerate `test/schema.snapshot.json` deliberately (empty it to `{}`, run the migrations test, review the printed snapshot). No migration may mention FTS5.
 - Deletion is rows first with a tombstone, then R2.
 - No AI attribution in commits, code or docs (repository `CLAUDE.md`).
 
-## 9. Remaining work from the owner's list of 2026-11-10
+## 9. The owner's list of 2026-11-10: done
 
-Done on `cail-stack` (see section 3): Dublin Core metadata, export sections, member roles and consented ownership transfer, in-app confirmation dialogs, anchored comments with the notification menu, split/merge/bulk status and delete. Not done yet, in the agreed order, with the design each needs:
+All built on `cail-stack` after `ddd17dc`, one commit per item, each with Worker tests in workerd, client unit tests, a Playwright journey and axe on new screens (section 3 lists them):
 
-1. **Bulk "move" of texts to another project.** Copy R2 objects under the target project's prefix (keys embed the project id), reserve the bytes on the target owner (a storage reservation committed in the batch that re-parents the rows), release them from the source owner in the same batch, tombstone the source prefix; both projects must be the caller's with editor rights. Not started.
-2. **Smaller legacy items** (owner's item 8): per-text saved settings UI (`/texts/:id/settings` exists), the compiled-text editor for image texts (`POST /texts/:id/save` exists; the export already prefers it), drag-and-drop upload, keyboard shortcuts, unsaved-draft protection (beforeunload plus a local draft of the current text only, cleared on save), pagination beyond 50 texts, HEIC under the page CSP (verify `heic2any` needs no eval; otherwise reject HEIC with a clear message). Not started.
-3. **Figure extraction** (item 7): client-side with pdf.js (operator-list images for embedded rasters; crop of the rendered page for vector figures), user-confirmed crop, upload through the figure route (reserved quota), attach to `<figure class="needs-image">` placeholders. Not started.
-4. **Rich-text editor** (item 6): schema-based (ProseMirror or Tiptap) over sanitized HTML, math as atom nodes holding TeX, round-trip tests on the eval outputs and legacy samples, source view kept as a toggle, CSP unchanged unless inline styles are unavoidable. Not started.
+1. Upload read deadline (review hardening): DESIGN 6, "Read deadline".
+2. Smaller legacy items: drag and drop; HEIC (heic2any removed: it needs `new Function`; the browser decodes HEIC or the person is told how to convert); pagination beyond 50 texts; per-text settings UI; the full-text editor of image texts with a way back to the pages (new `DELETE /texts/:id/compiled`); unsaved-draft protection with local recovery (DESIGN 8a); keyboard shortcuts with a visible list.
+3. Moving texts to another project (DESIGN 6, "Move a text"). **Decision:** comments are deleted with the move (they were written for the source project's members, who may not be members of the destination, and their authors may lose access); the confirmation says so with the count. Version history, metadata and settings go with the text. Moved texts get new ids, so old links to them stop working (also stated).
+4. Figure extraction from PDFs in the browser (HANDOFF 4; Help).
+5. The visual editor (DESIGN 8b).
+
+What to check live after deploying these: section 10.
+
+## 10. Live checks after deploying the post-`ddd17dc` commits
+
+No migration to apply. Deploy as in 6.2 (`--tag "mc-$(git rev-parse --short HEAD)"`), read readiness back (6.3), then, signed in:
+
+1. **Upload deadline**: upload a large PDF page set on a normal connection (it must not be cut off); optionally throttle the browser to "Slow 3G" and stop an upload midway, then confirm Settings > Usage returns to its earlier storage figure within a few minutes.
+2. **Drag and drop and HEIC**: drop two photos and a PDF onto an image text; drop a PDF onto a PDF text; drop a file on the dashboard (the app stays). In Chrome, choose an iPhone HEIC photo: the message about converting appears and nothing hangs; in Safari the same photo uploads.
+3. **Unsaved changes**: edit a page, click Back to project (in-app dialog), close the tab (browser prompt), reopen the text (recovery banner), restore, save. In DevTools > Application > Local Storage the key is `manifold-companion:draft:v1:<hash>:<text id>` and disappears after the save.
+4. **Shortcuts**: press `?` on the dashboard; Ctrl/Cmd+S in a page editor; turn single-key shortcuts off in Settings.
+5. **Pagination**: a project with more than 50 texts (or trust the journey) pages, and its export lists every text.
+6. **Settings and full text**: save a model and a prompt for an image text, read a page, and see "read by" name it; edit the full text, export (the ZIP uses it), use the pages again.
+7. **Move**: move a text with comments to another project you edit (ideally one owned by someone else): the dialog's counts; the text, pages, versions and figures arrive; storage moves between the owners (both Settings pages); the old link 404s.
+8. **Figures**: convert a PDF page with a figure, then Figures to add > Add image: an embedded picture, and a crop of a vector graph; save; export and find both in `images-NN/`.
+9. **Visual editor**: open a converted text: the console shows no CSP violation; formulas render with KaTeX fonts; click one, break it, repair it (spends a few microdollars), apply; paste from a web page (styles and images do not come along); toggle to HTML source and back; Save stays disabled until something is edited; a text with MathML opens as source with the note.
+10. Workers Logs for 30 minutes after the deploy: no `manifold_companion.unhandled_error`, no `readiness.failed`.

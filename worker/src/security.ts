@@ -7,8 +7,11 @@ import { BASE_PATH } from "./env";
  *    srcdoc preview inherits this policy, which is why previews cannot run script
  *    even if the sanitizer were bypassed.
  *  - connect-src 'self': nothing here may talk to a provider or another origin.
- *  - style 'unsafe-inline' is needed by the editor and KaTeX; inline *styles* are
- *    not the injection risk inline scripts are, and the sanitizer strips `style`.
+ *  - style 'unsafe-inline' is needed by the sandboxed preview frame, a srcdoc
+ *    document that inherits this policy and carries its stylesheet (with KaTeX's)
+ *    inline; the visual editor needs none (bundled stylesheets, CSSOM styles).
+ *    Inline *styles* are not the injection risk inline scripts are, and the
+ *    sanitizer strips `style`.
  */
 export const PAGE_CSP = [
   "default-src 'self'",

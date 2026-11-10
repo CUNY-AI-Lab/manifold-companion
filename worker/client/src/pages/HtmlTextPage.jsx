@@ -8,6 +8,11 @@ import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { useTextSettings } from '../components/TextSettingsPanel';
 import FigurePanel from '../components/FigurePanel';
+import RichEditor from '../components/RichEditor';
+import { browserStorage } from '../lib/storage';
+
+const VIEW_PREF = 'manifold-companion:prefs:html-view';
+const readView = () => { try { return browserStorage().getItem(VIEW_PREF) === 'source' ? 'source' : 'rich'; } catch { return 'rich'; } };
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
@@ -58,6 +63,14 @@ export default function HtmlTextPage({ data, reload }) {
   const pageWarnings = useRef(new Map());
   const [checks, setChecks] = useState([]);
   const [figureNote, setFigureNote] = useState('');
+  // The visual editor is the default view; the HTML source is the other. A document the editor cannot hold opens as source.
+  const [view, setViewState] = useState(readView);
+  const [fallback, setFallback] = useState(null);
+  const [figuresLoaded, setFiguresLoaded] = useState(false);
+  const setView = (v) => { setViewState(v); setFallback(null); try { browserStorage().setItem(VIEW_PREF, v); } catch { /* unavailable */ } };
+  const richShown = view === 'rich' && !fallback;
+  // New saved content (loaded, converted, restored, saved): the visual editor tries it again.
+  useEffect(() => { setFallback(null); }, [saved]);
   const [versionKey, setVersionKey] = useState(0);
   const figureInput = useRef(null);
   const source = useRef(null);
@@ -77,8 +90,9 @@ export default function HtmlTextPage({ data, reload }) {
     // Previews run in an opaque-origin sandbox that cannot fetch app URLs, so figures are inlined as data: URIs.
     const entries = await Promise.all(list.map(async (f) => [f.filename, await blobToDataUri(await (await api.raw(`/api/texts/${text.id}/figures/${f.id}`)).blob())]));
     setImages(Object.fromEntries(entries));
+    setFiguresLoaded(true);
   };
-  useEffect(() => { loadHtml(); loadFigures().catch(setError); }, [text.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHtml(); loadFigures().catch((e) => { setFiguresLoaded(true); setError(e); }); }, [text.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addFigure = async (f) => {
     const { blob, width, height } = await prepareImage(f);
@@ -190,8 +204,32 @@ export default function HtmlTextPage({ data, reload }) {
       {figureNote ? <p role="status" className="mt-2 text-sm text-slate-700 dark:text-slate-200">{figureNote}</p> : null}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
-          <label className="label" htmlFor="html-source">HTML (sanitized when saved). Write formulas as TeX in \( \) or \[ \]: the preview renders them with KaTeX, and the export converts them to MathML.</label>
-          <textarea ref={source} id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="editor-title" className="text-base">The text</h2>
+            <div role="group" aria-label="Editor view" className="inline-flex rounded-md border border-slate-300 dark:border-slate-600">
+              <button type="button" className={`px-3 py-1 text-sm ${richShown ? 'bg-cail-navy text-white dark:bg-slate-200 dark:text-slate-900' : ''}`} aria-pressed={richShown} onClick={() => setView('rich')}>Visual editor</button>
+              <button type="button" className={`px-3 py-1 text-sm ${!richShown ? 'bg-cail-navy text-white dark:bg-slate-200 dark:text-slate-900' : ''}`} aria-pressed={!richShown} onClick={() => setView('source')}>HTML source</button>
+            </div>
+          </div>
+          {fallback ? (
+            <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+              This HTML has {fallback.length ? fallback.join(', ') : 'markup'} that the visual editor cannot show, so it is open as HTML source; nothing is changed or lost. Edit it here, or remove those parts to use the visual editor.
+            </div>
+          ) : null}
+          {richShown ? (
+            html !== null && figuresLoaded ? (
+              <>
+                <p id="rich-label" className="sr-only">Text of {text.name}, visual editor. Formulas are shown with KaTeX; select one and press Enter, or click it, to edit its TeX.</p>
+                <RichEditor value={html} onChange={setHtml} onFallback={(reasons) => setFallback(reasons)} figures={figures} textId={text.id} readOnly={!canEdit} labelledBy="rich-label" />
+                <p className="text-xs text-slate-600 dark:text-slate-300">Formulas are TeX: click one (or select it and press Enter) to edit it. Table rows and columns, and anything the toolbar does not offer, are edited in the HTML source.</p>
+              </>
+            ) : <p role="status" className="text-sm">Opening the text</p>
+          ) : (
+            <>
+              <label className="label" htmlFor="html-source">HTML (sanitized when saved). Write formulas as TeX in \( \) or \[ \]: the preview renders them with KaTeX, and the export converts them to MathML.</label>
+              <textarea ref={source} id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} />
+            </>
+          )}
           {canEdit ? (
             <div className="flex flex-wrap gap-2">
               <button className="btn-primary" type="button" onClick={save} disabled={html === saved}>Save HTML</button>
@@ -207,12 +245,15 @@ export default function HtmlTextPage({ data, reload }) {
           {figures.length ? <p className="text-xs text-slate-500 dark:text-slate-400">Figures (reference with &lt;img src="name"&gt;): {figures.map((f) => f.filename).join(', ')}</p> : null}
           {data.text.has_source_pdf ? <a className="text-sm" href={`${API}/texts/${text.id}/source-pdf`}>Download the source PDF</a> : null}
         </div>
-        <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />
+        <div className="flex flex-col gap-2">
+          <h2 className="text-base">As exported</h2>
+          <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />
+        </div>
       </div>
       <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={dirty} onRestored={() => { loadHtml(); refresh(); }} />
       <TextSettingsPanel textId={text.id} kind="pdf" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
-      <CommentsPanel textId={text.id} canWrite={canEdit} source={html === null ? null : { text: html, pageId: null, textareaRef: source }} />
+      <CommentsPanel textId={text.id} canWrite={canEdit} source={html === null ? null : { text: html, pageId: null, textareaRef: source, selectable: !richShown }} onNeedSource={() => setView('source')} />
     </div>
   );
 }

@@ -28,7 +28,7 @@ export function LegacyDifferences() {
   return (
     <ul className="list-disc space-y-1 pl-5">
       <li>Figures are taken from the PDF in your browser, one figure at a time, for the places the conversion marked: an embedded picture as it is, or a crop you draw for a graph drawn with lines. The earlier version pulled every embedded picture out on the server, and could not take vector graphs at all.</li>
-      <li>HTML is edited as source next to a live preview, instead of the earlier rich editor. The preview shows formulas as they will look.</li>
+      <li>HTML opens in a visual editor again, as in the earlier version, but a stricter one: it holds only the structures the tool writes (headings, paragraphs, lists, tables with captions, figures, quotations, code, links to web and email addresses, this text's own figures) and formulas as TeX you edit in a box with a live preview. There are no text colours. A document with anything else opens as HTML source, which is always one click away. The read-only preview next to it shows the text as exported.</li>
       <li>Ownership moves only when the new owner accepts the offer.</li>
       <li>HEIC photos (the iPhone default) upload only in a browser that can open them, such as Safari; in other browsers convert them to JPEG first. The earlier converter needed a kind of script this site does not allow.</li>
       <li>Sign-in is CUNY Login through the CAIL portal; there are no separate accounts or passwords.</li>

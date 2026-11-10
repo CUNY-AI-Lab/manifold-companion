@@ -12,6 +12,12 @@ export const SHORTCUTS = [
   { id: 'save-next', keys: 'Mod+Shift+S', where: 'An image text', does: 'Save the page and open the next one' },
   { id: 'next-page', keys: 'N', single: true, where: 'An image text, outside text fields', does: 'Open the next page' },
   { id: 'prev-page', keys: 'P', single: true, where: 'An image text, outside text fields', does: 'Open the previous page' },
+  { id: 'ed-bold', keys: 'Mod+B', where: 'The visual editor', does: 'Bold' },
+  { id: 'ed-italic', keys: 'Mod+I', where: 'The visual editor', does: 'Italic' },
+  { id: 'ed-link', keys: 'Mod+K', where: 'The visual editor', does: 'Add, change or remove a link' },
+  { id: 'ed-formula', keys: 'Mod+Shift+M', where: 'The visual editor', does: 'Insert a formula (or edit the selected one; Enter does too)' },
+  { id: 'ed-undo', keys: 'Mod+Z', where: 'The visual editor', does: 'Undo (Ctrl/Cmd+Shift+Z redoes)' },
+  { id: 'ed-indent', keys: 'Mod+]', where: 'The visual editor, in a list', does: 'Indent the list item (Ctrl/Cmd+[ outdents)' },
   { id: 'close', keys: 'Escape', where: 'A dialog or the notification menu', does: 'Close it' },
 ];
 

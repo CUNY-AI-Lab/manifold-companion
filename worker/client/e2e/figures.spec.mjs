@@ -42,6 +42,9 @@ test('figures from the PDF: an embedded picture taken as it is, a vector graph c
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'Image p1-fig1.png attached. Save the HTML to keep it in the text.' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Figures to add (1)' })).toBeVisible();
+  // The visual editor shows the attached figure from the app; the source shows the markup.
+  await expect(page.locator('.mc-editor img.mc-image[alt="1. a photograph"]')).toBeVisible();
+  await page.getByRole('button', { name: 'HTML source', exact: true }).click();
   await expect(page.getByLabel(/^HTML/)).toHaveValue(/<figure><img src="p1-fig1\.png" alt="1\. a photograph" width="64" height="48"><figcaption>Figure: 1\. a photograph/);
 
   // The graph is vector: there is no picture of it, so crop it from the page with the keyboard-friendly fields.
