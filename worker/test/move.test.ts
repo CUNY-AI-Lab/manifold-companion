@@ -296,3 +296,61 @@ describe("moving texts and retention", () => {
     await clean();
   });
 });
+
+describe("moving texts: an interrupted move leaves no stored object behind", () => {
+  /** FILES whose put runs `onPut(n)` after the n-th put, and whose delete can be made to fail (a Worker that died before its cleanup). */
+  const files = (real: R2Bucket, opts: { onPut?: (n: number) => Promise<void>; deleteFails?: boolean }) => {
+    let n = 0;
+    return new Proxy(real, {
+      get(target, prop) {
+        if (prop === "put") return async (...a: Parameters<R2Bucket["put"]>) => { const r = await target.put(...a); n += 1; await opts.onPut?.(n); return r; };
+        if (prop === "delete" && opts.deleteFails) return async () => { throw new Error("worker gone"); };
+        const v = Reflect.get(target, prop);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+  };
+
+  it("copies made by a move that never reached its batch are swept by the cron", async () => {
+    const { processCleanup } = await import("../src/storage");
+    const { src, tid } = await richImageText(ALICE);
+    const dst = await createProject(ALICE, "Interrupted");
+    // The Worker dies after the copies: the batch never commits and nothing it would have cleaned up runs.
+    const dead = { ...env.DB, prepare: env.DB.prepare.bind(env.DB), batch: async () => { throw new Error("worker gone"); } } as unknown as D1Database;
+    const e = await makeEnv({ DB: dead, FILES: files(env.FILES, { deleteFails: true }) });
+    const { moveText, planText } = await import("../src/move");
+    const srcRow = (await env.DB.prepare("SELECT * FROM projects WHERE id = ?1").bind(src).first())!;
+    const dstRow = (await env.DB.prepare("SELECT * FROM projects WHERE id = ?1").bind(dst).first())!;
+    const plan = (await planText(env.DB, srcRow as never, tid))!;
+    await expect(moveText(e, ALICE, srcRow as never, dstRow as never, plan)).rejects.toThrow("worker gone");
+    expect((await r2Keys(projectPrefix(dst))).length).toBeGreaterThan(0); // the orphans
+    // Not yet: the copies of a move that may still be running are left alone...
+    await processCleanup(await makeEnv());
+    expect((await r2Keys(projectPrefix(dst))).length).toBeGreaterThan(0);
+    // ...until the move could no longer commit.
+    await processCleanup(await makeEnv(), Date.now() + 2 * 3600_000);
+    expect(await r2Keys(projectPrefix(dst))).toEqual([]);
+    expect((await json(await call(api(`/texts/${tid}`)))).text.project_id).toBe(src);
+    expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
+  });
+
+  it("the cron running while a move copies does not touch its copies; a move whose pending mark was swept is refused", async () => {
+    const { processCleanup } = await import("../src/storage");
+    const { src, tid } = await richImageText(ALICE);
+    const dst = await createProject(ALICE, "Cron mid-move");
+    const e = await makeEnv({ FILES: files(env.FILES, { onPut: async (n) => { if (n === 1) await processCleanup(await makeEnv()); } }) });
+    const { moved } = await json(await move(src, { textIds: [tid], to: dst }, ALICE, e));
+    expect(moved).toHaveLength(1);
+    expect((await call(api(`/texts/${moved[0].to}/pages/${(await json(await call(api(`/texts/${moved[0].to}`)))).pages[0].id}/image`))).status).toBe(200);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM r2_cleanup WHERE prefix LIKE ?1").bind(`${projectPrefix(dst)}%`).first<{ n: number }>())!.n).toBe(0);
+    await clean();
+
+    // The pending mark gone (the cron swept the copies of a move that took too long): the move does not commit.
+    const second = await richImageText(ALICE);
+    const e2 = await makeEnv({ FILES: files(env.FILES, { onPut: async (n) => { if (n === 1) await env.DB.prepare("DELETE FROM r2_cleanup WHERE prefix LIKE ?1").bind(`${projectPrefix(dst)}%`).run(); } }) });
+    const r = await json(await move(second.src, { textIds: [second.tid], to: dst }, ALICE, e2));
+    expect(r.failed.map((f: { code: string }) => f.code)).toEqual(["move_conflict"]);
+    expect((await json(await call(api(`/texts/${second.tid}`)))).text.project_id).toBe(second.src);
+    await clean();
+  });
+});

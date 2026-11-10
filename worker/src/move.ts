@@ -35,6 +35,10 @@ export const MOVE_LIMITS = {
   bytesPerRequest: 256 * 1024 * 1024,
 } as const;
 
+/** How far ahead a move's pending tombstone is dated, and how much of that must be left for its batch to commit. */
+export const MOVE_PENDING_MS = 60 * 60 * 1000;
+export const MOVE_PENDING_MARGIN_MS = 15 * 60 * 1000;
+
 export interface TextPlan {
   text: TextRow;
   pages: number;
@@ -106,7 +110,19 @@ export async function moveText(env: Env, subject: string, src: ProjectRow, dst: 
   const map = new Map<string, string>();
   for (const [k] of plan.objects) if (!map.has(k)) map.set(k, movedKey(k, src.id, oldId, dst.id, id));
   const copied: string[] = [];
-  const dropCopies = () => (copied.length ? env.FILES.delete(copied).catch(() => undefined) : Promise.resolve());
+  const prefix = textPrefix(dst.id, id);
+  // A pending tombstone for the new prefix, BEFORE the first copy: if this Worker stops before its batch (the client
+  // went away, a deploy, a crash), the cron sweeps the copies. It is dated MOVE_PENDING_MS ahead, the cron leaves it
+  // alone until then, the batch commits only while that date is more than MOVE_PENDING_MARGIN_MS away and deletes
+  // it in the same transaction. So the cron never sweeps the copies of a move that can still commit.
+  await env.DB.prepare("INSERT INTO r2_cleanup (prefix, created_at) VALUES (?1, ?2)").bind(prefix, nowIso(Date.now() + MOVE_PENDING_MS)).run();
+  // Failure in this request: the copies go now, then the pending tombstone. If deleting them fails, the tombstone stays for the cron.
+  const dropCopies = async () => {
+    try {
+      if (copied.length) await env.FILES.delete(copied);
+      await env.DB.prepare("DELETE FROM r2_cleanup WHERE prefix = ?1").bind(prefix).run();
+    } catch { /* left to the cron */ }
+  };
   try {
     for (const [from, to] of map) {
       const obj = await env.FILES.get(from);
@@ -125,7 +141,6 @@ export async function moveText(env: Env, subject: string, src: ProjectRow, dst: 
   const pairs = JSON.stringify([...map]);
   const now = nowIso();
   const lim = limits(env);
-  const prefix = textPrefix(dst.id, id);
   const moved = "EXISTS (SELECT 1 FROM texts WHERE id = ?1)";
   // A row of the new text that names an object outside its prefix was not copied: it changed under the move.
   const stray = (table: string, col: string) => `EXISTS (SELECT 1 FROM ${table} WHERE text_id = ?1 AND ${col} IS NOT NULL AND substr(${col}, 1, length(?3)) != ?3)`;
@@ -141,8 +156,11 @@ export async function moveText(env: Env, subject: string, src: ProjectRow, dst: 
        SELECT ?1, ?2, name, status, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM texts WHERE project_id = ?2), summary, source_language, target_language, source_pdf_name, pdf_meta, formula_repair_status,
          ?3, html_bytes, ?4, compiled_bytes, ?5, translation_bytes, ?6, source_pdf_bytes, source_pdf_revision, search_text, created_at, ?7
        FROM texts WHERE id = ?8 AND project_id = ?9 AND html_key IS ?10 AND compiled_key IS ?11 AND translation_key IS ?12 AND source_pdf_key IS ?13
-         AND EXISTS (SELECT 1 FROM projects WHERE id = ?2) AND ${editorSql("?9", "?14")} AND ${editorSql("?2", "?14")}`,
-    ).bind(id, dst.id, nk(t.html_key), nk(t.compiled_key), nk(t.translation_key), nk(t.source_pdf_key), now, oldId, src.id, t.html_key, t.compiled_key, t.translation_key, t.source_pdf_key, subject),
+         AND EXISTS (SELECT 1 FROM projects WHERE id = ?2) AND ${editorSql("?9", "?14")} AND ${editorSql("?2", "?14")}
+         AND EXISTS (SELECT 1 FROM r2_cleanup WHERE prefix = ?15 AND created_at > ?16)`,
+    ).bind(id, dst.id, nk(t.html_key), nk(t.compiled_key), nk(t.translation_key), nk(t.source_pdf_key), now, oldId, src.id, t.html_key, t.compiled_key, t.translation_key, t.source_pdf_key, subject, prefix, nowIso(Date.now() + MOVE_PENDING_MARGIN_MS)),
+    // The copies are now named by rows: the pending tombstone goes.
+    env.DB.prepare(`DELETE FROM r2_cleanup WHERE prefix = ?2 AND ${moved}`).bind(id, prefix),
     reparent("pages", "image_key"),
     reparent("figures", "image_key"),
     reparent("text_versions", "r2_key"),

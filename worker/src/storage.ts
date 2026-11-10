@@ -242,11 +242,13 @@ export async function sweepTombstone(env: Env, prefix: string): Promise<boolean>
 export const TOMBSTONE_KEEP_MS = 86_400_000;
 
 /**
- * Cron: sweep every tombstone (bounded), then forget the ones that are older
- * than a day and were swept after that day began. Returns [swept, failed].
+ * Cron: sweep every tombstone (bounded) whose date has come, then forget the
+ * ones that are older than a day and were swept after that day began. Returns
+ * [swept, failed].
  */
 export async function processCleanup(env: Env, nowMs = Date.now(), limit = 100): Promise<{ swept: number; failed: number }> {
-  const rows = await env.DB.prepare("SELECT prefix, created_at FROM r2_cleanup ORDER BY created_at LIMIT ?1").bind(limit).all<{ prefix: string; created_at: string }>();
+  // A tombstone dated in the future is a move still copying (src/move.ts): not yet.
+  const rows = await env.DB.prepare("SELECT prefix, created_at FROM r2_cleanup WHERE created_at <= ?2 ORDER BY created_at LIMIT ?1").bind(limit, nowIso(nowMs)).all<{ prefix: string; created_at: string }>();
   let swept = 0;
   let failed = 0;
   const forgetBefore = nowIso(nowMs - TOMBSTONE_KEEP_MS);
