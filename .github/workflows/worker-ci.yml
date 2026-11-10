@@ -49,9 +49,14 @@ jobs:
             worker/client/package-lock.json
 
       # The Worker serves its own fork of the SPA (worker/client); the dry-run needs its dist.
-      - name: Install and test the Worker client
+      # The client declares every package it imports, so it installs and tests on its own.
+      - name: Install the Worker client
         working-directory: worker/client
-        run: npm ci && npm test
+        run: npm ci
+
+      - name: Client unit tests
+        working-directory: worker/client
+        run: npm test
 
       - name: Build the Worker client
         working-directory: worker/client
@@ -76,3 +81,40 @@ jobs:
       - name: Deploy dry run
         working-directory: worker
         run: npx wrangler deploy --dry-run --outdir .wrangler/dry-run
+
+  e2e:
+    name: Playwright journeys, axe, keyboard walk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            worker/package-lock.json
+            worker/client/package-lock.json
+
+      # The journeys run the real Worker under `wrangler dev` (worker/), with only the
+      # Gateway stubbed, so both packages are installed.
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Install and build the Worker client
+        working-directory: worker/client
+        run: npm ci && npm run build
+
+      - name: Install Chromium for Playwright
+        working-directory: worker/client
+        run: npx playwright install --with-deps chromium
+
+      - name: Journeys, axe WCAG 2.2 A/AA, keyboard walk
+        working-directory: worker/client
+        run: npm run e2e
