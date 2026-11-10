@@ -33,7 +33,7 @@ export function LegacyDifferences() {
       <li>HEIC photos (the iPhone default) upload only in a browser that can open them, such as Safari; in other browsers convert them to JPEG first. The earlier converter needed a kind of script this site does not allow.</li>
       <li>Sign-in is CUNY Login through the CAIL portal; there are no separate accounts or passwords.</li>
       <li>Notifications are in the app only; there are no emails.</li>
-      <li>Models come from the CAIL catalog; each page model can be chosen per run.</li>
+      <li>Models come from the CAIL catalog. Choose one for a run, or save a model, temperature, maximum length and (for image texts) a transcription prompt for a text under “Model settings for this text”.</li>
     </ul>
   );
 }

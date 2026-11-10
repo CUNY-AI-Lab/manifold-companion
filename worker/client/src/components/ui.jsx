@@ -39,7 +39,7 @@ const OTHER = '__other__';
  * Gateway catalog), plus "Another model…" for typing any catalog model id the
  * task can use; the Worker checks it before any spend.
  */
-export function ModelPicker({ task, value, onChange, label }) {
+export function ModelPicker({ task, value, onChange, label, idSuffix = 'run', savedDefault = null }) {
   const [menu, setMenu] = useState(null);
   const [error, setError] = useState(null);
   const [typing, setTyping] = useState(false);
@@ -50,6 +50,7 @@ export function ModelPicker({ task, value, onChange, label }) {
   if (error) return <span className="text-xs text-red-700">Model list unavailable: {error.message}</span>;
   if (!menu) return <span className="text-xs text-slate-500 dark:text-slate-400">Loading models</span>;
   const listed = !value || menu.models.some((m) => m.id === value);
+  const use = () => { const id = typed.trim(); if (id) { onChange(id); setTyping(false); } };
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-sm">
       <label>
@@ -63,17 +64,18 @@ export function ModelPicker({ task, value, onChange, label }) {
             onChange(e.target.value || null);
           }}
         >
-          <option value="">Default ({menu.default ?? 'none available'})</option>
+          <option value="">{savedDefault ? `Saved for this text (${savedDefault})` : `Default (${menu.default ?? 'none available'})`}</option>
           {menu.models.map((m) => <option key={m.id} value={m.id}>{m.name}{m.reasoning ? ' (reasons)' : ''}</option>)}
           {menu.typeable > 0 ? <option value={OTHER}>Another model (type its id)</option> : null}
         </select>
       </label>
       {typing || !listed ? (
-        <form className="inline-flex gap-1" onSubmit={(e) => { e.preventDefault(); const id = typed.trim(); if (id) { onChange(id); setTyping(false); } }}>
-          <label className="sr-only" htmlFor={`model-id-${task}`}>Model id</label>
-          <input id={`model-id-${task}`} className="field w-56" placeholder="catalog model id" value={typing ? typed : value ?? ''} onChange={(e) => { setTyping(true); setTyped(e.target.value); }} maxLength={100} />
-          <button className="btn-quiet" type="submit">Use</button>
-        </form>
+        // Not a <form>: the picker also sits inside other forms (the text's settings).
+        <span className="inline-flex gap-1">
+          <label className="sr-only" htmlFor={`model-id-${task}-${idSuffix}`}>Model id</label>
+          <input id={`model-id-${task}-${idSuffix}`} className="field w-56" placeholder="catalog model id" value={typing ? typed : value ?? ''} onChange={(e) => { setTyping(true); setTyped(e.target.value); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); use(); } }} maxLength={100} />
+          <button className="btn-quiet" type="button" onClick={use}>Use</button>
+        </span>
       ) : null}
     </span>
   );

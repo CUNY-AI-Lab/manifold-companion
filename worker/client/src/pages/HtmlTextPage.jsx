@@ -6,6 +6,7 @@ import { brokenFormulas as brokenTex } from '../lib/math';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
+import TextSettingsPanel, { useTextSettings } from '../components/TextSettingsPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
@@ -45,6 +46,7 @@ export default function HtmlTextPage({ data, reload }) {
   const [allMath, setAllMath] = useState(false);
   const [model, setModel] = useState(null);
   const [mathModel, setMathModel] = useState(null);
+  const [settings, setSettings] = useTextSettings(text.id);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
   const controller = useRef(null);
@@ -157,8 +159,8 @@ export default function HtmlTextPage({ data, reload }) {
             {!allMath ? <label>Math or table pages <input className="field inline-block w-40" placeholder="e.g. 2, 5-9" value={mathSpec} onChange={(e) => setMathSpec(e.target.value)} /></label> : null}
           </div>
           <div className="flex flex-wrap gap-4">
-            <ModelPicker task="html_page" value={model} onChange={setModel} label="Page model" />
-            <ModelPicker task="html_math" value={mathModel} onChange={setMathModel} label="Math and tables model" />
+            <ModelPicker task="html_page" value={model} onChange={setModel} label="Page model" savedDefault={settings?.model ?? null} />
+            <ModelPicker task="html_math" value={mathModel} onChange={setMathModel} label="Math and tables model" savedDefault={settings?.math_model ?? null} />
           </div>
           {progress ? (
             <p className="flex items-center gap-3 text-sm" role="status">{progress.stage === 'assemble' ? 'Assembling the document' : `${progress.stage === 'render' ? 'Drawing' : 'Converting'} page ${progress.page} of ${progress.total}${progress.math ? ' with the math model' : ''}`}<button className="btn-danger" type="button" onClick={() => controller.current?.abort()}>Cancel</button></p>
@@ -189,6 +191,7 @@ export default function HtmlTextPage({ data, reload }) {
         <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />
       </div>
       <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={html !== saved} onRestored={() => { loadHtml(); refresh(); }} />
+      <TextSettingsPanel textId={text.id} kind="pdf" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
       <CommentsPanel textId={text.id} canWrite={canEdit} source={html === null ? null : { text: html, pageId: null, textareaRef: source }} />
     </div>

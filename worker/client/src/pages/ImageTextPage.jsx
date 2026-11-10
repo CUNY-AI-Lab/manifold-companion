@@ -4,6 +4,7 @@ import { API, api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
+import TextSettingsPanel, { useTextSettings } from '../components/TextSettingsPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
@@ -61,6 +62,7 @@ export default function ImageTextPage({ data, reload }) {
   const [draft, setDraft] = useState('');
   const [rotate, setRotate] = useState(0);
   const [model, setModel] = useState(null);
+  const [settings, setSettings] = useTextSettings(text.id);
   const [run, setRun] = useState(null); // { done, total, current, failures, controller }
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -172,7 +174,7 @@ export default function ImageTextPage({ data, reload }) {
           <button className="btn-quiet" type="button" onClick={() => fileInput.current?.click()} disabled={!!busy || !!run}>Upload pages</button>
           <span className="text-xs text-slate-600 dark:text-slate-300">or drop images or a PDF anywhere on this page</span>
           <label className="text-sm">Rotate uploads <select className="field inline-block w-auto" value={rotate} onChange={(e) => setRotate(Number(e.target.value))}>{[0, 90, 180, 270].map((d) => <option key={d} value={d}>{d}°</option>)}</select></label>
-          <ModelPicker task="ocr" value={model} onChange={setModel} label="OCR model" />
+          <ModelPicker task="ocr" value={model} onChange={setModel} label="OCR model" savedDefault={settings?.model ?? null} />
           {run ? (
             <span className="flex items-center gap-3 text-sm"><span role="status">Reading {run.current} ({run.done} of {run.total})</span><button className="btn-danger" type="button" onClick={() => run.controller.abort()}>Cancel</button></span>
           ) : (
@@ -242,6 +244,7 @@ export default function ImageTextPage({ data, reload }) {
         </div>
       </section>
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
+      <TextSettingsPanel textId={text.id} kind="image" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
       <CommentsPanel textId={text.id} canWrite={canEdit} source={page ? { text: draft, pageId: page.id, textareaRef: pageText } : null} pages={pages} onGoToPage={setSelected} />
     </div>

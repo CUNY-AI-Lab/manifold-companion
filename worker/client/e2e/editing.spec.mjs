@@ -53,3 +53,55 @@ test('more than 50 texts: pages of 50, moves across a page boundary, the export 
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 });
+
+test('per-text model settings: saved, shown as the run default, used by the next run, reset; read-only for a viewer', async ({ page, context, browser }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const project = (await api('/projects', 'POST', { name: 'Settings' })).project;
+  const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Letters' })).text;
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  await page.locator('input[type=file]').setInputFiles('e2e/fixtures/page.png');
+  await expect(page.getByRole('button', { name: /^1\. page\.jpg/ })).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole('button', { name: 'Model settings for this text' }).click();
+  const panel = page.locator('section', { has: page.getByRole('button', { name: 'Model settings for this text' }) });
+  await panel.getByLabel('Model for reading pages').selectOption('stub-vision-reasoning');
+  await panel.getByLabel('Temperature (0 to 1)').fill('1.7');
+  await panel.getByRole('button', { name: 'Save settings' }).click();
+  await expect(panel.getByRole('alert')).toContainText('Temperature must be a number from 0 to 1.');
+  await panel.getByLabel('Temperature (0 to 1)').fill('0.4');
+  await panel.getByLabel('Maximum length (tokens)').fill('1500');
+  await panel.getByLabel('Transcription prompt').fill('Transcribe this letter exactly.');
+  await panel.getByRole('button', { name: 'Save settings' }).click();
+  await expect(panel.getByText('Settings saved for this text.')).toBeVisible();
+  expect((await api(`/texts/${text.id}/settings`)).settings).toMatchObject({ model: 'stub-vision-reasoning', temperature: 0.4, max_tokens: 1500, prompt: 'Transcribe this letter exactly.' });
+  expect(await axe(page, 'text settings open')).toEqual([]);
+
+  // The run picker says what an unchosen run uses; the run uses it (the stub echoes the model).
+  await expect(page.getByLabel('OCR model').locator('option').first()).toHaveText('Saved for this text (stub-vision-reasoning)');
+  await page.getByRole('button', { name: 'Read pages without text' }).click();
+  await expect(page.getByText('read by stub-vision-reasoning')).toBeVisible({ timeout: 30_000 });
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Model settings for this text' }).click();
+  await expect(panel.getByLabel('Maximum length (tokens)')).toHaveValue('1500');
+
+  // A viewer sees them and cannot change them.
+  const inv = (await api(`/projects/${project.id}/invites`, 'POST', { role: 'viewer' })).invite;
+  const other = await browser.newContext();
+  await other.addCookies([{ name: 'e2e_as', value: 'bob', url: ORIGIN }]);
+  const viewer = await other.newPage();
+  await viewer.goto(`/manifold-companion/invite#t=${inv.token}`);
+  await expect(viewer.getByText(/you are a viewer/)).toBeVisible();
+  await viewer.goto(`/manifold-companion/texts/${text.id}`);
+  await viewer.getByRole('button', { name: 'Model settings for this text' }).click();
+  await expect(viewer.getByLabel('Transcription prompt')).toBeDisabled();
+  await expect(viewer.getByRole('button', { name: 'Save settings' })).toHaveCount(0);
+  await other.close();
+
+  await panel.getByRole('button', { name: 'Use the defaults' }).click();
+  await expect(panel.getByText('Back to the defaults.')).toBeVisible();
+  await expect(panel.getByLabel('Maximum length (tokens)')).toHaveValue('');
+  await expect(page.getByLabel('OCR model').locator('option').first()).toHaveText('Default (stub-vision)');
+});

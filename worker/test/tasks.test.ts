@@ -388,3 +388,26 @@ describe("summary, translation chunk, formula repair", () => {
     expect((await call(api(`/texts/${tid}/formula-repair`), { method: "POST", body: { formulas: Array(51).fill("x") }, env: bad })).status).toBe(400);
   });
 });
+
+describe("saved per-text settings reach the model call", () => {
+  it("OCR uses the text's saved prompt, temperature, token budget and model; a model chosen for the run wins", async () => {
+    const e = await gatewayEnv({ chat: () => ({ text: "Transcribed page" }) });
+    const { tid, pageId } = await imagePage(ALICE, e);
+    expect((await call(api(`/texts/${tid}/settings`), { method: "POST", body: { prompt: "Transcribe this letter exactly.", temperature: 0.4, max_tokens: 1500, model: "vision-plain" }, env: e })).status).toBe(200);
+    expect((await ocr(tid, pageId, e)).status).toBe(200);
+    const [first] = await chatBodies(e);
+    expect(first).toMatchObject({ model: "vision-plain", temperature: 0.4, max_tokens: 1500 });
+    expect(first.messages[0].content[0]).toEqual({ type: "text", text: "Transcribe this letter exactly." });
+    // a model named for one run overrides the saved one (reasoning headroom applies to it)
+    expect((await ocr(tid, pageId, e, { model: "vision-thinker", overwrite: true })).status).toBe(200);
+    const second = (await chatBodies(e))[1];
+    expect(second.model).toBe("vision-thinker");
+    expect(second.max_tokens).toBe(1500 + REASONING_HEADROOM);
+    // reset: the defaults again
+    await call(api(`/texts/${tid}/settings`), { method: "DELETE", env: e });
+    expect((await ocr(tid, pageId, e, { overwrite: true })).status).toBe(200);
+    const third = (await chatBodies(e))[2];
+    expect(third).toMatchObject({ temperature: 0.1, max_tokens: 4096 });
+    expect(third.messages[0].content[0].text).not.toBe("Transcribe this letter exactly.");
+  });
+});
