@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import SharePanel from '../components/SharePanel';
-import { ErrorNote, Spinner } from '../components/ui';
+import { ErrorNote, MoveButtons, Spinner, useMoveFocus } from '../components/ui';
 import { RetentionBanner } from './Dashboard';
 
 function ExportPanel({ project, texts, onClose }) {
@@ -54,6 +54,9 @@ export default function ProjectPage() {
   const { refresh } = useSession();
   const [project, setProject] = useState(null);
   const [texts, setTexts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [moved, setMoved] = useState('');
+  const focusMoved = useMoveFocus([texts]);
   const [name, setName] = useState('');
   const [panel, setPanel] = useState(null);
   const [error, setError] = useState(null);
@@ -62,8 +65,19 @@ export default function ProjectPage() {
       const [p, t] = await Promise.all([api.get(`/api/projects/${id}`), api.get(`/api/projects/${id}/texts?limit=50`)]);
       setProject(p.project);
       setTexts(t.texts);
+      setTotal(t.total);
     } catch (e) { setError(e); }
   }, [id]);
+  const moveText = async (index, dir) => {
+    const t = texts[index];
+    setError(null);
+    try {
+      const r = await api.post(`/api/projects/${id}/texts/${t.id}/move`, { to: index + 1 + (dir === 'up' ? -1 : 1) });
+      setMoved(`${t.name} moved to position ${r.position} of ${r.total}.`);
+      focusMoved({ idBase: `move-text-${t.id}`, dir });
+      await load();
+    } catch (e) { setError(e); }
+  };
   useEffect(() => { load(); }, [load]);
   if (error && !project) return <ErrorNote error={error.status === 404 ? { message: 'This project does not exist or you no longer have access to it.' } : error} />;
   if (!project) return <Spinner />;
@@ -87,12 +101,15 @@ export default function ProjectPage() {
         {texts.length === 0 ? <li className="p-4 text-sm text-slate-500">{canEdit ? 'No texts yet. Add one below, then upload its pages.' : 'No texts yet.'}</li> : null}
         {texts.map((t) => (
           <li key={t.id} className="flex flex-wrap items-center gap-3 p-4">
+            {canEdit && texts.length > 1 ? <MoveButtons label={t.name} index={texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
             <span className="text-xs text-slate-500">{project.project_type === 'pdf_to_html' ? (t.has_html ? 'converted' : 'not converted yet') : `${t.page_count} pages, ${t.status}`}</span>
             {canEdit ? <button className="btn-quiet ml-auto" type="button" onClick={async () => { if (!window.confirm(`Delete “${t.name}” and its files?`)) return; try { await api.del(`/api/texts/${t.id}`); load(); refresh(); } catch (e) { setError(e); } }}>Delete</button> : null}
           </li>
         ))}
       </ul>
+      <p className="sr-only" role="status">{moved}</p>
+      {canEdit && texts.length > 1 ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Texts export in this order. Use the arrows to move a text up or down.</p> : null}
       {canEdit ? (
         <form className="mt-4 flex gap-2" onSubmit={async (e) => { e.preventDefault(); try { const { text } = await api.post(`/api/projects/${id}/texts`, { name }); navigate(`/texts/${text.id}`); } catch (err) { setError(err); } }}>
           <label className="sr-only" htmlFor="new-text">New text name</label>

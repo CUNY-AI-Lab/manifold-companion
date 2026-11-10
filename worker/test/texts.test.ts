@@ -407,3 +407,40 @@ describe("split and merge", () => {
     expect((await put(`/projects/${pid}/texts/merge`, { textIds: [a, crypto.randomUUID()], name: "x" }, ALICE, "POST")).status).toBe(400);
   });
 });
+
+describe("moving texts and pages", () => {
+  const post = (path: string, body: unknown, as = ALICE) => call(api(path), { method: "POST", as, body });
+  it("a text moves to a position against the server's order; the others keep theirs; partial reorder lists are refused", async () => {
+    const pid = await createProject(ALICE);
+    const [a, b, c] = [await createText(ALICE, pid, "a"), await createText(ALICE, pid, "b"), await createText(ALICE, pid, "c")];
+    const names = async () => (await json(await call(api(`/projects/${pid}/texts`)))).texts.map((t: any) => t.name);
+    expect(await json(await post(`/projects/${pid}/texts/${c}/move`, { to: 1 }))).toEqual({ ok: true, position: 1, total: 3 });
+    expect(await names()).toEqual(["c", "a", "b"]);
+    await post(`/projects/${pid}/texts/${c}/move`, { to: 99 }); // clamped to the end
+    expect(await names()).toEqual(["a", "b", "c"]);
+    expect((await post(`/projects/${pid}/texts/${a}/move`, { to: "2" })).status).toBe(400);
+    const other = await createText(ALICE, await createProject(ALICE, "Other"));
+    expect((await post(`/projects/${pid}/texts/${other}/move`, { to: 1 })).status).toBe(404);
+    expect((await put(`/projects/${pid}/texts/reorder`, { textIds: [b, a] })).status).toBe(400); // c missing
+  });
+
+  it("a moved page keeps its text and versions, and the export follows the new order", async () => {
+    const pid = await createProject(ALICE, "Book");
+    const tid = await createText(ALICE, pid, "Chapter");
+    const p1 = await seedPage(tid, { filename: "1.jpg", ocr: "First page", pageNumber: 1 });
+    await seedPage(tid, { filename: "2.jpg", ocr: "Second page", pageNumber: 2 });
+    const p3 = await seedPage(tid, { filename: "3.jpg", ocr: "Third page", pageNumber: 3 });
+    await post(`/texts/${tid}/pages/${p1}`, { text: "First page, corrected" });
+    expect(await json(await post(`/texts/${tid}/pages/${p3}/move`, { to: 1 }))).toMatchObject({ position: 1, total: 3 });
+    const pages = (await json(await call(api(`/texts/${tid}/pages`)))).pages;
+    expect(pages.map((p: any) => [p.page_number, p.filename])).toEqual([[1, "3.jpg"], [2, "1.jpg"], [3, "2.jpg"]]);
+    expect((await json(await call(api(`/texts/${tid}/versions?type=page&page=${p1}`)))).versions).toHaveLength(1);
+    const res = await call(api(`/projects/${pid}/export`), { method: "POST", body: { meta: { title: "Book" }, toc: [{ type: "text", textId: tid, label: "Chapter", children: [] }] } });
+    expect(res.status).toBe(200);
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
+    const md = strFromU8(files[Object.keys(files).find((k) => k.endsWith(".md") && k.startsWith("text-"))!]!);
+    expect(md.indexOf("Third page")).toBeLessThan(md.indexOf("First page, corrected"));
+    expect(md.indexOf("First page, corrected")).toBeLessThan(md.indexOf("Second page"));
+  });
+});

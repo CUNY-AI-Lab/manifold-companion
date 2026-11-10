@@ -25,3 +25,13 @@ export const addDays = (iso: string, days: number): string => nowIso(Date.parse(
 /** A random lowercase UUIDv4 computed inside SQLite, for set-based inserts (one row per member). */
 export const UUID_V4_SQL =
   "(lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))))";
+
+/** Move one id to a 1-based position (clamped); the order of the others is kept. Null if the id is not in the list. */
+export function moveId(ids: string[], id: string, to: unknown): string[] | null {
+  const from = ids.indexOf(id);
+  if (from < 0) return null;
+  if (typeof to !== "number" || !Number.isInteger(to)) return null;
+  const rest = ids.filter((x) => x !== id);
+  const at = Math.min(Math.max(to, 1), ids.length) - 1;
+  return [...rest.slice(0, at), id, ...rest.slice(at)];
+}

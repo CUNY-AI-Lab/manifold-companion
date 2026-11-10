@@ -92,3 +92,30 @@ export function QuotaLine() {
   const limit = (quota.limit ?? 0) / 1e6;
   return <span className="text-xs text-slate-600 dark:text-slate-300">Model allowance: about ${used.toFixed(2)} of ${limit.toFixed(2)} used this period (estimate, updates with a delay)</span>;
 }
+
+/**
+ * Move-up / move-down buttons for one item of an ordered list. Plain buttons,
+ * so they work from the keyboard; `idBase` gives them stable ids so focus can
+ * be put back on the moved item after the list re-renders.
+ */
+export function MoveButtons({ label, index, total, onMove, idBase, disabled = false }) {
+  return (
+    <span className="inline-flex gap-1">
+      <button id={`${idBase}-up`} type="button" className="btn-icon" aria-label={`Move ${label} up`} title="Move up" disabled={disabled || index === 0} onClick={() => onMove(index, 'up')}><span aria-hidden="true">↑</span></button>
+      <button id={`${idBase}-down`} type="button" className="btn-icon" aria-label={`Move ${label} down`} title="Move down" disabled={disabled || index === total - 1} onClick={() => onMove(index, 'down')}><span aria-hidden="true">↓</span></button>
+    </span>
+  );
+}
+
+/** After a move re-renders the list, put focus back on the moved item's button (or its other one at an end). */
+export function useMoveFocus(deps) {
+  const [pending, setPending] = useState(null); // { idBase, dir }
+  useEffect(() => {
+    if (!pending) return;
+    const want = document.getElementById(`${pending.idBase}-${pending.dir}`);
+    const other = document.getElementById(`${pending.idBase}-${pending.dir === 'up' ? 'down' : 'up'}`);
+    (want && !want.disabled ? want : other)?.focus();
+    setPending(null);
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  return setPending;
+}

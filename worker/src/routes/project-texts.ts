@@ -6,7 +6,7 @@ import { CAPS, reindexText, touchProject } from "../content";
 import { limits } from "../env";
 import { E } from "../errors";
 import { deleteTextObjects, mergeTexts } from "../text-ops";
-import { newId, nowIso, isUuid } from "../util";
+import { newId, nowIso, isUuid, moveId } from "../util";
 import type { AppEnv } from "../app";
 
 export const projectTextRoutes = new Hono<AppEnv>();
@@ -70,9 +70,30 @@ projectTextRoutes.put("/reorder", async (c) => {
   const own = await c.env.DB.prepare("SELECT id FROM texts WHERE project_id = ?1").bind(project.id).all<{ id: string }>();
   const have = new Set(own.results.map((r) => r.id));
   if (ids.some((id) => !have.has(id))) throw E.badRequest("textIds must all belong to this project.");
-  await c.env.DB.batch(ids.map((id, i) => c.env.DB.prepare("UPDATE texts SET sort_order = ?1 WHERE id = ?2 AND project_id = ?3").bind(i + 1, id, project.id)));
-  await touchProject(c.env.DB, project.id);
+  // A partial list would leave the other texts' positions colliding with the new ones.
+  if (ids.length !== have.size) throw E.badRequest("textIds must list every text of this project exactly once.");
+  await saveTextOrder(c.env.DB, project.id, ids);
   return c.json({ ok: true });
+});
+
+async function saveTextOrder(db: D1Database, projectId: string, ids: string[]): Promise<void> {
+  await db.batch(ids.map((id, i) => db.prepare("UPDATE texts SET sort_order = ?1 WHERE id = ?2 AND project_id = ?3").bind(i + 1, id, projectId)));
+  await touchProject(db, projectId);
+}
+
+// Move one text to a 1-based position against the current server order (the
+// client may show only the first 50 texts, so it cannot send the full list).
+projectTextRoutes.post("/:textId/move", async (c) => {
+  const { subject } = c.get("principal");
+  const { project } = await requireRole(c.env.DB, subject, c.req.param("id") as string, "editor");
+  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
+  const own = await c.env.DB.prepare("SELECT id FROM texts WHERE project_id = ?1 ORDER BY sort_order, created_at, rowid").bind(project.id).all<{ id: string }>();
+  const textId = c.req.param("textId") as string;
+  if (!isUuid(textId) || !own.results.some((r) => r.id === textId)) throw E.notFound("Text not found.");
+  const order = moveId(own.results.map((r) => r.id), textId, body.to);
+  if (!order) throw E.badRequest("to must be a whole-number position.");
+  await saveTextOrder(c.env.DB, project.id, order);
+  return c.json({ ok: true, position: order.indexOf(textId) + 1, total: order.length });
 });
 
 projectTextRoutes.post("/bulk-status", async (c) => {

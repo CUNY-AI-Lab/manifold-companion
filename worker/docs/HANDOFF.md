@@ -58,7 +58,7 @@ Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entr
 ## 4. Not built, stubbed, or different from legacy
 
 API complete, no UI yet in `worker/client` (the legacy UI had these):
-- split and merge; bulk status/delete; reordering pages and texts; Dublin Core metadata editing; per-text saved settings (prompt, temperature, max tokens; models are chosen per run instead); the compiled full-text editor for image texts (`POST /save`); export TOC sections and nesting (the panel exports a flat list); comment anchoring to text ranges, editing a comment, and viewing resolved comments; notification dropdown (a page instead); member role change (no API either: remove and re-invite).
+- split and merge; bulk status/delete; Dublin Core metadata editing; per-text saved settings (prompt, temperature, max tokens; models are chosen per run instead); the compiled full-text editor for image texts (`POST /save`); export TOC sections and nesting (the panel exports a flat list); comment anchoring to text ranges, editing a comment, and viewing resolved comments; notification dropdown (a page instead); member role change (no API either: remove and re-invite).
 
 Replaced or reduced:
 - Rich HTML editing (contenteditable with KaTeX, find and replace, colours) is replaced by an HTML source editor next to a sandboxed preview. Deliberate for safety; a richer editor must still never render stored HTML in the app origin.

@@ -8,7 +8,7 @@ import { limits } from "../env";
 import { E } from "../errors";
 import { deleteTextObjects, splitText } from "../text-ops";
 import { deleteRowAndRelease } from "../storage";
-import { isUuid, nowIso } from "../util";
+import { isUuid, moveId, nowIso } from "../util";
 import type { AppEnv } from "../app";
 
 export const textRoutes = new Hono<AppEnv>();
@@ -122,6 +122,20 @@ textRoutes.put("/:id/pages/reorder", async (c) => {
   await c.env.DB.batch((ids as string[]).map((id, i) => c.env.DB.prepare("UPDATE pages SET page_number = ?1 WHERE id = ?2 AND text_id = ?3").bind(i + 1, id, ctx.text.id)));
   await touchProject(c.env.DB, ctx.project.id);
   return c.json({ ok: true });
+});
+
+// Move one page to a 1-based position against the current server order; export and the editor follow page_number.
+textRoutes.post("/:id/pages/:pageId/move", async (c) => {
+  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
+  requireType(ctx, "image_to_markdown");
+  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
+  const page = await loadPage(c.env.DB, ctx.text.id, c.req.param("pageId") as string);
+  const own = await c.env.DB.prepare("SELECT id FROM pages WHERE text_id = ?1 ORDER BY page_number, rowid").bind(ctx.text.id).all<{ id: string }>();
+  const order = moveId(own.results.map((r) => r.id), page.id, body.to);
+  if (!order) throw E.badRequest("to must be a whole-number position.");
+  await c.env.DB.batch(order.map((id, i) => c.env.DB.prepare("UPDATE pages SET page_number = ?1 WHERE id = ?2 AND text_id = ?3").bind(i + 1, id, ctx.text.id)));
+  await touchProject(c.env.DB, ctx.project.id);
+  return c.json({ ok: true, position: order.indexOf(page.id) + 1, total: order.length });
 });
 
 textRoutes.post("/:id/pages/:pageId", async (c) => {

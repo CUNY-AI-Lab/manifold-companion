@@ -164,6 +164,53 @@ test('version history: edit a page, read it again with the model, restore the ed
   expect(violations).toEqual([]);
 });
 
+test('reordering pages and texts from the keyboard; the export follows the order', async ({ page, context }) => {
+  await as(context, 'alice');
+  const violations = watchCsp(page);
+  await page.goto('/manifold-companion/');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Ordered');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await expect(page.getByRole('heading', { name: 'Ordered' })).toBeVisible();
+  const projectUrl = page.url();
+  await page.getByLabel('New text name').fill('First text');
+  await page.getByRole('button', { name: 'Add text' }).click();
+  const png = readFileSync('e2e/fixtures/page.png');
+  await page.locator('input[type=file]').setInputFiles([{ name: 'alpha.png', mimeType: 'image/png', buffer: png }, { name: 'beta.png', mimeType: 'image/png', buffer: png }]);
+  await expect(page.getByRole('button', { name: /^2\. beta\.jpg/ })).toBeVisible({ timeout: 30_000 });
+  for (const [n, words] of [[1, 'Alpha words.'], [2, 'Beta words.']]) {
+    await page.getByRole('button', { name: new RegExp(`^${n}\\. `) }).click();
+    await page.getByLabel(new RegExp(`Text of page ${n}`)).fill(words);
+    await page.getByRole('button', { name: 'Save page' }).click();
+    await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
+  }
+  // Keyboard only: focus the move button, press Enter; focus stays with the moved page.
+  await page.getByRole('button', { name: 'Move page 2 (beta.jpg) up' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: /^1\. beta\.jpg/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Move page 1 (beta.jpg) down' })).toBeFocused();
+  await expect(page.getByRole('status').filter({ hasText: 'beta.jpg moved to position 1 of 2.' })).toHaveCount(1);
+
+  await page.goto(projectUrl);
+  await page.getByLabel('New text name').fill('Second text');
+  await page.getByRole('button', { name: 'Add text' }).click();
+  await expect(page.getByRole('heading', { name: 'Second text' })).toBeVisible();
+  await page.goto(projectUrl);
+  await page.getByRole('button', { name: 'Move Second text up' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Move Second text down' })).toBeFocused();
+  await expect(page.locator('a.doc-title')).toHaveText(['Second text', 'First text']);
+  await page.reload();
+  await expect(page.locator('a.doc-title')).toHaveText(['Second text', 'First text']);
+
+  await page.getByRole('button', { name: 'Export' }).click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download ZIP' }).click()]);
+  const files = unzipSync(new Uint8Array(readFileSync(await download.path())));
+  expect(Object.keys(files)).toEqual(['text-01-second-text.md', 'text-02-first-text.md', 'manifest.yml']);
+  const first = strFromU8(files['text-02-first-text.md']);
+  expect(first.indexOf('Beta words.')).toBeLessThan(first.indexOf('Alpha words.'));
+  expect(violations).toEqual([]);
+});
+
 test('a lost session makes exactly one full-page navigation to the launch path', async ({ page, context, request }) => {
   const before = (await (await request.get('/__e2e/launches')).json()).launches;
   await as(context, 'none');

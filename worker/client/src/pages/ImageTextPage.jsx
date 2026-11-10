@@ -5,7 +5,7 @@ import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
-import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
+import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
 import { runOcr, translateText } from '../lib/tasks';
@@ -28,6 +28,8 @@ export default function ImageTextPage({ data, reload }) {
   const [translation, setTranslation] = useState(null);
   const [langs, setLangs] = useState({ source: text.source_language || 'auto-detect', target: text.target_language || 'en' });
   const fileInput = useRef(null);
+  const [moved, setMoved] = useState('');
+  const focusMoved = useMoveFocus([pages]);
   // Keep a valid selection as pages arrive or are deleted.
   useEffect(() => { if (!pages.some((p) => p.id === selected)) setSelected(pages[0]?.id ?? null); }, [pages, selected]);
   const page = pages.find((p) => p.id === selected) ?? null;
@@ -72,6 +74,17 @@ export default function ImageTextPage({ data, reload }) {
     setRun(null);
     if (failures.length) setError({ message: `${failures.length} page(s) not read. ${failures[0].error.message}`, retryAfter: failures[0].error.retryAfter, requestId: failures[0].error.requestId });
     reload();
+  };
+
+  const movePage = async (index, dir) => {
+    const p = pages[index];
+    setError(null);
+    try {
+      const r = await api.post(`/api/texts/${text.id}/pages/${p.id}/move`, { to: index + 1 + (dir === 'up' ? -1 : 1) });
+      setMoved(`${p.filename} moved to position ${r.position} of ${r.total}.`);
+      focusMoved({ idBase: `move-page-${p.id}`, dir });
+      reload();
+    } catch (e) { setError(e); }
   };
 
   const savePage = async () => {
@@ -121,9 +134,18 @@ export default function ImageTextPage({ data, reload }) {
       ) : null}
 
       <div className="mt-4 grid gap-4 md:grid-cols-[12rem_1fr]">
-        <nav aria-label="Pages"><ol className="space-y-1 text-sm">
-          {pages.map((p) => <li key={p.id}><button type="button" className={`w-full rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => setSelected(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button></li>)}
-        </ol></nav>
+        <nav aria-label="Pages">
+          <ol className="space-y-1 text-sm">
+            {pages.map((p, i) => (
+              <li key={p.id} className="flex items-center gap-1">
+                <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => setSelected(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button>
+                {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} /> : null}
+              </li>
+            ))}
+          </ol>
+          <p className="sr-only" role="status">{moved}</p>
+          {canEdit && pages.length > 1 ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">The order here is the order of the export.</p> : null}
+        </nav>
         {page ? (
           <div className="grid gap-4 lg:grid-cols-2">
             <img src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} className="max-h-[70vh] w-full rounded-md border border-slate-200 object-contain dark:border-slate-700" />
