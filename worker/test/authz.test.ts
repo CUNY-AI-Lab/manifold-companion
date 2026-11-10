@@ -13,7 +13,7 @@ const ACTORS: Actor[] = ["owner", "editor", "viewer", "stranger"];
 const WHO: Record<Actor, string> = { owner: ALICE, editor: BOB, viewer: CAROL, stranger: DAVE };
 const RANK = { stranger: 0, viewer: 1, editor: 2, owner: 3 } as const;
 
-interface Ctx { figureId: string; id: string; inviteId: string; textId: string; pageId: string; pageVersionId: string; hid: string; htextId: string; htmlVersionId: string; textB: string }
+interface Ctx { annotId: string; figureId: string; id: string; inviteId: string; textId: string; pageId: string; pageVersionId: string; hid: string; htextId: string; htmlVersionId: string; textB: string }
 
 async function setup(): Promise<Ctx> {
   const id = await createProject(ALICE, "Matrix");
@@ -36,7 +36,8 @@ async function setup(): Promise<Ctx> {
   const fig = await upload(api(`/texts/${htextId}/figures`), JPEG(), ALICE, { query: { filename: "f.jpg" } });
   const figureId = (await json(fig)).figure.id as string;
   const htmlVersionId = (await json(await call(api(`/texts/${htextId}/versions?type=html`)))).versions[0].id;
-  return { figureId, id, inviteId: inv.id, textId, textB, pageId, pageVersionId, hid, htextId, htmlVersionId };
+  const annotId = (await json(await call(api(`/texts/${textId}/annotations`), { method: "POST", body: { anchor_type: "global", body: "first" } }))).annotation.id as string;
+  return { annotId, figureId, id, inviteId: inv.id, textId, textB, pageId, pageVersionId, hid, htextId, htmlVersionId };
 }
 
 interface Route {
@@ -44,6 +45,16 @@ interface Route {
   min: "viewer" | "editor" | "owner";
   ok: number;
   run: (ctx: Ctx, as: string) => Promise<Response>;
+}
+
+/** An annotation authored by `as` (inserted directly: viewers and strangers cannot create one). */
+async function ownAnnotation(textId: string, as: string): Promise<string> {
+  const { env: e } = await import("cloudflare:workers");
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await e.DB.prepare("INSERT OR IGNORE INTO profiles (subject) VALUES (?1)").bind(as).run();
+  await e.DB.prepare("INSERT INTO annotations (id, text_id, author_subject, anchor_type, body, created_at, updated_at) VALUES (?1, ?2, ?3, 'global', 'mine', ?4, ?4)").bind(id, textId, as, now).run();
+  return id;
 }
 
 const JPEG_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
@@ -94,6 +105,16 @@ const ROUTES: Route[] = [
   { name: "GET /projects/:id/export-settings", min: "viewer", ok: 200, run: ({ id }, as) => j(`/projects/${id}/export-settings`, as) },
   { name: "PUT /projects/:id/export-settings", min: "editor", ok: 200, run: ({ id }, as) => j(`/projects/${id}/export-settings`, as, "PUT", { meta: { title: "x" } }) },
   { name: "POST /projects/:id/export", min: "viewer", ok: 200, run: ({ id, textId }, as) => j(`/projects/${id}/export`, as, "POST", { toc: [{ type: "text", textId, label: "T1" }] }) },
+  { name: "GET /texts/:id/mentions", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/mentions`, as) },
+  { name: "GET /texts/:id/annotations", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/annotations`, as) },
+  { name: "POST /texts/:id/annotations", min: "editor", ok: 201, run: ({ textId }, as) => j(`/texts/${textId}/annotations`, as, "POST", { anchor_type: "global", body: "hi" }) },
+  { name: "GET /texts/:id/annotations/:annotId", min: "viewer", ok: 200, run: ({ textId, annotId }, as) => j(`/texts/${textId}/annotations/${annotId}`, as) },
+  // Edit and delete act on the caller's OWN comment (seeded for each actor): any member may.
+  { name: "PUT /texts/:id/annotations/:annotId", min: "viewer", ok: 200, run: async ({ textId }, as) => j(`/texts/${textId}/annotations/${await ownAnnotation(textId, as)}`, as, "PUT", { body: "edited" }) },
+  { name: "DELETE /texts/:id/annotations/:annotId", min: "viewer", ok: 200, run: async ({ textId }, as) => j(`/texts/${textId}/annotations/${await ownAnnotation(textId, as)}`, as, "DELETE") },
+  { name: "POST /texts/:id/annotations/:annotId/resolve", min: "editor", ok: 200, run: ({ textId, annotId }, as) => j(`/texts/${textId}/annotations/${annotId}/resolve`, as, "POST", {}) },
+  { name: "POST /texts/:id/annotations/:annotId/unresolve", min: "editor", ok: 200, run: ({ textId, annotId }, as) => j(`/texts/${textId}/annotations/${annotId}/unresolve`, as, "POST", {}) },
+  { name: "POST /texts/:id/annotations/:annotId/replies", min: "editor", ok: 201, run: ({ textId, annotId }, as) => j(`/texts/${textId}/annotations/${annotId}/replies`, as, "POST", { body: "reply" }) },
   { name: "GET /texts/:id/result", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/result`, as) },
   { name: "GET /texts/:id/compiled", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/compiled`, as) },
   { name: "POST /texts/:id/save", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/save`, as, "POST", { text: "# compiled" }) },

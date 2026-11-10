@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { readJsonObject } from "../body";
 import { E } from "../errors";
 import { TOKEN_PATTERN, nowIso, sha256Hex } from "../util";
+import { notify } from "../notify";
 import type { AppEnv } from "../app";
 
 /** Redemption: the one invite route that is not project-scoped (the redeemer has no role yet). */
@@ -60,5 +61,7 @@ inviteRoutes.post("/redeem", async (c) => {
     throw error;
   }
   if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) throw E.gone("This invite link has already been used.", "invite_used");
+  const info = await c.env.DB.prepare("SELECT p.owner_subject, p.name, (SELECT display_name FROM profiles WHERE subject = ?2) AS who FROM projects p WHERE p.id = ?1").bind(invite.project_id, subject).first<{ owner_subject: string; name: string; who: string | null }>();
+  if (info) await notify(c.env.DB, [info.owner_subject], subject, { type: "project_shared", title: `${info.who || "Someone"} joined "${info.name.slice(0, 80)}" as ${invite.role}`, link: `/projects/${invite.project_id}` });
   return c.json({ project_id: invite.project_id, role: invite.role, already_redeemed: false }, 201);
 });

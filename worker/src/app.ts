@@ -14,6 +14,8 @@ import { searchRoutes } from "./routes/search";
 import { uploadRoutes } from "./routes/uploads";
 import { taskRoutes } from "./routes/tasks";
 import { modelRoutes } from "./routes/models";
+import { annotationRoutes } from "./routes/annotations";
+import { notificationRoutes } from "./routes/notifications";
 
 export interface AppVariables {
   requestId: string;
@@ -77,6 +79,8 @@ api.route("/invites", inviteRoutes);
 api.route("/texts", textRoutes);
 api.route("/texts", uploadRoutes);
 api.route("/texts", taskRoutes);
+api.route("/texts", annotationRoutes);
+api.route("/notifications", notificationRoutes);
 api.route("/", modelRoutes);
 api.route("/search", searchRoutes);
 api.all("*", (c) => errorResponse(E.notFound("No such API route."), c.get("requestId")));
