@@ -15,6 +15,12 @@ export const PREFIX = 'manifold-companion:draft:v1:';
 export const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /** Larger drafts are not kept (localStorage holds about 5 MB per origin, shared by every CAIL tool). */
 export const MAX_DRAFT_CHARS = 1_000_000;
+/**
+ * Every draft of this app together (keys and values, in characters): a new
+ * draft pushes out the oldest others, so this app never takes more than about
+ * a quarter of the storage the other tools on the origin also need.
+ */
+export const MAX_TOTAL_DRAFT_CHARS = 1_200_000;
 
 export async function ownerOf(subject, digest = globalThis.crypto?.subtle) {
   const bytes = new Uint8Array(await digest.digest('SHA-256', new TextEncoder().encode(`manifold-companion:${subject}`)));
@@ -37,8 +43,19 @@ function read(storage, key) {
 /** Keep `content` as the one draft of this text. `target` is { kind: 'page' | 'html' | 'fulltext', pageId? }. Returns whether it was kept. */
 export function saveDraft(storage, owner, textId, { target, content, saved }, now = Date.now()) {
   if (!owner || !textId || typeof content !== 'string' || content.length > MAX_DRAFT_CHARS) return false;
+  const key = draftKey(owner, textId);
+  const value = JSON.stringify({ v: 1, target: { kind: target.kind, ...(target.pageId ? { pageId: target.pageId } : {}) }, content, base: hashText(saved ?? ''), at: now });
   try {
-    storage.setItem(draftKey(owner, textId), JSON.stringify({ v: 1, target: { kind: target.kind, ...(target.pageId ? { pageId: target.pageId } : {}) }, content, base: hashText(saved ?? ''), at: now }));
+    if (key.length + value.length > MAX_TOTAL_DRAFT_CHARS) { storage.removeItem(key); return false; }
+    // Room within this app's budget: the oldest other drafts go first.
+    const others = ownKeys(storage).filter((k) => k !== key).map((k) => { const v = storage.getItem(k) ?? ''; let at = 0; try { at = JSON.parse(v)?.at ?? 0; } catch { /* malformed: oldest */ } return { k, size: k.length + v.length, at }; }).sort((a, b) => a.at - b.at);
+    let total = others.reduce((n, o) => n + o.size, 0) + key.length + value.length;
+    for (const o of others) {
+      if (total <= MAX_TOTAL_DRAFT_CHARS) break;
+      storage.removeItem(o.k);
+      total -= o.size;
+    }
+    storage.setItem(key, value);
     return true;
   } catch {
     return false; // storage full or unavailable: the leave warning still protects the edit

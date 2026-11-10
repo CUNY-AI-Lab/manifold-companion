@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { webcrypto } from 'node:crypto';
-import { MAX_AGE_MS, MAX_DRAFT_CHARS, PREFIX, clearAllDrafts, clearDraft, countDrafts, draftDiffers, draftKey, hashText, loadDraft, ownerOf, purgeDrafts, saveDraft, savedChangedSince } from '../src/lib/drafts.js';
+import { MAX_AGE_MS, MAX_DRAFT_CHARS, MAX_TOTAL_DRAFT_CHARS, PREFIX, clearAllDrafts, clearDraft, countDrafts, draftDiffers, draftKey, hashText, loadDraft, ownerOf, purgeDrafts, saveDraft, savedChangedSince } from '../src/lib/drafts.js';
 
 function memoryStorage() {
   const m = new Map();
@@ -80,5 +80,22 @@ describe('local drafts', () => {
     expect(loadDraft(broken, 'me', 't')).toBeNull();
     expect(() => clearDraft(broken, 'me', 't')).not.toThrow();
     expect(purgeDrafts(broken, 'me')).toBe(0);
+  });
+
+  it('all drafts together stay within a budget: the storage of the origin is shared by every CAIL tool', () => {
+    const s = memoryStorage();
+    const big = 'x'.repeat(Math.floor(MAX_DRAFT_CHARS * 0.9));
+    expect(MAX_TOTAL_DRAFT_CHARS).toBeLessThanOrEqual(1_500_000);
+    expect(saveDraft(s, 'me', 't1', { target: { kind: 'html' }, content: big, saved: '' }, 1000)).toBe(true);
+    expect(saveDraft(s, 'me', 't2', { target: { kind: 'html' }, content: big, saved: '' }, 2000)).toBe(true);
+    // The older draft made room: what this app keeps never passes the budget.
+    const total = Object.entries(s.dump()).filter(([k]) => k.startsWith(PREFIX)).reduce((n, [k, v]) => n + k.length + v.length, 0);
+    expect(total).toBeLessThanOrEqual(MAX_TOTAL_DRAFT_CHARS);
+    expect(loadDraft(s, 'me', 't2', 3000)).not.toBeNull();
+    expect(loadDraft(s, 'me', 't1', 3000)).toBeNull();
+    // Another tool's data on the origin is never touched.
+    s.setItem('other-tool:state', 'keep');
+    saveDraft(s, 'me', 't3', { target: { kind: 'html' }, content: big, saved: '' }, 4000);
+    expect(s.getItem('other-tool:state')).toBe('keep');
   });
 });
