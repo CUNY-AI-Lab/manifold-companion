@@ -60,7 +60,7 @@ describe("operational logging carries no content, names, subjects or credentials
     const pending: Promise<unknown>[] = [];
     indexModule.scheduled!({ cron: "17 6 * * *", scheduledTime: Date.now(), noRetry() {} } as ScheduledController, await makeEnv(), { waitUntil: (p: Promise<unknown>) => pending.push(p) } as unknown as ExecutionContext);
     await Promise.all(pending);
-    expect(JSON.stringify(named("retention.sweep"))).toContain("w0_d0_f0_c0");
+    expect(JSON.stringify(named("retention.sweep"))).toContain("w0_d0_f0_c0_r0");
   });
 
   it("error_type is a class or a stable code, never a message", () => {

@@ -16,7 +16,7 @@ const catalog = defineEventCatalog({
   "auth.rejected": { source: "tenant", severity: "warn", required: ["request_id", "status", "error_type"], optional: ["trace", "http_method"] },
   // A thrown value the app did not expect: error_type is its class.
   "manifold_companion.unhandled_error": { source: "tenant", severity: "error", required: ["request_id"], optional: ["trace", "error_type", "http_method"] },
-  // Daily retention sweep counts packed into one slug: w<warned>_d<deleted>_f<failed>_c<cleaned>.
+  // Daily retention sweep counts packed into one slug: w<warned>_d<deleted>_f<failed>_c<cleaned>_r<recounted storage counters>.
   "retention.sweep": { source: "tenant", severity: "info", required: ["error_type"], optional: ["duration_ms"] },
   "retention.sweep_failed": { source: "tenant", severity: "error", required: ["error_type"], optional: ["duration_ms"] },
   // Scheduled readiness self-check (the Gateway catalog through the binding, D1, identity, version tag).

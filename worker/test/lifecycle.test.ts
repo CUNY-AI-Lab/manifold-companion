@@ -212,19 +212,19 @@ describe("retention", () => {
     const e = await makeEnv();
 
     // Day 0 of the sweep: never warned, so warn, do NOT delete.
-    expect(await runRetentionSweep(e)).toEqual({ warned: 1, deleted: 0, failed: 0, cleaned: 0 });
+    expect(await runRetentionSweep(e)).toMatchObject({ warned: 1, deleted: 0, failed: 0, cleaned: 0 });
     expect(await count("projects", "id = ?", id)).toBe(1);
     const note = await env.DB.prepare("SELECT * FROM notifications WHERE subject = ?").bind(ALICE).first<any>();
     expect(note).toMatchObject({ type: "retention_warning", read: 0 });
     expect(note.body).toContain("Old");
 
     // Next day: warned only once, nothing else happens.
-    expect(await runRetentionSweep(e, Date.now() + 86_400_000)).toEqual({ warned: 0, deleted: 0, failed: 0, cleaned: 0 });
+    expect(await runRetentionSweep(e, Date.now() + 86_400_000)).toMatchObject({ warned: 0, deleted: 0, failed: 0, cleaned: 0 });
     expect(await count("notifications")).toBe(1);
 
     // Eight days later: deleted, with objects and bytes.
     // The cleanup phase sweeps the new tombstone once more in the same run.
-    expect(await runRetentionSweep(e, Date.now() + 8 * 86_400_000)).toEqual({ warned: 0, deleted: 1, failed: 0, cleaned: 1 });
+    expect(await runRetentionSweep(e, Date.now() + 8 * 86_400_000)).toMatchObject({ warned: 0, deleted: 1, failed: 0, cleaned: 1 });
     expect(await count("projects", "id = ?", id)).toBe(0);
     expect(await r2Count(projectPrefix(id))).toBe(0);
     expect(await storage(ALICE)).toBe(0);
@@ -245,7 +245,7 @@ describe("retention", () => {
   it("projects inside the warning window are warned, not deleted", async () => {
     const id = await createProject(ALICE);
     await ageProject(id, 175);
-    expect(await runRetentionSweep(await makeEnv())).toEqual({ warned: 1, deleted: 0, failed: 0, cleaned: 0 });
+    expect(await runRetentionSweep(await makeEnv())).toMatchObject({ warned: 1, deleted: 0, failed: 0, cleaned: 0 });
   });
 
   // Regression: the sweep used to delete R2 objects first and never re-checked the row,
@@ -341,5 +341,27 @@ describe("full-text search index", () => {
     expect(byTitle.results).toHaveLength(1);
     await env.DB.prepare("DELETE FROM texts WHERE id = ?").bind(textId).run();
     expect(await count("text_fts", "text_id = ?", textId)).toBe(0);
+  });
+});
+
+describe("storage recount backstop", () => {
+  it("corrects a leaked reservation for an idle owner, leaves an owner with a recent edit alone", async () => {
+    const { ALICE, BOB, JPEG, api, createProject, createText, storageOf, upload } = await import("./helpers");
+    const { runRetentionSweep } = await import("../src/retention");
+    const { env: e } = await import("cloudflare:workers");
+    const a = await createProject(ALICE, "Idle");
+    const ta = await createText(ALICE, a);
+    await upload(api(`/texts/${ta}/pages`), JPEG(300), ALICE, { query: { filename: "a.jpg" } });
+    const b = await createProject(BOB, "Busy");
+    const tb = await createText(BOB, b);
+    await upload(api(`/texts/${tb}/pages`), JPEG(300), BOB, { query: { filename: "b.jpg" } });
+    const [aliceTrue, bobTrue] = [await storageOf(ALICE), await storageOf(BOB)];
+    // An interrupted upload left 5000 reserved bytes on each account.
+    await e.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + 5000 WHERE subject IN (?1, ?2)").bind(ALICE, BOB).run();
+    await e.DB.prepare("UPDATE projects SET last_edited_at = '2026-01-01T00:00:00Z' WHERE id = ?1").bind(a).run(); // Alice idle; Bob edited just now
+    const r = await runRetentionSweep(await (await import("./helpers")).makeEnv());
+    expect(r.reconciled).toBeGreaterThanOrEqual(1);
+    expect(await storageOf(ALICE)).toBe(aliceTrue);
+    expect(await storageOf(BOB)).toBe(bobTrue + 5000); // in-flight work is never recounted
   });
 });

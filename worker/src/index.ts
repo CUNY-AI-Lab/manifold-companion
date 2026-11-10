@@ -18,7 +18,7 @@ export default {
     ctx.waitUntil(
       runRetentionSweep(env).then(
         (r) => {
-          const counts = `w${r.warned}_d${r.deleted}_f${r.failed}_c${r.cleaned}`;
+          const counts = `w${r.warned}_d${r.deleted}_f${r.failed}_c${r.cleaned}_r${r.reconciled}`;
           logger(env).emit(r.failed > 0 ? "retention.sweep_failed" : "retention.sweep", { error_type: counts, duration_ms: Date.now() - started });
         },
         () => logger(env).emit("retention.sweep_failed", { error_type: "sweep_error", duration_ms: Date.now() - started }),

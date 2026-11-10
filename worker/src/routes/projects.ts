@@ -188,7 +188,7 @@ projectRoutes.post("/:id/transfer", async (c) => {
   const expiresAt = addDays(now, TRANSFER_OFFER_DAYS);
   // An expired offer gives way; a live one must be revoked first. The member check is in the insert.
   const [, inserted] = await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM transfer_offers WHERE project_id = ?1 AND expires_at <= ?2 AND claim_nonce IS NULL").bind(project.id, now),
+    c.env.DB.prepare("DELETE FROM transfer_offers WHERE project_id = ?1 AND expires_at <= ?2").bind(project.id, now),
     c.env.DB.prepare(
       `INSERT INTO transfer_offers (id, project_id, from_subject, to_subject, created_at, expires_at)
        SELECT ?1, ?2, ?3, ?4, ?5, ?6
@@ -208,7 +208,8 @@ projectRoutes.post("/:id/transfer", async (c) => {
 
 projectRoutes.delete("/:id/transfer", async (c) => {
   const { project } = await requireRole(c.env.DB, c.get("principal").subject, c.req.param("id"), "owner");
-  const res = await c.env.DB.prepare("DELETE FROM transfer_offers WHERE project_id = ?1 AND claim_nonce IS NULL").bind(project.id).run();
+  // A claim is never visible outside the accept batch that takes it; one seen here is a leftover and does not block.
+  const res = await c.env.DB.prepare("DELETE FROM transfer_offers WHERE project_id = ?1").bind(project.id).run();
   if (res.meta.changes !== 1) throw E.notFound("No pending transfer offer.");
   return c.json({ revoked: true });
 });

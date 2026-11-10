@@ -98,6 +98,39 @@ describe("ownership transfer needs the new owner's consent", () => {
     expect((await accept(o.id, BOB)).status).toBe(200);
   });
 
+  it("a claim abandoned mid-flight blocks nothing: revoke, a new offer, expiry cleanup and a later accept all work", async () => {
+    const { pid } = await projectWithBytes();
+    const leave = async (id: string) => env.DB.prepare("UPDATE transfer_offers SET claim_nonce = ?1, claim_bytes = 1 WHERE id = ?2").bind(crypto.randomUUID(), id).run();
+    // A later accept succeeds over a leftover claim, and moves the real bytes.
+    const bytes = await projectStorageBytes(env.DB, pid);
+    const bobBefore = await storageOf(BOB);
+    let { offer: o } = await json(await offer(pid, BOB));
+    await leave(o.id);
+    expect((await json(await call(api("/transfers"), { as: BOB }))).offers).toHaveLength(1);
+    expect((await accept(o.id, BOB)).status).toBe(200);
+    expect(await storageOf(BOB)).toBe(bobBefore + bytes);
+    // Revoke and a new offer, over a leftover claim (Bob owns it now).
+    ({ offer: o } = await json(await offer(pid, ALICE, BOB)));
+    await leave(o.id);
+    expect((await call(api(`/projects/${pid}/transfer`), { method: "DELETE", as: BOB })).status).toBe(200);
+    ({ offer: o } = await json(await offer(pid, CAROL, BOB)));
+    await leave(o.id);
+    await env.DB.prepare("UPDATE transfer_offers SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?1").bind(o.id).run();
+    expect((await offer(pid, ALICE, BOB)).status).toBe(201); // expiry cleanup ignores the leftover claim
+    // Declining over a leftover claim also works.
+    const { offer: cur } = await json(await call(api(`/projects/${pid}/transfer`), { as: BOB }));
+    await leave(cur.id);
+    expect((await post(`/transfers/${cur.id}/decline`, {}, ALICE)).status).toBe(200);
+  });
+
+  it("an accept that fails after claiming (no room) leaves no claim behind", async () => {
+    const { pid } = await projectWithBytes();
+    const { offer: o } = await json(await offer(pid, BOB));
+    expect((await accept(o.id, BOB, { env: await makeEnv({ STORAGE_QUOTA_BYTES: "100" }) })).status).toBe(409);
+    const row = await env.DB.prepare("SELECT claim_nonce, claim_bytes FROM transfer_offers WHERE id = ?1").bind(o.id).first();
+    expect(row).toEqual({ claim_nonce: null, claim_bytes: null });
+  });
+
   it("two concurrent accepts of one offer: exactly one moves the storage, once", async () => {
     const { pid } = await projectWithBytes();
     const bytes = await projectStorageBytes(env.DB, pid);
