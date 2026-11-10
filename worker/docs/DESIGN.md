@@ -152,7 +152,7 @@ One function: `requireRole(db, subject, projectId, minRole)` in `src/authz.ts`. 
 | read project, list members, read texts/pages/versions/annotations/search, export, edit or delete one's own comment | viewer |
 | leave project (self-removal) | viewer |
 | edit text content, upload, run model tasks, comment, reply, resolve, revert a version, save export settings | editor |
-| move texts to another project | editor on the source (`requireRole` on `:id`, the matrix row) and editor on the destination (`requireRole` again, before anything is read from it; a non-member gets 404, a viewer 403) |
+| move texts to another project | editor on the source (`requireRole` on `:id`, the matrix row) and editor on the destination (`requireRole` again, before anything is read from it; a non-member gets 404, a viewer 403); both re-checked before each text's copies and inside each text's batch, so a mover removed or made a viewer during a long request moves nothing more (`insufficient_role`) |
 | rename/delete project, remove others, change a member's role, offer/view/revoke an ownership transfer, create/list/revoke invites, delete anyone's comment | owner |
 | profile, `/session`, `/me/data` | self only (no project; subject comes from the verified principal, never from the request) |
 | `POST /invites/redeem` | any signed-in person holding a valid token (no role yet by definition) |

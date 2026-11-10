@@ -217,3 +217,59 @@ describe("moving texts to another project", () => {
     await clean();
   });
 });
+
+describe("moving texts: access is re-checked inside each text's transaction", () => {
+  it("a mover removed from the source mid-request moves nothing more out of it", async () => {
+    const src = await createProject(ALICE, "Alice's");
+    await addMember(ALICE, src, BOB, "editor");
+    const ids = [await createText(ALICE, src, "One"), await createText(ALICE, src, "Two")];
+    for (const id of ids) await upload(api(`/texts/${id}/pages`), JPEG(60), ALICE, { query: { filename: "p.jpg" } });
+    const bobs = await createProject(BOB, "Bob's");
+    // Right after the first text's batch, Alice removes Bob from her project.
+    const db = hookedDb(env.DB, /SELECT html_key, compiled_key, translation_key, source_pdf_key FROM texts WHERE id = \?1/, async () => {
+      expect((await call(api(`/projects/${src}/members/${BOB}`), { method: "DELETE", as: ALICE })).status).toBe(200);
+    });
+    const r = await json(await move(src, { textIds: ids, to: bobs }, BOB, await makeEnv({ DB: db })));
+    expect(r.moved.map((m: { name: string }) => m.name)).toEqual(["One"]);
+    expect(r.failed.map((f: { name: string; code: string }) => [f.name, f.code])).toEqual([["Two", "insufficient_role"]]);
+    expect((await json(await call(api(`/texts/${ids[1]}`), { as: ALICE }))).text.project_id).toBe(src);
+    await clean();
+  });
+
+  it("a mover removed from the destination, or made a viewer there, mid-request adds nothing more to it", async () => {
+    for (const change of ["remove", "viewer"] as const) {
+      const src = await createProject(ALICE, `Mine ${change}`);
+      const ids = [await createText(ALICE, src, "One"), await createText(ALICE, src, "Two")];
+      const carols = await createProject(CAROL, `Carol's ${change}`);
+      await addMember(CAROL, carols, ALICE, "editor");
+      const db = hookedDb(env.DB, /SELECT html_key, compiled_key, translation_key, source_pdf_key FROM texts WHERE id = \?1/, async () => {
+        const res = change === "remove"
+          ? await call(api(`/projects/${carols}/members/${ALICE}`), { method: "DELETE", as: CAROL })
+          : await call(api(`/projects/${carols}/members/${ALICE}`), { method: "PUT", as: CAROL, body: { role: "viewer" } });
+        expect(res.status, change).toBe(200);
+      });
+      const r = await json(await move(src, { textIds: ids, to: carols }, ALICE, await makeEnv({ DB: db })));
+      expect(r.moved.map((m: { name: string }) => m.name), change).toEqual(["One"]);
+      expect(r.failed.map((f: { name: string; code: string }) => [f.name, f.code]), change).toEqual([["Two", "insufficient_role"]]);
+      expect((await json(await call(api(`/texts/${ids[1]}`)))).text.project_id, change).toBe(src);
+      await clean();
+    }
+  });
+
+  it("access lost between the plan and the batch of a single text: refused, nothing changes", async () => {
+    const src = await createProject(ALICE, "Alice's single");
+    await addMember(ALICE, src, BOB, "editor");
+    const tid = await createText(ALICE, src, "Only");
+    await upload(api(`/texts/${tid}/pages`), JPEG(60), ALICE, { query: { filename: "p.jpg" } });
+    const bobs = await createProject(BOB, "Bob's single");
+    const db = hookedDb(env.DB, /SELECT r2_key AS k, bytes AS b FROM text_versions/, async () => {
+      expect((await call(api(`/projects/${src}/members/${BOB}`), { method: "PUT", as: ALICE, body: { role: "viewer" } })).status).toBe(200);
+    });
+    const r = await json(await move(src, { textIds: [tid], to: bobs }, BOB, await makeEnv({ DB: db })));
+    expect(r.moved).toEqual([]);
+    expect(r.failed.map((f: { code: string }) => f.code)).toEqual(["insufficient_role"]);
+    expect((await json(await call(api(`/texts/${tid}`), { as: ALICE }))).text.project_id).toBe(src);
+    expect(await r2Keys(projectPrefix(bobs))).toEqual([]);
+    await clean();
+  });
+});

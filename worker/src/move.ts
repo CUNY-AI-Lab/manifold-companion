@@ -79,6 +79,16 @@ export function movedKey(oldKey: string, src: string, oldText: string, dst: stri
 
 export interface MoveOutcome { from: string; to: string; name: string; comments_deleted: number }
 
+/** SQL: `subject` is an editor or the owner of `project` (placeholders). */
+const editorSql = (project: string, subject: string) => `EXISTS (SELECT 1 FROM project_members WHERE project_id = ${project} AND subject = ${subject} AND role IN ('owner', 'editor'))`;
+
+async function mayMove(db: D1Database, subject: string, src: string, dst: string): Promise<boolean> {
+  const row = await db.prepare(`SELECT ${editorSql("?1", "?3")} AND ${editorSql("?2", "?3")} AS ok`).bind(src, dst, subject).first<{ ok: number }>();
+  return row?.ok === 1;
+}
+
+const lostAccess = () => E.forbidden("You are no longer an editor of both projects, so this text was not moved.", "insufficient_role");
+
 const conflict = () => new AppError({ code: "move_conflict", message: "This text changed while it was being moved, so it was not moved. Try again.", status: 409, retryable: true });
 
 /**
@@ -87,8 +97,11 @@ const conflict = () => new AppError({ code: "move_conflict", message: "This text
  * new id. Throws 404 if the text left the source meanwhile, 409 move_conflict
  * if it changed, the cap and quota codes if the destination has no room.
  */
-export async function moveText(env: Env, src: ProjectRow, dst: ProjectRow, plan: TextPlan): Promise<MoveOutcome> {
+export async function moveText(env: Env, subject: string, src: ProjectRow, dst: ProjectRow, plan: TextPlan): Promise<MoveOutcome> {
   const oldId = plan.text.id;
+  // The mover's role is checked again before anything is copied (a long request may have lost it since the
+  // route authorized it) and once more inside the batch, as the transaction sees the memberships.
+  if (!(await mayMove(env.DB, subject, src.id, dst.id))) throw lostAccess();
   const id = newId();
   const map = new Map<string, string>();
   for (const [k] of plan.objects) if (!map.has(k)) map.set(k, movedKey(k, src.id, oldId, dst.id, id));
@@ -128,8 +141,8 @@ export async function moveText(env: Env, src: ProjectRow, dst: ProjectRow, plan:
        SELECT ?1, ?2, name, status, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM texts WHERE project_id = ?2), summary, source_language, target_language, source_pdf_name, pdf_meta, formula_repair_status,
          ?3, html_bytes, ?4, compiled_bytes, ?5, translation_bytes, ?6, source_pdf_bytes, source_pdf_revision, search_text, created_at, ?7
        FROM texts WHERE id = ?8 AND project_id = ?9 AND html_key IS ?10 AND compiled_key IS ?11 AND translation_key IS ?12 AND source_pdf_key IS ?13
-         AND EXISTS (SELECT 1 FROM projects WHERE id = ?2)`,
-    ).bind(id, dst.id, nk(t.html_key), nk(t.compiled_key), nk(t.translation_key), nk(t.source_pdf_key), now, oldId, src.id, t.html_key, t.compiled_key, t.translation_key, t.source_pdf_key),
+         AND EXISTS (SELECT 1 FROM projects WHERE id = ?2) AND ${editorSql("?9", "?14")} AND ${editorSql("?2", "?14")}`,
+    ).bind(id, dst.id, nk(t.html_key), nk(t.compiled_key), nk(t.translation_key), nk(t.source_pdf_key), now, oldId, src.id, t.html_key, t.compiled_key, t.translation_key, t.source_pdf_key, subject),
     reparent("pages", "image_key"),
     reparent("figures", "image_key"),
     reparent("text_versions", "r2_key"),
@@ -167,6 +180,7 @@ export async function moveText(env: Env, src: ProjectRow, dst: ProjectRow, plan:
     const still = await env.DB.prepare("SELECT 1 AS x FROM texts WHERE id = ?1 AND project_id = ?2").bind(oldId, src.id).first();
     if (!still) throw E.notFound("This text is no longer in the project.");
     if (!(await env.DB.prepare("SELECT 1 AS x FROM projects WHERE id = ?1").bind(dst.id).first())) throw E.notFound("The destination project no longer exists.");
+    if (!(await mayMove(env.DB, subject, src.id, dst.id))) throw lostAccess();
     throw conflict();
   }
   // Copies of rows deleted while the move ran are referenced by nothing: remove them.

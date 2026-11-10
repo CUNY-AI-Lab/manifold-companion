@@ -178,7 +178,7 @@ projectTextRoutes.post("/move", async (c) => {
   const failed: { id: string; name: string; code: string; message: string }[] = [];
   for (const plan of plans) {
     try {
-      moved.push(await moveText(c.env, src, dst, plan));
+      moved.push(await moveText(c.env, subject, src, dst, plan));
     } catch (error) {
       if (!(error instanceof AppError)) throw error;
       failed.push({ id: plan.text.id, name: plan.text.name, code: error.code, message: error.message });
