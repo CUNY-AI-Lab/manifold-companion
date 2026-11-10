@@ -32,23 +32,50 @@ export function DataNotice() {
   );
 }
 
-/** Model menu for one task, straight from the live Gateway catalog. */
+const OTHER = '__other__';
+
+/**
+ * Model menu for one task: the models the Worker's policy offers (from the live
+ * Gateway catalog), plus "Another model…" for typing any catalog model id the
+ * task can use; the Worker checks it before any spend.
+ */
 export function ModelPicker({ task, value, onChange, label }) {
   const [menu, setMenu] = useState(null);
   const [error, setError] = useState(null);
+  const [typing, setTyping] = useState(false);
+  const [typed, setTyped] = useState('');
   useEffect(() => {
     api.get('/api/models').then((r) => setMenu(r.tasks[task]), setError);
   }, [task]);
   if (error) return <span className="text-xs text-red-700">Model list unavailable: {error.message}</span>;
   if (!menu) return <span className="text-xs text-slate-500">Loading models</span>;
+  const listed = !value || menu.models.some((m) => m.id === value);
   return (
-    <label className="text-sm">
-      <span className="mr-2 text-slate-600 dark:text-slate-300">{label}</span>
-      <select className="field inline-block w-auto" value={value || ''} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">Default ({menu.default ?? 'none available'})</option>
-        {menu.models.map((m) => <option key={m.id} value={m.id}>{m.name}{m.reasoning ? ' (reasons)' : ''}</option>)}
-      </select>
-    </label>
+    <span className="inline-flex flex-wrap items-center gap-2 text-sm">
+      <label>
+        <span className="mr-2 text-slate-600 dark:text-slate-300">{label}</span>
+        <select
+          className="field inline-block w-auto"
+          value={typing || !listed ? OTHER : value || ''}
+          onChange={(e) => {
+            if (e.target.value === OTHER) { setTyping(true); return; }
+            setTyping(false);
+            onChange(e.target.value || null);
+          }}
+        >
+          <option value="">Default ({menu.default ?? 'none available'})</option>
+          {menu.models.map((m) => <option key={m.id} value={m.id}>{m.name}{m.reasoning ? ' (reasons)' : ''}</option>)}
+          {menu.typeable > 0 ? <option value={OTHER}>Another model (type its id)</option> : null}
+        </select>
+      </label>
+      {typing || !listed ? (
+        <form className="inline-flex gap-1" onSubmit={(e) => { e.preventDefault(); const id = typed.trim(); if (id) { onChange(id); setTyping(false); } }}>
+          <label className="sr-only" htmlFor={`model-id-${task}`}>Model id</label>
+          <input id={`model-id-${task}`} className="field w-56" placeholder="catalog model id" value={typing ? typed : value ?? ''} onChange={(e) => { setTyping(true); setTyped(e.target.value); }} maxLength={100} />
+          <button className="btn-quiet" type="submit">Use</button>
+        </form>
+      ) : null}
+    </span>
   );
 }
 

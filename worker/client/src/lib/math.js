@@ -12,6 +12,7 @@
 // \htmlData/\htmlId); maxSize and maxExpand are bounded; strict is "ignore",
 // which is what legacy's strict: false meant.
 import katex from 'katex';
+import { isKatexClass } from '../../../src/sanitize/html.ts';
 
 export const LEGACY_DELIMITERS = [
   { left: '\\[', right: '\\]', display: true },
@@ -88,16 +89,15 @@ export function decodeEntities(s) {
 
 const render = (tex, display) => katex.renderToString(tex, { ...KATEX_OPTIONS, displayMode: display });
 
-// Class names KaTeX itself emits. Stored content is sanitized on the Worker
-// (no style, no svg), and on top of that any of these class names in stored or
-// draft HTML is dropped before rendering, so markup that only imitates KaTeX
-// output cannot borrow its stylesheet; real KaTeX markup exists only in the
-// rendered preview, never in storage.
-const KATEX_CLASS = /^(katex(-[\w-]+)?|base|strut|mord|mop|mbin|mrel|mopen|mclose|mpunct|minner|mspace|mtight|vlist(-[\w-]+)?|pstrut|sizing|reset-size\d+|size\d+|fontsize-ensurer|delimsizing|delimcenter|delim-size\d|mult|frac-line|mfrac|msupsub|sqrt|hide-tail|svg-align|nulldelimiter|enclosing|overline|underline|accent(-body)?|op-symbol|small-op|large-op|op-limits|mathnormal|mathrm|mathit|mathbf|mathbb|mathcal|mathfrak|mathscr|mathsf|mathtt|amsrm|textrm|textit|textbf|textsf|texttt|boldsymbol|mainrm|col-align-[lcr]|arraycolsep|tag|newline|stretchy|halfarrow-(left|right)|x-arrow(-pad)?|cancel-(pad|lap)|mathdefault|rule|root|stackedfrac)$/;
+// Class names KaTeX itself emits (the list lives in the sanitizer, which drops
+// them at storage). They are dropped again here before rendering, for drafts
+// and for content stored before the sanitizer did so: markup that imitates
+// KaTeX output cannot borrow its stylesheet; real KaTeX markup exists only in
+// the rendered preview, never in storage.
 
 export function stripKatexClasses(html) {
   return html.replace(/ class="([^"]*)"/g, (m, value) => {
-    const kept = value.split(/\s+/).filter((c) => c && !KATEX_CLASS.test(c));
+    const kept = value.split(/\s+/).filter((c) => c && !isKatexClass(c));
     return kept.length ? ` class="${kept.join(' ')}"` : '';
   });
 }

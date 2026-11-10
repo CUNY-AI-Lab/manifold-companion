@@ -2,7 +2,7 @@
 // parsing, the call plan, cost arithmetic, key redaction, output scoring and
 // the report. No I/O. Unit-tested in test/live-eval.test.ts.
 import temml from "temml";
-import { defaultFor, menuFor, reasoningPolicy, type ModelOption, type Task } from "../src/models";
+import { BUILTIN_POLICY, defaultFor, menuFor, offeredMenu, reasoningPolicy, thinksOnMath, type ModelOption, type ModelPolicy, type Task } from "../src/models";
 
 // ---- arguments ---------------------------------------------------------------
 
@@ -11,6 +11,7 @@ export type EvalTask = (typeof TASKS)[number];
 
 export interface EvalArgs {
   dryRun: boolean;
+  rerender: boolean;
   out: string | null;
   budgetMicrodollars: number;
   budgetMode: "worst" | "expected";
@@ -23,7 +24,7 @@ export interface EvalArgs {
 
 /** Flags only. A key is never accepted here: anything that looks like one aborts the run. */
 export function parseArgs(argv: string[]): EvalArgs {
-  const args: EvalArgs = { dryRun: false, out: null, budgetMicrodollars: 1_500_000, budgetMode: "worst", tasks: [...TASKS], models: null, pages: null, mathbook: null, help: false };
+  const args: EvalArgs = { dryRun: false, rerender: false, out: null, budgetMicrodollars: 1_500_000, budgetMode: "worst", tasks: [...TASKS], models: null, pages: null, mathbook: null, help: false };
   const list = (v: string | undefined, flag: string): string[] => {
     if (!v) throw new Error(`${flag} needs a comma-separated value`);
     return v.split(",").map((s) => s.trim()).filter(Boolean);
@@ -36,6 +37,7 @@ export function parseArgs(argv: string[]): EvalArgs {
     const value = () => inline ?? argv[++i];
     switch (flag) {
       case "--dry-run": args.dryRun = true; break;
+      case "--rerender": args.rerender = true; break;
       case "--help": case "-h": args.help = true; break;
       case "--out": args.out = value() ?? null; break;
       case "--mathbook": args.mathbook = value() ?? null; break;
@@ -165,9 +167,11 @@ export interface CandidateSets {
  * (cheapest first after the recommended ones, so a budget stop keeps the
  * most informative); text tasks run every recommended text model.
  */
-export function candidates(task: EvalTask, catalog: ModelOption[], prices: Map<string, Pricing>, filter: string[] | null): CandidateSets {
-  const menu = menuFor(WORKER_TASK[task], catalog);
-  const dflt = defaultFor(WORKER_TASK[task], menu, {} as never);
+export function candidates(task: EvalTask, catalog: ModelOption[], prices: Map<string, Pricing>, filter: string[] | null, policy: ModelPolicy = BUILTIN_POLICY): CandidateSets {
+  // The comparison runs over the capability menu (minus models hidden everywhere, such as Kimi);
+  // the default is the one the Worker would pick from its offered menu.
+  const menu = menuFor(WORKER_TASK[task], catalog).filter((m) => !policy.hidden.some((p) => (p.endsWith("*") ? m.id.startsWith(p.slice(0, -1)) : m.id === p)));
+  const dflt = defaultFor(WORKER_TASK[task], offeredMenu(WORKER_TASK[task], catalog, policy), policy);
   let set: ModelOption[];
   if (task === "math") {
     const price = (m: ModelOption) => (prices.get(m.id)?.output ?? Number.POSITIVE_INFINITY);
@@ -180,8 +184,8 @@ export function candidates(task: EvalTask, catalog: ModelOption[], prices: Map<s
   return { menu, default: dflt, run: set };
 }
 
-export function planCall(n: number, task: EvalTask, page: string | null, model: ModelOption, isDefault: boolean, estInputTokens: number, pricing: Pricing | null): PlannedCall {
-  const policy = reasoningPolicy(model, task === "math");
+export function planCall(n: number, task: EvalTask, page: string | null, model: ModelOption, isDefault: boolean, estInputTokens: number, pricing: Pricing | null, modelPolicy: ModelPolicy = BUILTIN_POLICY): PlannedCall {
+  const policy = reasoningPolicy(model, task === "math" && thinksOnMath(model, modelPolicy));
   const maxTokens = MAX_TOKENS[task];
   const typical = TYPICAL_OUTPUT[task] + (model.reasoning ? (task === "math" ? TYPICAL_REASONING_MATH : 800) : 0);
   const estOutputTokens = Math.min(typical, maxTokens + policy.headroom);

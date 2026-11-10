@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { gatewayClient, freshCorrelation, gatewayError } from "../gateway";
-import { defaultFor, loadCatalog, menuFor, type Task } from "../models";
+import { defaultFor, loadCatalog, menuFor, offeredMenu, policyFrom, type Task } from "../models";
 import type { AppEnv } from "../app";
 
 export const modelRoutes = new Hono<AppEnv>();
@@ -13,8 +13,10 @@ modelRoutes.get("/models", async (c) => {
   const list = await loadCatalog(gatewayClient(c.env, freshCorrelation(c.req.raw)), Date.now(), c.req.raw.signal);
   const tasks: Record<string, unknown> = {};
   for (const task of TASKS) {
-    const menu = menuFor(task, list);
-    tasks[task] = { default: defaultFor(task, menu, c.env)?.id ?? null, models: menu };
+    // `models` is what the policy offers; `typeable` counts the further catalog models a person may still enter by id.
+    const policy = policyFrom(c.env);
+    const offered = offeredMenu(task, list, policy);
+    tasks[task] = { default: defaultFor(task, offered, policy)?.id ?? null, models: offered, typeable: menuFor(task, list).length - offered.length };
   }
   return c.json({ tasks });
 });

@@ -143,6 +143,14 @@ describe("sanitizer under workerd", () => {
       const doc = parse(`<!doctype html><body>${sanitizeHtml('<math><mrow><mspace width="1em"><mi>x</mi></mrow></math>')}`);
       expect(serialize(doc)).toContain("<mspace width=\"1em\"></mspace><mi>x</mi>");
     });
+    // KaTeX markup is produced only when a preview renders; stored content may not imitate it.
+    it("drops KaTeX class names at storage and keeps other classes", () => {
+      expect(sanitizeHtml('<span class="katex"><span class="katex-html mord vlist-t keep-me" style="height:9em">x</span></span>')).toBe('<span><span class="keep-me">x</span></span>');
+      expect(sanitizeHtml('<table class="equation-table"><tr><td class="mbin">1</td></tr></table>')).toBe('<table class="equation-table"><tr><td>1</td></tr></table>');
+      const out = sanitizeHtml('<p class="katex-display  lead  mord">t</p>');
+      expect(out).toBe('<p class="lead">t</p>');
+      expect(sanitizeHtml(out)).toBe(out);
+    });
     it("MathML fence and quote characters survive; details stays boolean", () => {
       const fenced = '<math><mfenced open="(" close="]" separators=";"><mi>a</mi><mi>b</mi></mfenced><ms lquote="&lt;" rquote="&gt;">s</ms></math>';
       expect(sanitizeHtml(fenced)).toBe(fenced);

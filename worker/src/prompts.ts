@@ -25,6 +25,11 @@ MARKDOWN FORMATTING:
 - --- for section separators
 - Regular body text: no formatting
 
+MATHEMATICS:
+- Write every formula as TeX: inline math in \\( ... \\), a formula on its own line in \\[ ... \\]. Never use $ or $$ as math delimiters.
+- Transcribe formulas exactly as printed (signs, exponents, subscripts, fractions, radicals); do not simplify, solve or correct them.
+- Tables of values: Markdown tables, one row per printed row.
+
 Output ONLY the transcribed text. No thinking or reasoning.`;
 
 export const HTML_PAGE_SYSTEM = `You are a page-image to semantic HTML converter. The image is one rendered page of a document.

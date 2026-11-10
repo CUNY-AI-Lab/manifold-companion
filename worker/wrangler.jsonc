@@ -50,6 +50,21 @@
     "MAX_PDF_BYTES": "26214400",
     "MAX_PROJECT_PAGES": "300",
     "RETENTION_DAYS": "180",
-    "RETENTION_WARN_DAYS": "30"
+    "RETENTION_WARN_DAYS": "30",
+    // Model policy (src/models.ts; same values are built in as the fallback).
+    // Evidence: docs/model-policy.md, live evaluation through the real Gateway on
+    // 2026-11-10 (82 calls, precalculus textbook). Comma-separated ids; `*` = prefix.
+    // A listed model the catalog no longer has is skipped (next one, then catalog order).
+    // Standard OCR and page->HTML: DeepSeek Flash 100% at ~5-6 s/page.
+    "MODEL_ORDER_VISION": "deepseek-v4.1-flash-1017,mistral-large-3-675b-instruct,qwen3.8-27b,gemma-4-26b-a4b-it",
+    // Math/tables: Magistral Small 6/6 pages, ~11 s median, cheapest that passed; DeepSeek 5/6; Qwen 3.8 5/6 (~63 s).
+    "MODEL_ORDER_MATH": "magistral-small-2509,deepseek-v4.1-flash-1017,qwen3.8-27b",
+    "MATH_MODELS_OFFERED": "magistral-small-2509,deepseek-v4.1-flash-1017,qwen3.8-27b",
+    "MODEL_ORDER_TEXT": "deepseek-v4.1-flash-1017,gpt-oss-120b,mistral-large-3-675b-instruct",
+    // Owner: Kimi is overkill (never offered by default); Gemma not for maths (1/6, 4 deadline hits).
+    "MODELS_HIDDEN": "kimi-*",
+    "MATH_MODELS_HIDDEN": "gemma-*,kimi-*",
+    // DeepSeek reasoned through the whole 14,000-token budget on the tables page with thinking on.
+    "MATH_THINKING_OFF": "deepseek-v4.1-flash-1017"
   }
 }

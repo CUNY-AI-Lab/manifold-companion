@@ -74,14 +74,109 @@ export function menuFor(task: Task, list: ModelOption[]): ModelOption[] {
 
 const rank = (a: ModelOption, b: ModelOption): number => Number(b.recommended) - Number(a.recommended) || a.order - b.order;
 
-/** Default for a task: a configured var if the live menu offers it, else the Gateway's own top-ranked model. */
-export function defaultFor(task: Task, menu: ModelOption[], env: Env): ModelOption | null {
-  const configured = task === "text" ? env.DEFAULT_TEXT_MODEL : task === "html_math" ? env.DEFAULT_MATH_MODEL : env.DEFAULT_VISION_MODEL;
-  const hit = configured ? menu.find((m) => m.id === configured) : undefined;
-  return hit ?? [...menu].sort(rank)[0] ?? null;
+// ---- model policy -------------------------------------------------------------
+// Which models are OFFERED (shown in a menu) and which is the DEFAULT, per task.
+// The catalog still decides what exists and what each model can do; the policy
+// only orders and narrows. Every list is a var (comma-separated; `*` at the end
+// matches a prefix), with the built-in values below as the fallback when a var
+// is absent. A model the policy names but the catalog no longer lists is
+// skipped, so a renamed or retired model degrades to the next one in order and,
+// if none is left, to the Gateway's own ranking. A person can still TYPE any
+// model id the catalog offers with the needed capabilities; that is checked
+// against the full capability menu, not the offered one.
+//
+// Evidence: docs/model-policy.md (live evaluation through the real Gateway,
+// 2026-11-10, 82 calls on the precalculus textbook).
+export interface ModelPolicy {
+  /** Preference order for the default, per task. */
+  order: Record<Task, string[]>;
+  /** The math/tables menu offers ONLY these (in this order) when the catalog has any of them. */
+  mathOffered: string[];
+  /** Never offered in a menu or chosen as a default for any task (still typeable). */
+  hidden: string[];
+  /** Never offered or defaulted for the math/tables path (still typeable). */
+  mathHidden: string[];
+  /** Reasoning models that get the thinking-off switches on the math path too. */
+  mathThinkingOff: string[];
 }
 
-/** Resolve the model for one call: explicit choice > text setting > default. Must be on the task's live menu. */
+export const BUILTIN_POLICY: ModelPolicy = Object.freeze({
+  order: {
+    ocr: ["deepseek-v4.1-flash-1017", "mistral-large-3-675b-instruct", "qwen3.8-27b", "gemma-4-26b-a4b-it"],
+    html_page: ["deepseek-v4.1-flash-1017", "mistral-large-3-675b-instruct", "qwen3.8-27b", "gemma-4-26b-a4b-it"],
+    html_math: ["magistral-small-2509", "deepseek-v4.1-flash-1017", "qwen3.8-27b"],
+    text: ["deepseek-v4.1-flash-1017", "gpt-oss-120b", "mistral-large-3-675b-instruct"],
+  },
+  mathOffered: ["magistral-small-2509", "deepseek-v4.1-flash-1017", "qwen3.8-27b"],
+  hidden: ["kimi-*"],
+  mathHidden: ["gemma-*", "kimi-*"],
+  mathThinkingOff: ["deepseek-v4.1-flash-1017"],
+}) as ModelPolicy;
+
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}\*?$/;
+function listVar(value: string | undefined, fallback: string[]): string[] {
+  if (value === undefined) return fallback;
+  return value.split(",").map((s) => s.trim()).filter((s) => MODEL_ID_PATTERN.test(s));
+}
+const matches = (patterns: string[], id: string): boolean => patterns.some((p) => (p.endsWith("*") ? id.startsWith(p.slice(0, -1)) : id === p));
+
+/** The policy in force: vars where set, built-in values otherwise. DEFAULT_*_MODEL still wins first place. */
+export function policyFrom(env: Env): ModelPolicy {
+  const order = (task: Task, varValue: string | undefined, pinned: string | undefined) => {
+    const base = listVar(varValue, BUILTIN_POLICY.order[task]);
+    return pinned && MODEL_ID_PATTERN.test(pinned) ? [pinned, ...base.filter((m) => m !== pinned)] : base;
+  };
+  return {
+    order: {
+      ocr: order("ocr", env.MODEL_ORDER_VISION, env.DEFAULT_VISION_MODEL),
+      html_page: order("html_page", env.MODEL_ORDER_VISION, env.DEFAULT_VISION_MODEL),
+      html_math: order("html_math", env.MODEL_ORDER_MATH, env.DEFAULT_MATH_MODEL),
+      text: order("text", env.MODEL_ORDER_TEXT, env.DEFAULT_TEXT_MODEL),
+    },
+    mathOffered: listVar(env.MATH_MODELS_OFFERED, BUILTIN_POLICY.mathOffered),
+    hidden: listVar(env.MODELS_HIDDEN, BUILTIN_POLICY.hidden),
+    mathHidden: listVar(env.MATH_MODELS_HIDDEN, BUILTIN_POLICY.mathHidden),
+    mathThinkingOff: listVar(env.MATH_THINKING_OFF, BUILTIN_POLICY.mathThinkingOff),
+  };
+}
+
+/** Put the policy's preferred models first (in its order), the rest in the catalog's order. */
+function preferred(menu: ModelOption[], order: string[]): ModelOption[] {
+  const first = order.map((id) => menu.find((m) => m.id === id)).filter((m): m is ModelOption => m !== undefined);
+  return [...first, ...menu.filter((m) => !first.includes(m))];
+}
+
+/**
+ * The menu a person is shown for a task. Math: only the measured models that
+ * the catalog still lists; if none is left, the capability menu minus hidden
+ * models (the catalog rule), so a rename never empties it.
+ */
+export function offeredMenu(task: Task, list: ModelOption[], policy: ModelPolicy): ModelOption[] {
+  const menu = menuFor(task, list).filter((m) => !matches(policy.hidden, m.id) && !(task === "html_math" && matches(policy.mathHidden, m.id)));
+  if (task === "html_math") {
+    const offered = policy.mathOffered.map((id) => menu.find((m) => m.id === id)).filter((m): m is ModelOption => m !== undefined);
+    if (offered.length > 0) return preferred(offered, policy.order.html_math);
+  }
+  return preferred(menu, policy.order[task]);
+}
+
+/** Default for a task: the first model of the policy's order on the offered menu, else the Gateway's top-ranked offered model. */
+export function defaultFor(task: Task, offered: ModelOption[], policy: ModelPolicy): ModelOption | null {
+  for (const id of policy.order[task]) {
+    const hit = offered.find((m) => m.id === id);
+    if (hit) return hit;
+  }
+  return [...offered].sort(rank)[0] ?? null;
+}
+
+/** Does this model think on the math path? (Thinking off for models the evidence shows reason past the budget.) */
+export const thinksOnMath = (model: ModelOption, policy: ModelPolicy): boolean => !matches(policy.mathThinkingOff, model.id);
+
+/**
+ * Resolve the model for one call: explicit choice > text setting > default.
+ * A choice must be on the task's CAPABILITY menu (typed ids are allowed even
+ * when the policy does not offer them); the default comes from the offered menu.
+ */
 export function resolveModel(task: Task, list: ModelOption[], env: Env, ...choices: (string | null | undefined)[]): ModelOption {
   const menu = menuFor(task, list);
   for (const choice of choices) {
@@ -90,7 +185,8 @@ export function resolveModel(task: Task, list: ModelOption[], env: Env, ...choic
     if (!hit) throw E.badRequest("That model is not offered for this task right now. Reload the model list and pick another.", "model_not_allowed");
     return hit;
   }
-  const fallback = defaultFor(task, menu, env);
+  const policy = policyFrom(env);
+  const fallback = defaultFor(task, offeredMenu(task, list, policy), policy);
   if (!fallback) throw E.unavailable("No model with the needed capability is offered right now.", "no_model_available");
   return fallback;
 }

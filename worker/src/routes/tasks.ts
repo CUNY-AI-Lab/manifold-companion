@@ -8,7 +8,7 @@ import { byteLength, CAPS, getContent, reindexText, touchProject, writeContent, 
 import { limits } from "../env";
 import { AppError, E } from "../errors";
 import { freshCorrelation, gatewayClient, runChat } from "../gateway";
-import { loadCatalog, resolveModel, type ModelOption } from "../models";
+import { loadCatalog, policyFrom, resolveModel, thinksOnMath, type ModelOption } from "../models";
 import { cleanupDocumentHtml, toDataUri } from "../model-output";
 import { formulaRepairTask, MAX_TRANSLATE_CHUNK_CHARS, ocrTask, pageHtmlTask, parseFormulaRepair, parseOcr, parsePageHtml, parseSummary, parseTranslation, summaryTask, translateTask } from "../task-specs";
 import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
@@ -142,7 +142,7 @@ taskRoutes.post("/:id/parse-page", logged("/{id}/parse-page"), async (c) => {
   const settings = await settingsOf(c.env.DB, ctx.text.id);
   const catalog = await catalogFor(c);
   const model = math ? resolveModel("html_math", catalog, c.env, modelChoice(body), settings.math_model) : resolveModel("html_page", catalog, c.env, modelChoice(body), settings.model);
-  const result = await runChat(c.env, principal, c.req.raw, pageHtmlTask(model, { imageDataUri: body.image as string, pageNumber, totalPages, hint, math, figures }, settings));
+  const result = await runChat(c.env, principal, c.req.raw, pageHtmlTask(model, { imageDataUri: body.image as string, pageNumber, totalPages, hint, math, thinking: math && thinksOnMath(model, policyFrom(c.env)), figures }, settings));
   const { html, shortOutput } = parsePageHtml(result.text, pageNumber);
   return c.json({
     html, model: model.id, math,

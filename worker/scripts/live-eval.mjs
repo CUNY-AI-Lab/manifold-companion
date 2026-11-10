@@ -13,7 +13,7 @@
 // an argument or environment variable, never printed and never written; every
 // message and file is checked and redacted.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -119,6 +119,7 @@ Flags:
   --budget-mode worst|expected                     budget check per call: worst case (default) or typical tokens
   --out DIR                                        output directory (default the scratchpad eval-out/)
   --mathbook DIR                                   directory with the chapter PDFs
+  --rerender                                       rebuild previews and index.html of a finished run (no network)
 `;
 
 async function main() {
@@ -143,6 +144,7 @@ async function main() {
   }
   if (args.help) { process.stdout.write(HELP); return; }
   const book = resolve(args.mathbook ?? join(SCRATCH, "mathbook"));
+  if (args.rerender) return rerender(lib, out);
 
   // The Worker's Gateway client over plain fetch: same client, no binding.
   const env = { GATEWAY: { fetch: (input, init) => fetch(input, init) }, CAIL_API_BASE: BASE };
@@ -242,16 +244,16 @@ async function main() {
     const img = c.page ? images[`${c.page}:${c.task === "math" ? "math" : "std"}`] : null;
     if (c.task === "ocr") {
       task = lib.ocrTask(c.model, img.dataUri);
-      parse = (rawText) => { const text = lib.parseOcr(rawText); return { output: text, ext: "md", preview: lib.previewDocument({ markdown: text }), math: lib.scoreMath(text, true), structure: lib.markdownStructure(text), stripped: null }; };
+      parse = (rawText) => { const text = lib.parseOcr(rawText); return { output: text, ext: "md", preview: appPreview(lib, { markdown: text }), math: lib.scoreMath(text, true), structure: lib.markdownStructure(text), stripped: null }; };
     } else if (c.task === "html" || c.task === "math") {
       const spec = pageSpecs.get(c.page);
-      task = lib.pageHtmlTask(c.model, { imageDataUri: img.dataUri, pageNumber: spec.page, totalPages: null, hint: hints[c.page], math: c.task === "math" });
+      task = lib.pageHtmlTask(c.model, { imageDataUri: img.dataUri, pageNumber: spec.page, totalPages: null, hint: hints[c.page], math: c.task === "math", thinking: c.task === "math" && lib.thinksOnMath(c.model, lib.BUILTIN_POLICY) });
       parse = (rawText) => {
         const { unsanitized, html } = lib.parsePageHtml(rawText, spec.page);
         // pipeline: everything the shipped post-processing + sanitizer removed from the model's HTML;
         // sanitizer: what the sanitizer alone removed after post-processing.
         const stripped = { pipeline: lib.strippedBySanitizer(lib.extractHtml(rawText), html), sanitizer: lib.strippedBySanitizer(unsanitized, html) };
-        return { output: html, ext: "html", preview: lib.previewDocument({ html }), math: lib.scoreMath(html), structure: lib.htmlStructure(html), stripped };
+        return { output: html, ext: "html", preview: appPreview(lib, { html }), math: lib.scoreMath(html), structure: lib.htmlStructure(html), stripped };
       };
     } else if (c.task === "summary") {
       const source = [...outputs.ocr.values()].join("\n\n---\n\n") || sourceGuess;
@@ -321,6 +323,48 @@ async function main() {
   writeOut(join(out, "index.html"), indexHtml(lib, out, records, images));
   say(`\nWrote ${join(out, "report.md")}, report.json and index.html. Spent about $${(spent / 1e6).toFixed(4)}; skipped for budget: ${skipped}.`);
   KEY = null;
+}
+
+/**
+ * The preview exactly as the app shows it: the client's sanitize -> KaTeX ->
+ * frame pipeline, with KaTeX's stylesheet and the faces the formulas need
+ * inlined as data: URIs (read from the client's bundled KaTeX).
+ */
+const KATEX_DIST = join(worker, "client/node_modules/katex/dist");
+let katexCss = null;
+const fontUris = new Map();
+function appPreview(lib, input) {
+  katexCss ??= readFileSync(join(KATEX_DIST, "katex.min.css"), "utf8");
+  const { body } = lib.previewBody(input);
+  const uri = (file) => {
+    if (!fontUris.has(file)) fontUris.set(file, `data:font/woff2;base64,${readFileSync(join(KATEX_DIST, "fonts", file)).toString("base64")}`);
+    return fontUris.get(file);
+  };
+  return lib.wrapPreview(body, lib.katexStylesheet(katexCss, lib.facesNeeded(katexCss, body), uri));
+}
+
+/** Rebuild every preview.html and index.html of a finished run from its saved outputs. No network. */
+function rerender(lib, out) {
+  const report = JSON.parse(readFileSync(join(out, "report.json"), "utf8"));
+  let n = 0;
+  for (const r of report.records) {
+    if (!["ocr", "html", "math"].includes(r.task) || !r.ok) continue;
+    const d = join(out, "calls", r.task, r.page, r.model);
+    const file = join(d, r.task === "ocr" ? "output.md" : "output.html");
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, "utf8");
+    writeOut(join(d, "preview.html"), appPreview(lib, r.task === "ocr" ? { markdown: text } : { html: text }));
+    n += 1;
+  }
+  const images = {};
+  for (const r of report.records) {
+    if (!r.page || !["ocr", "html", "math"].includes(r.task)) continue;
+    const kind = r.task === "math" ? "math" : "std";
+    const file = [...new Set(readdirSync(join(out, "pages")))].find((f) => f.startsWith(`${r.page}-${kind}-`));
+    if (file) images[`${r.page}:${kind}`] = { file: join(out, "pages", file) };
+  }
+  writeOut(join(out, "index.html"), indexHtml(lib, out, report.records, images));
+  say(`Re-rendered ${n} previews and index.html in ${out} with the app's KaTeX look.`);
 }
 
 /** Page image next to every model's rendered output, per task. */

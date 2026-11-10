@@ -79,6 +79,11 @@ const SAFE_TOKEN = /^[A-Za-z][A-Za-z0-9_:.-]{0,63}$/;
 const SAFE_CLASS = /^[A-Za-z0-9_\- :.]{0,200}$/;
 const SAFE_SIMPLE = /^[A-Za-z0-9_\- :.,%#+]{0,200}$/;
 const DIGITS = /^\d{1,9}$/;
+// Class names KaTeX emits. Real KaTeX markup is produced only when a preview is
+// rendered (worker/client/src/lib/math.js), never stored, so stored content may
+// not carry these: markup imitating KaTeX output cannot borrow its stylesheet.
+const KATEX_CLASS = /^(katex(-[\w-]+)?|base|strut|mord|mop|mbin|mrel|mopen|mclose|mpunct|minner|mspace|mtight|vlist(-[\w-]+)?|pstrut|sizing|reset-size\d+|size\d+|fontsize-ensurer|delimsizing|delimcenter|delim-size\d|mult|frac-line|mfrac|msupsub|sqrt|hide-tail|svg-align|nulldelimiter|enclosing|overline|underline|accent(-body)?|op-symbol|small-op|large-op|op-limits|mathnormal|mathrm|mathit|mathbf|mathbb|mathcal|mathfrak|mathscr|mathsf|mathtt|amsrm|textrm|textit|textbf|textsf|texttt|boldsymbol|mainrm|col-align-[lcr]|arraycolsep|tag|newline|stretchy|halfarrow-(left|right)|x-arrow(-pad)?|cancel-(pad|lap)|mathdefault|rule|root|stackedfrac)$/;
+export const isKatexClass = (c: string): boolean => KATEX_CLASS.test(c);
 // MathML fence and quote characters (mfenced open/close/separators, ms lquote/rquote): short plain
 // text, which is all these attributes ever hold. Values are re-escaped on output, so any character
 // outside the control range is safe here.
@@ -161,8 +166,11 @@ function cleanAttr(tag: string, isMath: boolean, name: string, value: string): s
       return tag === "img" ? safeImgSrc(value) : null;
     case "id":
       return SAFE_TOKEN.test(v) ? v : null;
-    case "class":
-      return SAFE_CLASS.test(v) ? v : null;
+    case "class": {
+      if (!SAFE_CLASS.test(v)) return null;
+      const kept = v.split(/\s+/).filter((c) => c !== "" && !isKatexClass(c));
+      return kept.length > 0 ? kept.join(" ") : null;
+    }
     case "xmlns":
       return tag === "math" && v === "http://www.w3.org/1998/Math/MathML" ? v : null;
     case "cite":

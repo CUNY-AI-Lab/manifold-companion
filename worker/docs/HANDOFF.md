@@ -1,6 +1,6 @@
 # Handoff: Manifold Companion on the CAIL stack
 
-State on 2026-11-09, branch `cail-stack` (local commits only; nothing pushed or deployed). Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
+State on 2026-11-10, branch `cail-stack` (local commits only; nothing pushed or deployed). Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
 
 ## 1. Run it
 
@@ -10,9 +10,9 @@ From `worker/`:
 npm ci
 npm run typecheck
 npm run check:logging          # fails on any console use or other logging library in src/
-npm test                       # Worker suite in workerd (Miniflare D1/R2), 390 tests
+npm test                       # Worker suite in workerd (Miniflare D1/R2), 416 tests
 npm run build:client           # worker/client: npm ci + vite build -> worker/client/dist
-npm run test:client            # client unit tests, 11
+npm run test:client            # client unit tests, 129
 npm run test:e2e               # Playwright: wrangler dev + Doorway double + Gateway stub, 3 journeys
 npx wrangler deploy --dry-run --outdir .wrangler/dry-run   # needs client/dist
 ```
@@ -136,17 +136,17 @@ node worker/scripts/live-eval-selftest.mjs           # the run path against a st
 
 Flags: `--tasks ocr,html,math,summary,translate,repair`, `--models`, `--pages`, `--budget-microdollars` (default 1500000), `--budget-mode worst|expected`, `--out`, `--mathbook`. Output (default the scratchpad `eval-out/`, never committed): `report.md`, `report.json`, `index.html` (page image next to each model's rendered output), and per call `raw.txt`, the parsed output, `preview.html` and `meta.json`. The math comparison runs last, so a budget stop never starves the cheaper tasks. Page images are made with `pdftoppm` at the client's scales (144 dpi; 216 dpi for math pages; JPEG quality 88; at most 3.5 MiB) and text-layer hints with `pdftotext`, the nearest local equivalent of what pdf.js gives the browser.
 
-### 6.5 On-screen maths: pending until the live-eval run finishes
+### 6.5 After the live-eval run (done)
 
-These touch files the running eval imports, so they wait:
-- `src/sanitize/html.ts`: also drop KaTeX class names at storage. Today the client drops them before rendering, and styles are already stripped at storage.
-- `src/prompts.ts` (OCR prompt): ask for TeX in `\(...\)` / `\[...\]`. 6 of 12 OCR outputs in the run used `$...$`, which the Markdown preview handles with Pandoc's rule. The export writes Markdown exactly as stored, and whether Manifold renders either form in Markdown is untested.
-- `scripts/live-eval.mjs`: pass the KaTeX stylesheet with fonts from disk to `previewDocument`, so `index.html` shows the same KaTeX look as the app. Its next bundle already renders with KaTeX, but in fallback fonts.
+- `src/sanitize/html.ts` drops KaTeX class names at storage (the same list the client uses before rendering; `isKatexClass`). Styles were already stripped.
+- The OCR prompt asks for TeX in `\(...\)` / `\[...\]` and never `$`; 6 of 12 OCR outputs in the run used `$...$`. The Markdown preview still accepts `$$...$$` and Pandoc-style `$...$` for older text. The export writes Markdown as stored; whether Manifold renders either form in Markdown is untested.
+- `scripts/live-eval.mjs` previews use the KaTeX stylesheet with its fonts as `data:` URIs, like the app; `--rerender` rebuilds a finished run's previews without network.
+- Model defaults and menus are now a policy from the run's evidence: `docs/model-policy.md`. One thing to verify with a key: DeepSeek on the math path with thinking off (`--tasks math --models deepseek-v4.1-flash-1017`, 6 calls, about $0.02).
 
 ## 7. Open questions for the owner
 
 1. **FTS5 on remote D1.** Unconfirmed in the docs; the app works either way (LIKE fallback). Worth one look after the first deploy (6.1).
-2. **Math model default.** The default is the Gateway's top-ranked vision+reasoning model. Which catalog model is best for mathematics, and whether 8,000 tokens of headroom with thinking on is right, needs a measured run with a real key: section 6.4 is that run (no real model call was made here).
+2. **Math model default.** Settled 2026-11-10 from the live run: Magistral Small for math pages, DeepSeek Flash elsewhere (`docs/model-policy.md`).
 3. **Retention by editors.** Edits and comments by any editor keep a project alive and editors get the warning too. Confirm that is the intent for projects whose owner has left.
 4. **Viewer export.** Kept from legacy (viewers can export); only editors and owners save export settings.
 5. **Email.** In-app only at launch. The retention warning reaches only people who sign in; the Admission-owned notice capability (DESIGN section 9) remains a design.

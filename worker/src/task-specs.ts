@@ -47,12 +47,14 @@ export interface PageHtmlInput {
   totalPages: number | null;
   hint: string;
   math: boolean;
+  /** Math path only: false sends the thinking-off switches (models the policy lists in mathThinkingOff). */
+  thinking?: boolean;
   figures?: { filename: string; width: number | null; height: number | null }[];
 }
 
 export function pageHtmlTask(model: ModelOption, input: PageHtmlInput, settings: TaskSettings = {}): ChatTask {
   return {
-    model, deadline: input.math ? "html_math" : "html_page", wantsThinking: input.math,
+    model, deadline: input.math ? "html_math" : "html_page", wantsThinking: input.math && input.thinking !== false,
     maxTokens: settings.max_tokens ?? TASK_DEFAULTS.html_page.maxTokens, temperature: settings.temperature ?? TASK_DEFAULTS.html_page.temperature,
     messages: [
       { role: "system", content: HTML_PAGE_SYSTEM },

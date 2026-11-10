@@ -19,6 +19,17 @@ export interface Env {
   DEFAULT_VISION_MODEL?: string;
   DEFAULT_MATH_MODEL?: string;
   DEFAULT_TEXT_MODEL?: string;
+  /**
+   * Model policy (src/models.ts, evidence in docs/model-policy.md). Comma-separated
+   * model ids; a trailing `*` matches a prefix. Absent: the built-in values apply.
+   */
+  MODEL_ORDER_VISION?: string;
+  MODEL_ORDER_MATH?: string;
+  MODEL_ORDER_TEXT?: string;
+  MATH_MODELS_OFFERED?: string;
+  MODELS_HIDDEN?: string;
+  MATH_MODELS_HIDDEN?: string;
+  MATH_THINKING_OFF?: string;
   /** Caps every model call's wall-clock deadline (milliseconds). Tests lower it. */
   MODEL_DEADLINE_MS?: string;
   /** Counts caps (defaults: 500 texts/project, 100 projects/person, 20 active invites/project, 200 figures/text). */
