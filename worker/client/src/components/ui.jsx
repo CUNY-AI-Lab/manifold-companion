@@ -1,0 +1,67 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api/client';
+
+export function ErrorNote({ error, onDismiss }) {
+  if (!error) return null;
+  const message = typeof error === 'string' ? error : error.message;
+  return (
+    <div role="alert" className="my-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+      {message}
+      {error.retryAfter ? ` Try again in ${error.retryAfter} s.` : ''}
+      {error.requestId ? <span className="block text-xs opacity-70">Reference {error.requestId}</span> : null}
+      {onDismiss ? <button type="button" className="ml-2 underline" onClick={onDismiss}>Dismiss</button> : null}
+    </div>
+  );
+}
+
+export const Spinner = ({ label = 'Loading' }) => (
+  <div className="flex items-center gap-2 py-8 text-sm text-slate-500" role="status">
+    <span className="h-4 w-4 animate-spin rounded-full border-2 border-cail-blue border-t-transparent" aria-hidden="true" />
+    {label}
+  </div>
+);
+
+export const formatBytes = (n) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
+
+/** The notice on every page that names what the tool must not hold. */
+export function DataNotice() {
+  return (
+    <p className="text-xs text-slate-500 dark:text-slate-400">
+      Do not upload material covered by FERPA, IRB protocols or HIPAA, or other personally identifiable information. This tool is not approved for it.
+    </p>
+  );
+}
+
+/** Model menu for one task, straight from the live Gateway catalog. */
+export function ModelPicker({ task, value, onChange, label }) {
+  const [menu, setMenu] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    api.get('/api/models').then((r) => setMenu(r.tasks[task]), setError);
+  }, [task]);
+  if (error) return <span className="text-xs text-red-700">Model list unavailable: {error.message}</span>;
+  if (!menu) return <span className="text-xs text-slate-500">Loading models</span>;
+  return (
+    <label className="text-sm">
+      <span className="mr-2 text-slate-600 dark:text-slate-300">{label}</span>
+      <select className="field inline-block w-auto" value={value || ''} onChange={(e) => onChange(e.target.value || null)}>
+        <option value="">Default ({menu.default ?? 'none available'})</option>
+        {menu.models.map((m) => <option key={m.id} value={m.id}>{m.name}{m.reasoning ? ' (reasons)' : ''}</option>)}
+      </select>
+    </label>
+  );
+}
+
+/** The Gateway's own estimate of the person's model allowance (delayed; not a ledger). */
+export function QuotaLine() {
+  const [quota, setQuota] = useState(null);
+  const [state, setState] = useState('loading');
+  useEffect(() => {
+    api.get('/api/quota').then((r) => { setQuota(r.quota); setState('ok'); }, () => setState('unavailable'));
+  }, []);
+  if (state === 'loading') return null;
+  if (state === 'unavailable' || !quota) return <span className="text-xs text-slate-500">Model allowance: not available right now</span>;
+  const used = (quota.estimated_used ?? 0) / 1e6;
+  const limit = (quota.limit ?? 0) / 1e6;
+  return <span className="text-xs text-slate-600 dark:text-slate-300">Model allowance: about ${used.toFixed(2)} of ${limit.toFixed(2)} used this period (estimate, updates with a delay)</span>;
+}

@@ -2,3 +2,9 @@ node_modules/
 .wrangler/
 .dev.vars
 .dev.vars.*
+client/node_modules/
+client/dist/
+client/test-results/
+client/playwright-report/
+client/e2e/.state/
+!worker/client/e2e/fixtures/*.png

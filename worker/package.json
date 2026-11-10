@@ -7,9 +7,11 @@
     "dev": "wrangler dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:client": "npm --prefix ../client run build",
+    "build:client": "npm --prefix client ci && npm --prefix client run build",
     "deploy:dry-run": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
-    "check:logging": "bash scripts/check-logging.sh"
+    "check:logging": "bash scripts/check-logging.sh",
+    "test:client": "npm --prefix client test",
+    "test:e2e": "npm --prefix client run e2e"
   },
   "dependencies": {
     "@cuny-ai-lab/cail-client": "6.3.0",

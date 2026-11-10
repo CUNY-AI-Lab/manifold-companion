@@ -45,15 +45,17 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: |
-            package-lock.json
             worker/package-lock.json
+            worker/client/package-lock.json
 
-      # The Worker serves the built SPA, so the dry-run needs client/dist.
-      - name: Install client dependencies
-        run: npm ci --workspace client --include-workspace-root --ignore-scripts
+      # The Worker serves its own fork of the SPA (worker/client); the dry-run needs its dist.
+      - name: Install and test the Worker client
+        working-directory: worker/client
+        run: npm ci && npm test
 
-      - name: Build client
-        run: npm run build --workspace client
+      - name: Build the Worker client
+        working-directory: worker/client
+        run: npm run build
 
       - name: Install Worker dependencies
         working-directory: worker
