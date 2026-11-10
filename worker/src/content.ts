@@ -210,7 +210,7 @@ export function prepareHtml(raw: unknown): string {
  * the swap is a compare-and-set on the old text. Used by hand edits, reverts
  * AND model OCR, so a model can never silently overwrite corrected text.
  */
-export async function writePageText(env: Env, project: ProjectRow, textId: string, page: { id: string; filename: string; ocr_text: string | null }, newText: string, authorSubject: string, extraSets = ""): Promise<void> {
+export async function writePageText(env: Env, project: ProjectRow, textId: string, page: { id: string; filename: string; ocr_text: string | null }, newText: string, authorSubject: string, ocrModel?: string): Promise<void> {
   if (byteLength(newText) > CAPS.pageOcrBytes) throw E.tooLarge(`Page text is larger than ${CAPS.pageOcrBytes} bytes.`, "page_text_too_large");
   const old = page.ocr_text;
   const owner = ownerOf(project);
@@ -230,7 +230,8 @@ export async function writePageText(env: Env, project: ProjectRow, textId: strin
         ).bind(newId(), textId, page.filename, vKey, snapBytes, authorSubject, now, page.id, old),
       );
     }
-    statements.push(env.DB.prepare(`UPDATE pages SET ocr_text = ?1, processed_at = ?2${extraSets} WHERE id = ?3 AND ocr_text IS ?4`).bind(newText, now, page.id, old));
+    // A model write records which model produced the text; a human edit leaves the field as it was.
+    statements.push(env.DB.prepare("UPDATE pages SET ocr_text = ?1, processed_at = ?2, ocr_model = COALESCE(?5, ocr_model) WHERE id = ?3 AND ocr_text IS ?4").bind(newText, now, page.id, old, ocrModel ?? null));
     const results = await env.DB.batch(statements);
     if (results[results.length - 1]?.meta.changes !== 1) throw E.conflict("This page was changed by someone else. Reload and try again.", "edit_conflict");
   } catch (error) {

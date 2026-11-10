@@ -118,6 +118,14 @@ uploadRoutes.post("/:id/figures", async (c) => {
   const have = await c.env.DB.prepare("SELECT COUNT(*) AS n, SUM(filename = ?2) AS same FROM figures WHERE text_id = ?1").bind(text.id, filename).first<{ n: number; same: number | null }>();
   if (have?.same) throw E.conflict("A figure with that file name already exists.", "filename_exists");
   if ((have?.n ?? 0) >= lim.maxFiguresPerText) throw E.conflict(`A text can hold at most ${lim.maxFiguresPerText} figures.`, "figure_limit_reached");
+  const dim = (name: string): number | null => {
+    const v = c.req.query(name);
+    if (v === undefined) return null;
+    if (!/^\d{1,5}$/.test(v) || Number(v) < 1) throw E.badRequest(`${name} must be a positive integer.`);
+    return Number(v);
+  };
+  const width = dim("width");
+  const height = dim("height");
   const got = await receive(c.env, c.req.raw, ownerOf(project), size, sniffImage);
   const id = newId();
   const key = figureKey(project.id, text.id, id);
@@ -125,8 +133,8 @@ uploadRoutes.post("/:id/figures", async (c) => {
     await c.env.FILES.put(key, got.bytes, { httpMetadata: { contentType: got.type } });
     // Conditional insert: the per-text cap is checked inside the statement, so racing uploads cannot pass it together.
     const res = await c.env.DB.prepare(
-      "INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at) SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE (SELECT COUNT(*) FROM figures WHERE text_id = ?2) < ?8",
-    ).bind(id, text.id, filename, key, got.type, size, nowIso(), lim.maxFiguresPerText).run();
+      "INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at, width, height) SELECT ?1,?2,?3,?4,?5,?6,?7,?9,?10 WHERE (SELECT COUNT(*) FROM figures WHERE text_id = ?2) < ?8",
+    ).bind(id, text.id, filename, key, got.type, size, nowIso(), lim.maxFiguresPerText, width, height).run();
     if (res.meta.changes !== 1) throw E.conflict(`A text can hold at most ${lim.maxFiguresPerText} figures.`, "figure_limit_reached");
   } catch (error) {
     await c.env.FILES.delete(key).catch(() => undefined);
@@ -140,7 +148,7 @@ uploadRoutes.post("/:id/figures", async (c) => {
 
 uploadRoutes.get("/:id/figures", async (c) => {
   const { text } = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
-  const rows = await c.env.DB.prepare("SELECT id, filename, image_type, bytes, created_at FROM figures WHERE text_id = ?1 ORDER BY created_at, rowid").bind(text.id).all();
+  const rows = await c.env.DB.prepare("SELECT id, filename, image_type, bytes, width, height, created_at FROM figures WHERE text_id = ?1 ORDER BY created_at, rowid").bind(text.id).all();
   return c.json({ figures: rows.results });
 });
 

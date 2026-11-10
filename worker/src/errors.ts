@@ -5,6 +5,8 @@ export interface AppErrorInit {
   status: number;
   retryable?: boolean;
   headers?: Record<string, string>;
+  /** Gateway request id, for support correlation only. */
+  gatewayRequestId?: string;
 }
 
 export class AppError extends Error {
@@ -12,12 +14,14 @@ export class AppError extends Error {
   readonly status: number;
   readonly retryable: boolean;
   readonly headers: Record<string, string>;
+  readonly gatewayRequestId: string | undefined;
   constructor(init: AppErrorInit) {
     super(init.message);
     this.code = init.code;
     this.status = init.status;
     this.retryable = init.retryable ?? false;
     this.headers = init.headers ?? {};
+    this.gatewayRequestId = init.gatewayRequestId;
   }
 }
 
@@ -35,7 +39,7 @@ export const E = {
 
 export function errorResponse(error: AppError, requestId: string): Response {
   return Response.json(
-    { error: { code: error.code, message: error.message, requestId, retryable: error.retryable } },
+    { error: { code: error.code, message: error.message, requestId, retryable: error.retryable, ...(error.gatewayRequestId ? { gatewayRequestId: error.gatewayRequestId } : {}) } },
     {
       status: error.status,
       headers: { "cache-control": "no-store", "x-should-retry": error.retryable ? "true" : "false", ...error.headers },

@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { ALICE, BOB, CAROL, JPEG, PDF, addMember, api, call, createProject, createText, invite, json, seedPage, upload } from "./helpers";
 import { canonicalTestSubject } from "@cuny-ai-lab/cail-identity/testing";
+import { gatewayEnv } from "./gateway-stub";
+
+let gw: Awaited<ReturnType<typeof gatewayEnv>>;
+const GW = () => gw;
 
 const DAVE = canonicalTestSubject("dave");
 const EVE = canonicalTestSubject("eve");
@@ -42,7 +46,8 @@ interface Route {
   run: (ctx: Ctx, as: string) => Promise<Response>;
 }
 
-const j = (path: string, as: string, method = "GET", body?: unknown) => call(api(path), { as, method, ...(body === undefined ? {} : { body }) });
+const JPEG_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+const j = (path: string, as: string, method = "GET", body?: unknown) => call(api(path), { as, method, ...(body === undefined ? {} : { body }), env: GW() });
 
 // Every project- or text-scoped route the app exposes. A route added without a row
 // here fails the route-coverage test below.
@@ -76,6 +81,16 @@ const ROUTES: Route[] = [
   { name: "GET /texts/:id/figures", min: "viewer", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/figures`, as) },
   { name: "GET /texts/:id/figures/:figureId", min: "viewer", ok: 200, run: ({ htextId, figureId }, as) => j(`/texts/${htextId}/figures/${figureId}`, as) },
   { name: "DELETE /texts/:id/figures/:figureId", min: "editor", ok: 200, run: ({ htextId, figureId }, as) => j(`/texts/${htextId}/figures/${figureId}`, as, "DELETE") },
+  { name: "POST /texts/:id/pages/:pageId/ocr", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/${pageId}/ocr`, as, "POST", { overwrite: true }) },
+  { name: "POST /texts/:id/parse-page", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/parse-page`, as, "POST", { image: JPEG_URI, page_number: 1 }) },
+  { name: "POST /texts/:id/html/cleanup", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/html/cleanup`, as, "POST", { html: "<section data-page=\"1\"><p>x</p></section>" }) },
+  { name: "GET /texts/:id/summary", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/summary`, as) },
+  { name: "PUT /texts/:id/summary", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/summary`, as, "PUT", { summary: "s" }) },
+  { name: "POST /texts/:id/summary", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/summary`, as, "POST", {}) },
+  { name: "POST /texts/:id/translate-chunk", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/translate-chunk`, as, "POST", { text: "hola", source_language: "es", target_language: "en" }) },
+  { name: "GET /texts/:id/translation", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/translation`, as) },
+  { name: "PUT /texts/:id/translation", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/translation`, as, "PUT", { translation: "hello" }) },
+  { name: "POST /texts/:id/formula-repair", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/formula-repair`, as, "POST", { formulas: ["x^{2"] }) },
   { name: "GET /texts/:id/result", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/result`, as) },
   { name: "GET /texts/:id/compiled", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/compiled`, as) },
   { name: "POST /texts/:id/save", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/save`, as, "POST", { text: "# compiled" }) },
@@ -91,6 +106,17 @@ const ROUTES: Route[] = [
   { name: "POST /texts/:id/versions/:versionId/revert", min: "editor", ok: 200, run: ({ textId, pageVersionId }, as) => j(`/texts/${textId}/versions/${pageVersionId}/revert`, as, "POST") },
   { name: "POST /texts/:id/split", min: "editor", ok: 201, run: ({ textId }, as) => j(`/texts/${textId}/split`, as, "POST", { splits: [{ name: "A", pages: [1] }, { name: "B", pages: [] }].map((s, i) => (i === 0 ? s : { name: "B", pages: [9] })) }) },
 ];
+
+beforeAll(async () => {
+  gw = await gatewayEnv({
+    chat: (body) => {
+      const system = JSON.stringify(body.messages[0]);
+      if (system.includes("repair TeX")) return { text: '["x^{2}"]' };
+      if (system.includes("semantic HTML")) return { text: '<section data-page="1"><p>hello world, long enough to count here</p></section>' };
+      return { text: "A fine reply." };
+    },
+  });
+});
 
 describe("authorization matrix: owner / editor / viewer / stranger x every project route", () => {
   for (const route of ROUTES) {

@@ -144,6 +144,8 @@ export function safeImgSrc(raw: string): string | null {
 }
 
 function cleanAttr(tag: string, isMath: boolean, name: string, value: string): string | null {
+  // The one data-* attribute the page pipeline relies on: <section data-page="N">.
+  if (name === "data-page") return tag === "section" && DIGITS.test(value) ? value : null;
   if (name.startsWith("on") || name === "style" || name.startsWith("data-") || name.startsWith("xlink") || name.includes(":") && name !== "xmlns") return null;
   const allowedHere = GLOBAL_ATTRS.has(name) || TAG_ATTRS[tag]?.has(name) || (isMath && MATH_ATTRS.has(name));
   if (!allowedHere) return null;
