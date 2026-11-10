@@ -58,8 +58,8 @@ export interface Received<T> {
   release: () => Promise<void>;
 }
 
-export async function receive<T>(env: Env, request: Request, ownerSubject: string, size: number, sniff: (b: Uint8Array) => T | null): Promise<Received<T>> {
-  const reservation = await reserveStorage(env, ownerSubject, size); // before reading a single byte
+export async function receive<T>(env: Env, request: Request, projectId: string, size: number, sniff: (b: Uint8Array) => T | null): Promise<Received<T>> {
+  const reservation = await reserveStorage(env, projectId, size); // before reading a single byte, on the project's owner
   const release = () => releaseReservation(env.DB, reservation);
   try {
     const bytes = await readBoundedBytes(request, size);

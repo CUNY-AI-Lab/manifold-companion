@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { requireTextRole, type Access } from "../authz";
 import { readJsonObject, optionalString } from "../body";
-import { byteLength, CAPS, getContent, prepareHtml, reindexText, touchProject, writeContent, writePageText, ownerOf, type TextRow } from "../content";
+import { byteLength, CAPS, getContent, prepareHtml, reindexText, touchProject, writeContent, writePageText, type TextRow } from "../content";
 import { limits } from "../env";
 import { E } from "../errors";
 import { deleteTextObjects, splitText } from "../text-ops";
@@ -151,7 +151,7 @@ textRoutes.post("/:id/pages/:pageId", async (c) => {
 textRoutes.delete("/:id/pages/:pageId", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
   const page = await loadPage(c.env.DB, ctx.text.id, c.req.param("pageId") as string);
-  if (!(await deleteRowAndRelease(c.env.DB, ownerOf(ctx.project), "pages", page.id, "image_bytes"))) throw E.notFound("Page not found.");
+  if (!(await deleteRowAndRelease(c.env.DB, ctx.project.id, "pages", page.id, "image_bytes"))) throw E.notFound("Page not found.");
   if (page.image_key) await c.env.FILES.delete(page.image_key).catch(() => undefined);
   await touchProject(c.env.DB, ctx.project.id);
   await reindexText(c.env, ctx.text.id);

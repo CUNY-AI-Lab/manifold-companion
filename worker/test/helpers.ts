@@ -164,3 +164,101 @@ export function upload(path: string, bytes: Uint8Array, as: string = ALICE, opts
   const q = new URLSearchParams({ size: String(bytes.byteLength), ...(opts.query ?? {}) });
   return call(`${path}${path.includes("?") ? "&" : "?"}${q}`, { method: opts.method ?? "POST", as, body: bytes, ...(opts.env ? { env: opts.env } : {}) });
 }
+
+/**
+ * DESIGN 6's invariant, checked against the database as it is now: for every
+ * person, the counter equals the bytes their owned projects' rows account for
+ * plus their reservations. Returns the people for whom it does not hold.
+ */
+export async function storageDrift(): Promise<{ subject: string; counter: number; owned: number; reserved: number }[]> {
+  const { env: e } = await import("cloudflare:workers");
+  const { projectBytesSql } = await import("../src/storage");
+  const rows = await e.DB.prepare(
+    `SELECT subject, storage_bytes AS counter,
+       (SELECT COALESCE(SUM(${projectBytesSql("own.id")}), 0) FROM projects own WHERE own.owner_subject = profiles.subject) AS owned,
+       (SELECT COALESCE(SUM(r.bytes), 0) FROM storage_reservations r WHERE r.subject = profiles.subject) AS reserved
+     FROM profiles`,
+  ).all<{ subject: string; counter: number; owned: number; reserved: number }>();
+  return rows.results.filter((r) => r.counter !== r.owned + r.reserved);
+}
+
+/** R2 keys the rows point at, and objects nothing points at (outside a tombstoned prefix). */
+export async function objectDrift(): Promise<{ dangling: string[]; orphans: string[] }> {
+  const { env: e } = await import("cloudflare:workers");
+  const refs = await e.DB.prepare(
+    `SELECT image_key AS k FROM pages WHERE image_key IS NOT NULL UNION ALL SELECT image_key FROM figures UNION ALL SELECT r2_key FROM text_versions
+     UNION ALL SELECT html_key FROM texts WHERE html_key IS NOT NULL UNION ALL SELECT compiled_key FROM texts WHERE compiled_key IS NOT NULL
+     UNION ALL SELECT translation_key FROM texts WHERE translation_key IS NOT NULL UNION ALL SELECT source_pdf_key FROM texts WHERE source_pdf_key IS NOT NULL`,
+  ).all<{ k: string }>();
+  const referenced = new Set(refs.results.map((r) => r.k));
+  const stored = new Set<string>();
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await e.FILES.list({ limit: 1000, cursor });
+    for (const o of page.objects) stored.add(o.key);
+    if (!page.truncated) break;
+    cursor = page.cursor;
+  }
+  return { dangling: [...referenced].filter((k) => !stored.has(k)), orphans: [...stored].filter((k) => !referenced.has(k)) };
+}
+
+/**
+ * Start an upload whose body is held back until `open()` is called, so a test
+ * can act while the Worker has reserved quota and is still reading the bytes.
+ * `reserved` resolves once the reservation row exists.
+ */
+export async function gatedUpload(path: string, bytes: Uint8Array, as: string = ALICE, opts: { query?: Record<string, string>; env?: Env } = {}) {
+  const { env: e } = await import("cloudflare:workers");
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => (open = resolve));
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      await gate;
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+  const before = (await e.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations").first<{ n: number }>())!.n;
+  const q = new URLSearchParams({ size: String(bytes.byteLength), filename: "gated.jpg", ...(opts.query ?? {}) });
+  const headers = { ...(await legs(as)), origin: ORIGIN, "content-type": "application/octet-stream" };
+  const request = new Request(`${ORIGIN}${path}?${q}`, { method: "POST", headers, body, duplex: "half" } as RequestInit);
+  const done = app.fetch(request, opts.env ?? (await makeEnv()));
+  const reserved = (async () => {
+    for (let i = 0; i < 500; i += 1) {
+      const n = (await e.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations").first<{ n: number }>())!.n;
+      if (n > before) return;
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    throw new Error("the upload never reserved quota");
+  })();
+  return { open, done: done as Promise<Response>, reserved };
+}
+
+/**
+ * A D1 binding that runs `hook` once, right after the first read whose SQL
+ * matches `match` has returned: a deterministic way to put another request
+ * between two steps of the one under test.
+ */
+export function hookedDb(real: D1Database, match: RegExp, hook: () => Promise<unknown>): D1Database {
+  let fired = false;
+  const fire = async () => {
+    if (fired) return;
+    fired = true;
+    await hook();
+  };
+  const wrap = (stmt: D1PreparedStatement): D1PreparedStatement =>
+    ({
+      bind: (...values: unknown[]) => wrap(stmt.bind(...values)),
+      first: async (col?: string) => { const r = await (col === undefined ? stmt.first() : stmt.first(col)); await fire(); return r; },
+      all: async () => { const r = await stmt.all(); await fire(); return r; },
+      run: async () => { const r = await stmt.run(); await fire(); return r; },
+      raw: (o?: unknown) => (stmt.raw as (o?: unknown) => unknown)(o),
+    }) as unknown as D1PreparedStatement;
+  return {
+    prepare: (sql: string) => (!fired && match.test(sql) ? wrap(real.prepare(sql)) : real.prepare(sql)),
+    batch: (s: D1PreparedStatement[]) => real.batch(s),
+    exec: (s: string) => real.exec(s),
+    withSession: (...a: unknown[]) => (real as unknown as { withSession: (...x: unknown[]) => unknown }).withSession(...a),
+    dump: () => real.dump(),
+  } as unknown as D1Database;
+}

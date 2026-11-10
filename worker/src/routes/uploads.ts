@@ -3,7 +3,7 @@
 // images. Nothing here processes images or PDFs.
 import { Hono } from "hono";
 import { requireTextRole } from "../authz";
-import { ownerOf, reindexText, touchProject } from "../content";
+import { reindexText, touchProject } from "../content";
 import { limits } from "../env";
 import { E } from "../errors";
 import { serveBody } from "../files";
@@ -33,7 +33,7 @@ uploadRoutes.post("/:id/pages", async (c) => {
   const count = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?1").bind(project.id).first<{ n: number }>();
   if ((count?.n ?? 0) >= lim.maxProjectPages) throw E.conflict(`A project can hold at most ${lim.maxProjectPages} pages.`, "page_limit_reached");
 
-  const got = await receive(c.env, c.req.raw, ownerOf(project), size, sniffImage);
+  const got = await receive(c.env, c.req.raw, project.id, size, sniffImage);
   const pageId = newId();
   const key = pageImageKey(project.id, text.id, pageId);
   try {
@@ -81,7 +81,7 @@ uploadRoutes.put("/:id/source-pdf", async (c) => {
   const replace = c.req.query("replace") === "1";
   if (text.source_pdf_key && !replace) throw E.conflict("This text already has a source PDF. Send ?replace=1 to replace it.", "pdf_exists");
 
-  const got = await receive(c.env, c.req.raw, ownerOf(project), size, (b) => (sniffPdf(b) ? ("application/pdf" as const) : null));
+  const got = await receive(c.env, c.req.raw, project.id, size, (b) => (sniffPdf(b) ? ("application/pdf" as const) : null));
   const key = sourcePdfRevisionKey(project.id, text.id, newId());
   try {
     await c.env.FILES.put(key, got.bytes, { httpMetadata: { contentType: "application/pdf" } });
@@ -92,7 +92,7 @@ uploadRoutes.put("/:id/source-pdf", async (c) => {
         `UPDATE texts SET source_pdf_key = ?1, source_pdf_bytes = ?2, source_pdf_name = ?3, updated_at = ?4 WHERE id = ?5 AND source_pdf_key IS ?6`,
       ).bind(key, size, filename, nowIso(), text.id, text.source_pdf_key),
       ...commitReservation(c.env.DB, got.reservation, "EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND source_pdf_key = ?3)", text.id, key),
-      ...(text.source_pdf_key ? releaseStatement(c.env.DB, ownerOf(project), text.source_pdf_bytes, swapped, text.id, key) : []),
+      ...(text.source_pdf_key ? releaseStatement(c.env.DB, project.id, text.source_pdf_bytes, swapped, text.id, key) : []),
     ]);
     if (res?.meta.changes !== 1) throw E.conflict("The source PDF was changed by someone else. Reload and try again.", "edit_conflict");
   } catch (error) {
@@ -132,7 +132,7 @@ uploadRoutes.post("/:id/figures", async (c) => {
   };
   const width = dim("width");
   const height = dim("height");
-  const got = await receive(c.env, c.req.raw, ownerOf(project), size, sniffImage);
+  const got = await receive(c.env, c.req.raw, project.id, size, sniffImage);
   const id = newId();
   const key = figureKey(project.id, text.id, id);
   try {
@@ -177,7 +177,7 @@ uploadRoutes.delete("/:id/figures/:figureId", async (c) => {
   const fig = isUuid(fid) ? await c.env.DB.prepare("SELECT id, image_key FROM figures WHERE id = ?1 AND text_id = ?2").bind(fid, text.id).first<{ id: string; image_key: string }>() : null;
   if (!fig) throw E.notFound("Figure not found.");
   // Only the request whose DELETE removes the row releases the bytes (one atomic batch).
-  if (!(await deleteRowAndRelease(c.env.DB, ownerOf(project), "figures", fig.id, "bytes"))) throw E.notFound("Figure not found.");
+  if (!(await deleteRowAndRelease(c.env.DB, project.id, "figures", fig.id, "bytes"))) throw E.notFound("Figure not found.");
   await c.env.FILES.delete(fig.image_key).catch(() => undefined);
   await touchProject(c.env.DB, project.id);
   await reindexText(c.env, text.id);

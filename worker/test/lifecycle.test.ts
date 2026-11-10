@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { ALICE, BOB, CAROL, addMember, api, call, createProject, invite, json, makeEnv, redeem } from "./helpers";
 import { runRetentionSweep } from "../src/retention";
-import { deleteProject, processCleanup, projectStorageBytes, releaseStorage, reserveStorage, TOMBSTONE_KEEP_MS } from "../src/storage";
+import { deleteProject, processCleanup, projectStorageBytes, releaseReservation, reserveStorage, TOMBSTONE_KEEP_MS } from "../src/storage";
 import { htmlKey, pageImageKey, projectPrefix, sourcePdfKey, versionKey } from "../src/r2-keys";
 import { addDays, newId, nowIso } from "../src/util";
 import indexModule from "../src/index";
@@ -162,22 +162,29 @@ describe("delete my data", () => {
 
 describe("storage quota counter", () => {
   it("enforces the per-person quota atomically", async () => {
-    await createProject(ALICE);
+    const pid = await createProject(ALICE);
+    const bobs = await createProject(BOB);
     const small = await makeEnv({ STORAGE_QUOTA_BYTES: "1000" });
-    await reserveStorage(small, ALICE, 600);
-    await expect(reserveStorage(small, ALICE, 401)).rejects.toMatchObject({ code: "storage_quota_exceeded", status: 413 });
-    await reserveStorage(small, ALICE, 400);
+    const first = await reserveStorage(small, pid, 600);
+    await expect(reserveStorage(small, pid, 401)).rejects.toMatchObject({ code: "storage_quota_exceeded", status: 413 });
+    const second = await reserveStorage(small, pid, 400);
     expect(await storage(ALICE)).toBe(1000);
-    const concurrent = await Promise.allSettled([reserveStorage(small, BOB, 1), releaseStorage(env.DB, ALICE, 500)]);
+    const concurrent = await Promise.allSettled([reserveStorage(small, bobs, 1), releaseReservation(env.DB, first)]);
     expect(concurrent[1]!.status).toBe("fulfilled");
-    await releaseStorage(env.DB, ALICE, 10_000);
-    expect(await storage(ALICE)).toBe(0); // never negative
+    expect(await storage(ALICE)).toBe(400);
+    // Released twice, or after the counter was corrected below it: never negative.
+    await env.DB.prepare("UPDATE profiles SET storage_bytes = 100 WHERE subject = ?1").bind(ALICE).run();
+    await releaseReservation(env.DB, second);
+    await releaseReservation(env.DB, second);
+    expect(await storage(ALICE)).toBe(0);
+    // A project that no longer exists has no owner to reserve on.
+    await expect(reserveStorage(small, crypto.randomUUID(), 1)).rejects.toMatchObject({ status: 404 });
   });
 
   it("racing reservations cannot jointly overshoot", async () => {
-    await createProject(ALICE);
+    const pid = await createProject(ALICE);
     const small = await makeEnv({ STORAGE_QUOTA_BYTES: "1000" });
-    const results = await Promise.allSettled(Array.from({ length: 6 }, () => reserveStorage(small, ALICE, 300)));
+    const results = await Promise.allSettled(Array.from({ length: 6 }, () => reserveStorage(small, pid, 300)));
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(3);
     expect(await storage(ALICE)).toBe(900);
   });
@@ -349,17 +356,19 @@ describe("storage reservations and the recount", () => {
   it("a recount during an upload keeps its reservation; an abandoned one expires; genuine drift is fixed", async () => {
     const { ALICE, BOB, CAROL, JPEG, api, createProject, createText, storageOf, upload } = await import("./helpers");
     const { recountStorage, reserveStorage: reserve, RESERVATION_TTL_MS } = await import("../src/storage");
+    const own: Record<string, string> = {};
     for (const who of [ALICE, BOB, CAROL]) {
       const p = await createProject(who, "Mine");
+      own[who] = p;
       const t = await createText(who, p);
       await upload(api(`/texts/${t}/pages`), JPEG(300), who, { query: { filename: "a.jpg" } });
     }
     const truth = { alice: await storageOf(ALICE), bob: await storageOf(BOB), carol: await storageOf(CAROL) };
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_reservations").first<{ n: number }>()).toEqual({ n: 0 }); // committed uploads leave none
     // Bob has an upload in flight: its reservation is live.
-    await reserve(await makeEnv(), BOB, 5000);
+    await reserve(await makeEnv(), own[BOB]!, 5000);
     // Carol's Worker died mid-upload an hour ago: an expired reservation.
-    const stale = await reserve(await makeEnv(), CAROL, 4000);
+    const stale = await reserve(await makeEnv(), own[CAROL]!, 4000);
     await env.DB.prepare("UPDATE storage_reservations SET expires_at = '2000-01-01T00:00:00Z' WHERE id = ?1").bind(stale!.id).run();
     // Alice's counter drifted with no reservation at all.
     await env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + 777 WHERE subject = ?1").bind(ALICE).run();

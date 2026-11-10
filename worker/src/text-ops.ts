@@ -2,11 +2,11 @@
 // (each costs 2 subrequests against the 1000/invocation budget), so the page
 // count of one operation is capped well below it.
 import type { ProjectRow } from "./authz";
-import { reindexText, touchProject, ownerOf } from "./content";
+import { reindexText, touchProject } from "./content";
 import { limits, type Env } from "./env";
 import { E } from "./errors";
 import { pageImageKey, textPrefix } from "./r2-keys";
-import { commitReservation, releaseReservation, reserveStorage, sweepTombstone, textBytesSql } from "./storage";
+import { commitReservation, ownerSql, releaseReservation, reserveStorage, sweepTombstone, textBytesSql } from "./storage";
 import { newId, nowIso } from "./util";
 
 export const MAX_PAGES_PER_COPY_OP = 300;
@@ -33,7 +33,7 @@ export async function textStorageBytes(db: D1Database, textId: string): Promise<
 export async function deleteTextObjects(env: Env, project: ProjectRow, textId: string): Promise<boolean> {
   const prefix = textPrefix(project.id, textId);
   const [, , del] = await env.DB.batch([
-    env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${textBytesSql("?1")}) WHERE subject = ?2 AND EXISTS (SELECT 1 FROM texts WHERE id = ?1 AND project_id = ?3)`).bind(textId, ownerOf(project), project.id),
+    env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${textBytesSql("?1")}) WHERE subject = ${ownerSql("?2")} AND EXISTS (SELECT 1 FROM texts WHERE id = ?1 AND project_id = ?2)`).bind(textId, project.id),
     env.DB.prepare("INSERT OR IGNORE INTO r2_cleanup (prefix, created_at) SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?3 AND project_id = ?4)").bind(prefix, nowIso(), textId, project.id),
     env.DB.prepare("DELETE FROM texts WHERE id = ?1 AND project_id = ?2").bind(textId, project.id), // cascades; FTS row by trigger
   ]);
@@ -69,8 +69,7 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
   const textCount = await env.DB.prepare("SELECT COUNT(*) AS n FROM texts WHERE project_id = ?1").bind(project.id).first<{ n: number }>();
   if ((textCount?.n ?? 0) + targets.length > limits(env).maxTextsPerProject) throw E.conflict(`A project can hold at most ${limits(env).maxTextsPerProject} texts.`, "text_limit_reached");
   const need = all.reduce((n, p) => n + p.src.image_bytes, 0);
-  const owner = ownerOf(project);
-  const reservation = need > 0 ? await reserveStorage(env, owner, need) : null;
+  const reservation = need > 0 ? await reserveStorage(env, project.id, need) : null;
   const created: { id: string; name: string }[] = [];
   const pageIds: string[] = [];
   const writtenKeys: string[] = [];

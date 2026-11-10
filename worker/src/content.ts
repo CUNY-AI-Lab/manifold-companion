@@ -4,7 +4,7 @@
 import { E } from "./errors";
 import { limits, type Env } from "./env";
 import { contentKey, pageVersionKey, type ContentKind } from "./r2-keys";
-import { commitReservation, releaseReservation, releaseStatement, reserveStorage } from "./storage";
+import { commitReservation, ownerSql, releaseReservation, releaseStatement, reserveStorage } from "./storage";
 import { htmlToPlainText, sanitizeHtml, MAX_SANITIZE_INPUT_CHARS } from "./sanitize/html";
 import { newId, nowIso } from "./util";
 import { ensureSearchIndex } from "./search";
@@ -68,8 +68,9 @@ export async function touchProject(db: D1Database, projectId: string, now = nowI
   await db.prepare("UPDATE projects SET last_edited_at = ?1, updated_at = ?1, retention_warned_at = NULL WHERE id = ?2").bind(now, projectId).run();
 }
 
-/** Owner of the project pays for storage (editor uploads count against the owner). */
-export const ownerOf = (project: ProjectRow): string => project.owner_subject;
+// The owner of the project pays for storage (editor uploads count against the
+// owner). Counter changes name the owner in SQL (storage.ts ownerSql), never
+// from the project row read at authorization: a transfer can land in between.
 
 // ---- search text ----------------------------------------------------------
 
@@ -120,16 +121,16 @@ export async function pruneVersions(env: Env, project: ProjectRow, textId: strin
       "SELECT id, r2_key, bytes FROM text_versions WHERE text_id = ?1 AND content_type = ?2 ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?3",
     ).bind(textId, contentType, CAPS.maxVersions).all<{ id: string; r2_key: string; bytes: number }>();
   if (old.results.length === 0) return;
-  const owner = ownerOf(project);
   for (let i = 0; i < old.results.length; i += 80) {
     const chunk = old.results.slice(i, i + 80);
     const marks = chunk.map((_, n) => `?${n + 2}`).join(",");
     const ids = chunk.map((c) => c.id);
     // One transaction: the release is computed from the rows that still exist, so a
-    // concurrent prune that already removed them releases nothing the second time.
+    // concurrent prune that already removed them releases nothing the second time,
+    // and goes to the project's owner as of this transaction.
     await env.DB.batch([
-      env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - COALESCE((SELECT SUM(bytes) FROM text_versions WHERE id IN (${marks}) AND text_id = ?${chunk.length + 2}), 0)) WHERE subject = ?1`).bind(owner, ...ids, textId),
-      env.DB.prepare(`DELETE FROM text_versions WHERE id IN (${marks}) AND text_id = ?${chunk.length + 2}`).bind(owner, ...ids, textId),
+      env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - COALESCE((SELECT SUM(bytes) FROM text_versions WHERE id IN (${marks}) AND text_id = ?${chunk.length + 2}), 0)) WHERE subject = ${ownerSql("?1")}`).bind(project.id, ...ids, textId),
+      env.DB.prepare(`DELETE FROM text_versions WHERE id IN (${marks}) AND text_id = ?${chunk.length + 2}`).bind(project.id, ...ids, textId),
     ]);
     await env.FILES.delete(chunk.map((c) => c.r2_key)).catch(() => undefined); // an orphan is swept with the project
   }
@@ -164,8 +165,7 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
   const oldBytes = text[cols.bytes] as number;
   const versioned = cols.versioned && oldKey !== null && oldBytes > 0;
   const net = bytes - (versioned ? 0 : oldKey ? oldBytes : 0);
-  const owner = ownerOf(project);
-  const reservation = net > 0 ? await reserveStorage(env, owner, net) : null;
+  const reservation = net > 0 ? await reserveStorage(env, project.id, net) : null;
 
   const revision = newId();
   const newKey = contentKey(project.id, text.id, kind, revision);
@@ -193,7 +193,7 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
     // commit the reservation, or give back the bytes the smaller content no longer needs.
     const swapped = `EXISTS (SELECT 1 FROM texts WHERE id = ?3 AND ${cols.key} = ?4)`;
     statements.push(...commitReservation(env.DB, reservation, `EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND ${cols.key} = ?3)`, text.id, newKey));
-    if (net < 0) statements.push(...releaseStatement(env.DB, owner, -net, swapped, text.id, newKey));
+    if (net < 0) statements.push(...releaseStatement(env.DB, project.id, -net, swapped, text.id, newKey));
     const results = await env.DB.batch(statements);
     if (results[swapAt]?.meta.changes !== 1) throw E.conflict("This text was changed by someone else. Reload and try again.", "edit_conflict");
   } catch (error) {
@@ -225,10 +225,9 @@ export function prepareHtml(raw: unknown): string {
 export async function writePageText(env: Env, project: ProjectRow, textId: string, page: { id: string; filename: string; ocr_text: string | null }, newText: string, authorSubject: string, ocrModel?: string, reason: VersionReason = ocrModel ? "ocr" : "save"): Promise<void> {
   if (byteLength(newText) > CAPS.pageOcrBytes) throw E.tooLarge(`Page text is larger than ${CAPS.pageOcrBytes} bytes.`, "page_text_too_large");
   const old = page.ocr_text;
-  const owner = ownerOf(project);
   const snapshot = old !== null && old !== "" && old !== newText;
   const snapBytes = snapshot ? byteLength(old as string) : 0;
-  const reservation = snapBytes > 0 ? await reserveStorage(env, owner, snapBytes) : null;
+  const reservation = snapBytes > 0 ? await reserveStorage(env, project.id, snapBytes) : null;
   const now = nowIso();
   const vKey = snapshot ? pageVersionKey(project.id, textId, newId()) : null;
   const versionId = newId();

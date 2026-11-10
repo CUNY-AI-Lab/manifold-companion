@@ -20,14 +20,22 @@ export const projectBytesSql = (id: string): string =>
   + COALESCE((SELECT SUM(f.bytes) FROM figures f JOIN texts t ON t.id = f.text_id WHERE t.project_id = ${id}), 0))`;
 
 /**
- * Delete one row and release `bytesSql` of the owner's quota in ONE atomic batch.
- * The release statement runs first and only if the row still exists, so a second
- * concurrent delete of the same row releases nothing. Returns whether THIS call
- * removed the row.
+ * The subject a counter change for project `?n` applies to: its owner as the
+ * transaction sees it, never an owner read earlier in the request. Ownership
+ * can move between a request's authorization and its writes (a transfer
+ * accepted meanwhile), and the bytes belong to whoever owns the rows now.
  */
-export async function deleteRowAndRelease(db: D1Database, owner: string, table: "pages" | "figures", id: string, bytesColumn: string): Promise<boolean> {
+export const ownerSql = (placeholder: string): string => `(SELECT owner_subject FROM projects WHERE id = ${placeholder})`;
+
+/**
+ * Delete one row of project `projectId` and release its bytes from the
+ * project's current owner in ONE atomic batch. The release statement runs first
+ * and only if the row still exists, so a second concurrent delete of the same
+ * row releases nothing. Returns whether THIS call removed the row.
+ */
+export async function deleteRowAndRelease(db: D1Database, projectId: string, table: "pages" | "figures", id: string, bytesColumn: string): Promise<boolean> {
   const [, del] = await db.batch([
-    db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - COALESCE((SELECT ${bytesColumn} FROM ${table} WHERE id = ?1), 0)) WHERE subject = ?2 AND EXISTS (SELECT 1 FROM ${table} WHERE id = ?1)`).bind(id, owner),
+    db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - COALESCE((SELECT ${bytesColumn} FROM ${table} WHERE id = ?1), 0)) WHERE subject = ${ownerSql("?2")} AND EXISTS (SELECT 1 FROM ${table} WHERE id = ?1)`).bind(id, projectId),
     db.prepare(`DELETE FROM ${table} WHERE id = ?1`).bind(id),
   ]);
   return (del?.meta.changes ?? 0) > 0;
@@ -64,29 +72,44 @@ export async function projectStorageBytes(db: D1Database, projectId: string): Pr
 /** A reservation outlives the longest possible request; one abandoned by an interrupted Worker then expires. */
 export const RESERVATION_TTL_MS = 60 * 60 * 1000;
 
-/** Quota held for bytes not yet recorded in a row. Commit it in the batch that writes the row; release it otherwise. */
-export interface Reservation { id: string; owner: string; bytes: number }
+/**
+ * Quota held for bytes of one project not yet recorded in a row. Commit it in
+ * the batch that writes the row; release it otherwise. The row in
+ * `storage_reservations` says whose counter holds it (`subject`, the project's
+ * owner, moved by an ownership transfer) and for which project.
+ */
+export interface Reservation { id: string; projectId: string; bytes: number }
+
+/** Bytes reserved for project `?n` and not yet in its rows: part of what a transfer moves. */
+export const projectReservedSql = (placeholder: string): string =>
+  `COALESCE((SELECT SUM(bytes) FROM storage_reservations WHERE project_id = ${placeholder} AND subject = ${ownerSql(placeholder)}), 0)`;
 
 /**
- * Reserve `bytes` on the OWNER's counter, refusing if it would pass the quota.
- * One transaction: the reservation row is inserted only if the bytes fit, and
- * the counter rises only if THIS reservation row exists. Concurrent
- * reservations are serialized by D1, so they cannot jointly overshoot.
+ * Reserve `bytes` for project `projectId` on its owner's counter (the owner as
+ * this transaction sees it), refusing if it would pass the quota. One
+ * transaction: the reservation row is inserted only if the bytes fit, and the
+ * counter rises only if THIS reservation row exists. Concurrent reservations
+ * are serialized by D1, so they cannot jointly overshoot.
  */
-export async function reserveStorage(env: Env, ownerSubject: string, bytes: number): Promise<Reservation | null> {
+export async function reserveStorage(env: Env, projectId: string, bytes: number): Promise<Reservation | null> {
   if (bytes <= 0) return null;
   const quota = limits(env).storageQuotaBytes;
   const id = newId();
   const now = Date.now();
   const [inserted] = await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO storage_reservations (id, subject, bytes, created_at, expires_at)
-       SELECT ?1, ?2, ?3, ?4, ?5 WHERE (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ?3 <= ?6`,
-    ).bind(id, ownerSubject, bytes, nowIso(now), nowIso(now + RESERVATION_TTL_MS), quota),
-    env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + ?2 WHERE subject = ?3 AND EXISTS (SELECT 1 FROM storage_reservations WHERE id = ?1)").bind(id, bytes, ownerSubject),
+      `INSERT INTO storage_reservations (id, subject, project_id, bytes, created_at, expires_at)
+       SELECT ?1, pr.owner_subject, pr.id, ?3, ?4, ?5 FROM projects pr JOIN profiles pf ON pf.subject = pr.owner_subject
+       WHERE pr.id = ?2 AND pf.storage_bytes + ?3 <= ?6`,
+    ).bind(id, projectId, bytes, nowIso(now), nowIso(now + RESERVATION_TTL_MS), quota),
+    env.DB.prepare("UPDATE profiles SET storage_bytes = storage_bytes + ?2 WHERE subject = (SELECT subject FROM storage_reservations WHERE id = ?1)").bind(id, bytes),
   ]);
-  if (inserted?.meta.changes !== 1) throw E.quota("This would exceed the storage allowance for this project's owner.");
-  return { id, owner: ownerSubject, bytes };
+  if (inserted?.meta.changes !== 1) {
+    const exists = await env.DB.prepare("SELECT 1 AS x FROM projects WHERE id = ?1").bind(projectId).first();
+    if (!exists) throw E.notFound("Project not found.");
+    throw E.quota("This would exceed the storage allowance for this project's owner.");
+  }
+  return { id, projectId, bytes };
 }
 
 /**
@@ -100,24 +123,27 @@ export function commitReservation(db: D1Database, r: Reservation | null, rowExis
   return [db.prepare(`DELETE FROM storage_reservations WHERE id = ?1 AND ${rowExistsSql}`).bind(r.id, ...binds)];
 }
 
-/** Give a reservation back: the counter drops only if the reservation still exists, once. */
+/**
+ * Give a reservation back: the counter that holds it (the reservation's
+ * subject, which a transfer may have moved) drops only if the reservation still
+ * exists, once.
+ */
 export async function releaseReservation(db: D1Database, r: Reservation | null): Promise<void> {
   if (!r) return;
   await db.batch([
-    db.prepare("UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?2) WHERE subject = ?3 AND EXISTS (SELECT 1 FROM storage_reservations WHERE id = ?1)").bind(r.id, r.bytes, r.owner),
+    db.prepare("UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?2) WHERE subject = (SELECT subject FROM storage_reservations WHERE id = ?1)").bind(r.id, r.bytes),
     db.prepare("DELETE FROM storage_reservations WHERE id = ?1").bind(r.id),
   ]);
 }
 
-/** Lower a counter by bytes that rows no longer account for, as a statement for the batch that changed the rows. */
-export function releaseStatement(db: D1Database, ownerSubject: string, bytes: number, whenSql: string, ...binds: unknown[]): D1PreparedStatement[] {
+/**
+ * Lower the counter of project `projectId`'s current owner by bytes that rows
+ * no longer account for, as a statement for the batch that changed the rows.
+ * Placeholders in `whenSql` start at ?3.
+ */
+export function releaseStatement(db: D1Database, projectId: string, bytes: number, whenSql: string, ...binds: unknown[]): D1PreparedStatement[] {
   if (bytes <= 0) return [];
-  return [db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?1) WHERE subject = ?2 AND ${whenSql}`).bind(bytes, ownerSubject, ...binds)];
-}
-
-export async function releaseStorage(db: D1Database, ownerSubject: string, bytes: number): Promise<void> {
-  if (bytes <= 0) return;
-  await db.prepare("UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?1) WHERE subject = ?2").bind(bytes, ownerSubject).run();
+  return [db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ?1) WHERE subject = ${ownerSql("?2")} AND ${whenSql}`).bind(bytes, projectId, ...binds)];
 }
 
 // The recount, as fixed SQL (no runtime values in the text; `?1` is the time

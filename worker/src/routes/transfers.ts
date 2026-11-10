@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { E } from "../errors";
 import { limits } from "../env";
 import { notify } from "../notify";
-import { projectBytesSql } from "../storage";
+import { projectBytesSql, projectReservedSql } from "../storage";
 import { isUuid, newId, nowIso } from "../util";
 import type { AppEnv } from "../app";
 
@@ -46,14 +46,17 @@ transferRoutes.post("/:offerId/decline", async (c) => {
  * THIS request's nonce, so a repeated or concurrent accept (or one racing a
  * revoke) can never satisfy them:
  *   1. claim the offer (only if still unclaimed, unexpired and addressed to me),
- *      recording the nonce and the project's stored bytes measured right now;
+ *      recording the nonce and the project's bytes measured right now: what
+ *      its rows account for plus what is reserved for its uploads in flight;
  *   2. move the project's owner, only if the claim with this nonce exists, the
  *      offerer still owns it, I am still a member, the bytes fit in my storage
  *      and I am under the project limit; stamp the project with the nonce;
- *   3-6. credit me and debit the previous owner by the claimed bytes, swap the
- *      two membership roles, each only where the project carries this nonce;
- *   7. delete the claimed offer if the move happened;
- *   8. otherwise release the claim, in the same batch.
+ *   3-7. credit me and debit the previous owner by the claimed bytes, move the
+ *      project's reservations to me (so an upload in flight commits or
+ *      releases on my counter), swap the two membership roles, each only
+ *      where the project carries this nonce;
+ *   8. delete the claimed offer if the move happened;
+ *   9. otherwise release the claim, in the same batch.
  * So a claim never outlives the transaction that took it: an interrupted
  * Worker leaves no stuck claim (the whole batch commits or rolls back). As a
  * backstop, every other path (list, decline, revoke, a new offer, a later
@@ -69,7 +72,7 @@ transferRoutes.post("/:offerId/accept", async (c) => {
   const projectStamped = "(SELECT transfer_nonce FROM projects WHERE id = ?2) = ?1";
   const claimedBytes = "(SELECT claim_bytes FROM transfer_offers WHERE claim_nonce = ?1)";
   const results = await db.batch([
-    db.prepare(`UPDATE transfer_offers SET claim_nonce = ?1, claim_bytes = ${projectBytesSql("?2")}
+    db.prepare(`UPDATE transfer_offers SET claim_nonce = ?1, claim_bytes = ${projectBytesSql("?2")} + ${projectReservedSql("?2")}
                 WHERE id = ?3 AND project_id = ?2 AND to_subject = ?4 AND expires_at > ?5`).bind(nonce, offer.project_id, offer.id, subject, now),
     db.prepare(`UPDATE projects SET owner_subject = ?4, transfer_nonce = ?1, updated_at = ?7
                 WHERE id = ?2 AND owner_subject = ?3
@@ -79,6 +82,7 @@ transferRoutes.post("/:offerId/accept", async (c) => {
                   AND (SELECT COUNT(*) FROM projects WHERE owner_subject = ?4) < ?6`).bind(nonce, offer.project_id, offer.from_subject, subject, lim.storageQuotaBytes, lim.maxProjectsPerPerson, now),
     db.prepare(`UPDATE profiles SET storage_bytes = storage_bytes + ${claimedBytes} WHERE subject = ?3 AND ${projectStamped}`).bind(nonce, offer.project_id, subject),
     db.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${claimedBytes}) WHERE subject = ?3 AND ${projectStamped}`).bind(nonce, offer.project_id, offer.from_subject),
+    db.prepare(`UPDATE storage_reservations SET subject = ?4 WHERE project_id = ?2 AND subject = ?3 AND ${projectStamped}`).bind(nonce, offer.project_id, offer.from_subject, subject),
     db.prepare(`UPDATE project_members SET role = 'editor' WHERE project_id = ?2 AND subject = ?3 AND role = 'owner' AND ${projectStamped}`).bind(nonce, offer.project_id, offer.from_subject),
     db.prepare(`UPDATE project_members SET role = 'owner' WHERE project_id = ?2 AND subject = ?3 AND ${projectStamped}`).bind(nonce, offer.project_id, subject),
     db.prepare(`DELETE FROM transfer_offers WHERE claim_nonce = ?1 AND ${projectStamped}`).bind(nonce, offer.project_id),
@@ -88,7 +92,7 @@ transferRoutes.post("/:offerId/accept", async (c) => {
   if (moved?.meta.changes !== 1) {
     // The batch already released this request's claim; the offer can still be answered.
     if (claim?.meta.changes !== 1) throw E.conflict("This transfer offer was already answered or revoked.", "transfer_conflict");
-    const room = await db.prepare(`SELECT (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ${projectBytesSql("?1")} <= ?3 AS fits, (SELECT COUNT(*) FROM projects WHERE owner_subject = ?2) < ?4 AS under`).bind(offer.project_id, subject, lim.storageQuotaBytes, lim.maxProjectsPerPerson).first<{ fits: number; under: number }>();
+    const room = await db.prepare(`SELECT (SELECT storage_bytes FROM profiles WHERE subject = ?2) + ${projectBytesSql("?1")} + ${projectReservedSql("?1")} <= ?3 AS fits, (SELECT COUNT(*) FROM projects WHERE owner_subject = ?2) < ?4 AS under`).bind(offer.project_id, subject, lim.storageQuotaBytes, lim.maxProjectsPerPerson).first<{ fits: number; under: number }>();
     if (room && !room.fits) throw E.conflict("You do not have enough storage left to take over this project. Free some space, or ask the owner to remove files first.", "transfer_quota_exceeded");
     if (room && !room.under) throw E.conflict("You already own as many projects as allowed.", "transfer_project_limit");
     throw E.conflict("The project changed while transferring (the owner or your membership changed). Ask the owner for a new offer.", "transfer_conflict");
