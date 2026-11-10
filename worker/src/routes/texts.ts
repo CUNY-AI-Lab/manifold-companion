@@ -226,24 +226,29 @@ textRoutes.get("/:id/metadata", async (c) => {
   return c.json({ metadata: row ?? {} });
 });
 
+// Legacy semantics: a field left out keeps its value; null or "" clears it.
 textRoutes.post("/:id/metadata", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
-  const values: (string | null)[] = [];
+  const given: { field: (typeof DC_FIELDS)[number]; value: string | null }[] = [];
   for (const f of DC_FIELDS) {
     const v = body[f];
-    if (v === undefined || v === null || v === "") { values.push(null); continue; }
+    if (v === undefined) continue;
+    if (v === null || v === "") { given.push({ field: f, value: null }); continue; }
     if (typeof v !== "string" || v.length > 2000) throw E.badRequest(`${f} must be a string of at most 2000 characters.`);
-    values.push(v);
+    given.push({ field: f, value: v.trim() === "" ? null : v });
   }
   const now = nowIso();
-  await c.env.DB.prepare(
-    `INSERT INTO metadata (text_id, ${DC_FIELDS.join(", ")}, updated_at) VALUES (?1, ${DC_FIELDS.map((_, i) => `?${i + 2}`).join(", ")}, ?${DC_FIELDS.length + 2})
-     ON CONFLICT(text_id) DO UPDATE SET ${DC_FIELDS.map((f) => `${f} = excluded.${f}`).join(", ")}, updated_at = excluded.updated_at`,
-  ).bind(ctx.text.id, ...values, now).run();
-  await touchProject(c.env.DB, ctx.project.id, now);
-  await reindexText(c.env, ctx.text.id);
-  return c.json({ metadata: await c.env.DB.prepare("SELECT * FROM metadata WHERE text_id = ?1").bind(ctx.text.id).first() });
+  if (given.length > 0) {
+    const cols = given.map((g) => g.field);
+    await c.env.DB.prepare(
+      `INSERT INTO metadata (text_id, ${cols.join(", ")}, updated_at) VALUES (?1, ${cols.map((_, i) => `?${i + 2}`).join(", ")}, ?${cols.length + 2})
+       ON CONFLICT(text_id) DO UPDATE SET ${cols.map((f) => `${f} = excluded.${f}`).join(", ")}, updated_at = excluded.updated_at`,
+    ).bind(ctx.text.id, ...given.map((g) => g.value), now).run();
+    await touchProject(c.env.DB, ctx.project.id, now);
+    await reindexText(c.env, ctx.text.id);
+  }
+  return c.json({ metadata: (await c.env.DB.prepare("SELECT * FROM metadata WHERE text_id = ?1").bind(ctx.text.id).first()) ?? {} });
 });
 
 textRoutes.get("/:id/settings", async (c) => {

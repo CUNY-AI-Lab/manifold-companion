@@ -268,8 +268,12 @@ describe("metadata and settings", () => {
     const pid = await createProject(ALICE), tid = await createText(ALICE, pid);
     const r = await put(`/texts/${tid}/metadata`, { dc_title: "Title", dc_creator: "A", text_id: "evil", extra: "x" }, ALICE, "POST");
     expect((await json(r)).metadata).toMatchObject({ dc_title: "Title", dc_creator: "A", text_id: tid });
+    // As legacy: a field left out keeps its value; null or "" clears it.
     await put(`/texts/${tid}/metadata`, { dc_title: "Second" }, ALICE, "POST");
-    expect((await json(await call(api(`/texts/${tid}/metadata`)))).metadata).toMatchObject({ dc_title: "Second", dc_creator: null });
+    expect((await json(await call(api(`/texts/${tid}/metadata`)))).metadata).toMatchObject({ dc_title: "Second", dc_creator: "A" });
+    await put(`/texts/${tid}/metadata`, { dc_creator: "", dc_subject: null }, ALICE, "POST");
+    expect((await json(await call(api(`/texts/${tid}/metadata`)))).metadata).toMatchObject({ dc_title: "Second", dc_creator: null, dc_subject: null });
+    expect((await json(await put(`/texts/${tid}/metadata`, {}, ALICE, "POST"))).metadata).toMatchObject({ dc_title: "Second" });
     expect((await put(`/texts/${tid}/metadata`, { dc_title: "x".repeat(2001) }, ALICE, "POST")).status).toBe(400);
     expect((await put(`/texts/${tid}/metadata`, { dc_title: 5 }, ALICE, "POST")).status).toBe(400);
   });

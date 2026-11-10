@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { API, api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
+import MetadataPanel from '../components/MetadataPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
@@ -189,6 +190,7 @@ export default function ImageTextPage({ data, reload }) {
           {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
         </div>
       </section>
+      <MetadataPanel textId={text.id} canEdit={canEdit} />
       <CommentsPanel textId={text.id} canWrite={canEdit} />
     </div>
   );

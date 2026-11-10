@@ -81,6 +81,13 @@ for (const [size, viewport] of Object.entries(VIEWPORTS)) {
       await page.getByRole('button', { name: /^View/ }).first().click();
       await expect(page.locator('iframe[title^="Version from"]')).toBeVisible();
       found.push(...(await violations(page, 'version history open')));
+      await page.getByRole('button', { name: 'Dublin Core metadata' }).click();
+      await expect(page.getByRole('button', { name: 'Save metadata' })).toBeVisible();
+      found.push(...(await violations(page, 'metadata panel open')));
+      await page.goto(`/manifold-companion/projects/${ids.image}`);
+      await page.getByRole('button', { name: 'Project details' }).click();
+      await expect(page.getByRole('button', { name: 'Save details' })).toBeVisible();
+      found.push(...(await violations(page, 'project details open')));
       await page.goto(`/manifold-companion/projects/${ids.image}`);
       await page.getByRole('button', { name: 'Export' }).click();
       await expect(page.getByRole('dialog')).toBeVisible();

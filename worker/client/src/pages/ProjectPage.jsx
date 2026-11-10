@@ -7,6 +7,42 @@ import SharePanel from '../components/SharePanel';
 import { ErrorNote, MoveButtons, Spinner, useMoveFocus } from '../components/ui';
 import { RetentionBanner } from './Dashboard';
 
+/** Project-level metadata (the owner's): name, description and default language, the export's fallbacks. */
+function ProjectDetails({ project, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: project.name, description: project.description ?? '', default_language: project.default_language ?? 'en' });
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState(null);
+  const save = async (e) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api.put(`/api/projects/${project.id}`, { name: form.name.trim(), description: form.description.trim() === '' ? null : form.description, default_language: form.default_language.trim() });
+      setStatus('Project details saved.');
+      onSaved();
+    } catch (err) { setError(err); }
+  };
+  return (
+    <section aria-labelledby="project-details" className="mt-4 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      <h2 id="project-details" className="m-0 text-base">
+        <button type="button" className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <span>Project details</span><span aria-hidden="true">{open ? '−' : '+'}</span>
+        </button>
+      </h2>
+      {open ? (
+        <form className="grid gap-3 border-t border-slate-200 px-4 py-3 sm:grid-cols-2 dark:border-slate-700" onSubmit={save}>
+          <ErrorNote error={error} onDismiss={() => setError(null)} />
+          <label className="sm:col-span-2"><span className="label">Project name</span><input className="field" required maxLength={200} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+          <label className="sm:col-span-2"><span className="label">Description</span><textarea className="field" maxLength={2000} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+          <label><span className="label">Default language code</span><input className="field" maxLength={20} value={form.default_language} onChange={(e) => setForm({ ...form, default_language: e.target.value })} /></label>
+          <p className="text-xs text-slate-600 dark:text-slate-300 sm:col-span-2">The export uses these when its own title, description or language are left empty.</p>
+          <div className="flex items-center gap-3 sm:col-span-2"><button className="btn-primary" type="submit">Save details</button><span role="status" className="text-sm text-slate-600 dark:text-slate-300">{status}</span></div>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
 function ExportPanel({ project, texts, onClose }) {
   const [selected, setSelected] = useState(() => texts.map((t) => t.id));
   const [meta, setMeta] = useState({ title: project.name, creators: '', date: new Date().toISOString().slice(0, 10), language: project.default_language, rights: '', description: project.description ?? '' });
@@ -99,6 +135,7 @@ export default function ProjectPage() {
       </div>
       {project.description ? <p className="mt-2 max-w-prose text-slate-600 dark:text-slate-300">{project.description}</p> : null}
       <div className="mt-3"><RetentionBanner project={project} /></div>
+      {isOwner ? <ProjectDetails project={project} onSaved={load} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       <ul className="rowlist mt-6 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         {texts.length === 0 ? <li className="p-4 text-sm text-slate-500 dark:text-slate-400">{canEdit ? 'No texts yet. Add one below, then upload its pages.' : 'No texts yet.'}</li> : null}
