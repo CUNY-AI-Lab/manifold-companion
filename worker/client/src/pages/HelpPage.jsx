@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useSession } from '../api/session.jsx';
 import { LegacyDifferences, ToolRules, WhatItDoes } from '../components/ToolFacts';
 import { ShortcutList } from '../hooks/useShortcuts';
+import { FIGURE_HELP } from '../components/FigurePanel';
 
 export default function HelpPage() {
   const { session } = useSession();
@@ -20,6 +21,10 @@ export default function HelpPage() {
       <section aria-labelledby="help-upload">
         <h2 id="help-upload" className="text-lg">Uploading</h2>
         <p className="mt-1">Use the upload buttons, or drop files anywhere on a text's page. An image text takes photos, scans (JPEG, PNG, WebP) and PDFs; each PDF page becomes a page image in your browser. A PDF text takes one PDF to convert (dropping it only chooses it; nothing is sent until you press Convert) and images, which become figures. Other files are named and left out. HEIC photos work only in a browser that opens them, such as Safari; elsewhere convert them to JPEG first. An upload that stops arriving is cancelled after a few minutes and its storage is given back; try again on a steadier connection.</p>
+      </section>
+      <section aria-labelledby="help-figures">
+        <h2 id="help-figures" className="text-lg">Figures from a PDF</h2>
+        <p className="mt-1">When a converted page has a figure, the HTML gets a placeholder with a caption, and “Figures to add” lists them. For each, “Add image” opens the PDF page in your browser. {FIGURE_HELP} You can also give a different page number, adjust the crop by typing its edges, and write the alternative text. The image is stored with the text (it counts towards storage like any upload) and the placeholder gets it; save the HTML to keep the change. Nothing is sent to a model. You can still upload any image with “Add a figure image” and reference it by its file name.</p>
       </section>
       <section aria-labelledby="help-fulltext">
         <h2 id="help-fulltext" className="text-lg">Full text of an image text</h2>

@@ -7,6 +7,7 @@ import { useSession } from '../api/session.jsx';
 import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { useTextSettings } from '../components/TextSettingsPanel';
+import FigurePanel from '../components/FigurePanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
@@ -56,6 +57,7 @@ export default function HtmlTextPage({ data, reload }) {
   const done = useRef(new Map());
   const pageWarnings = useRef(new Map());
   const [checks, setChecks] = useState([]);
+  const [figureNote, setFigureNote] = useState('');
   const [versionKey, setVersionKey] = useState(0);
   const figureInput = useRef(null);
   const source = useRef(null);
@@ -125,6 +127,7 @@ export default function HtmlTextPage({ data, reload }) {
   };
 
   const save = async () => {
+    setFigureNote('');
     try {
       const r = await api.put(`/api/texts/${text.id}/html`, { html_content: html });
       if (r.sanitized) await loadHtml();
@@ -183,6 +186,8 @@ export default function HtmlTextPage({ data, reload }) {
         </section>
       ) : null}
 
+      {canEdit && html !== null ? <FigurePanel textId={text.id} html={html} setHtml={setHtml} figures={figures} onUploaded={async () => { await loadFigures(); refresh(); }} hasSourcePdf={data.text.has_source_pdf} file={file} announce={setFigureNote} /> : null}
+      {figureNote ? <p role="status" className="mt-2 text-sm text-slate-700 dark:text-slate-200">{figureNote}</p> : null}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
           <label className="label" htmlFor="html-source">HTML (sanitized when saved). Write formulas as TeX in \( \) or \[ \]: the preview renders them with KaTeX, and the export converts them to MathML.</label>

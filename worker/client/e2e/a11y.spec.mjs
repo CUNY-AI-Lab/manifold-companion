@@ -39,7 +39,7 @@ async function seed(request) {
   const invite = (await post(`/projects/${image.id}/invites`, { role: 'editor' })).invite;
   const pdf = (await post('/projects', { name: 'Maths a11y', project_type: 'pdf_to_html' })).project;
   const htext = (await post(`/projects/${pdf.id}/texts`, { name: 'Chapter 7' })).text;
-  await post(`/texts/${htext.id}/html`, { html_content: '<section data-page="1"><h2>Identities</h2><p>\\(\\sin^2\\theta + \\cos^2\\theta = 1\\)</p></section>' }, 'PUT');
+  await post(`/texts/${htext.id}/html`, { html_content: '<section data-page="1"><h2>Identities</h2><p>\\(\\sin^2\\theta + \\cos^2\\theta = 1\\)</p><figure class="needs-image"><figcaption>Figure: the unit circle</figcaption></figure></section>' }, 'PUT');
   return { image: image.id, text: text.id, pdf: pdf.id, htext: htext.id, inviteToken: invite.token };
 }
 

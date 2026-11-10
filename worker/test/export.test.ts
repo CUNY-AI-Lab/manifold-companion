@@ -181,3 +181,21 @@ describe("export behaviour", () => {
     expect(escapeYaml('a"b\\c\nd: e\r\tf\u0001')).toBe('a\\"b\\\\c\\nd: e\\r\\tf');
   });
 });
+
+describe("figures attached in the browser (client/src/lib/figures.js)", () => {
+  it("the editor's attached image is stored unchanged by the sanitizer and the export packs the figure it names", async () => {
+    const { attachImage, findPlaceholders } = await import("../client/src/lib/figures.js");
+    const pid = await createProject(ALICE, "Figures", { project_type: "pdf_to_html" });
+    const tid = await createText(ALICE, pid, "Chapter");
+    const html = '<section data-page="3"><figure class="needs-image"><figcaption>Figure: 25. a graph</figcaption></figure><p>25.</p></section>';
+    expect(findPlaceholders(html)).toHaveLength(1);
+    expect((await upload(api(`/texts/${tid}/figures`), PNG(500), ALICE, { query: { filename: "p3-fig1.png", width: "640", height: "480" } })).status).toBe(201);
+    const attached = attachImage(html, 0, { filename: "p3-fig1.png", alt: "25. a graph", width: 640, height: 480 })!;
+    const put = await json(await call(api(`/texts/${tid}/html`), { method: "PUT", body: { html_content: attached } }));
+    expect(put.sanitized).toBe(false);
+    const { files } = await exportZip(pid, { toc: [{ type: "text", textId: tid, label: "Chapter" }] });
+    expect(Object.keys(files!).filter((n) => n.startsWith("images-"))).toEqual(["images-01/p3-fig1.png"]);
+    const doc = strFromU8(Object.entries(files!).find(([n]) => n.endsWith(".html"))![1]);
+    expect(doc).toContain('<figure><img src="images-01/p3-fig1.png" alt="25. a graph" width="640" height="480"><figcaption>Figure: 25. a graph</figcaption></figure>');
+  });
+});

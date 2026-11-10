@@ -27,7 +27,7 @@ export function ToolRules({ session }) {
 export function LegacyDifferences() {
   return (
     <ul className="list-disc space-y-1 pl-5">
-      <li>Figures are not extracted from PDFs automatically. Add each figure image by hand with “Add a figure image”, then reference it by file name.</li>
+      <li>Figures are taken from the PDF in your browser, one figure at a time, for the places the conversion marked: an embedded picture as it is, or a crop you draw for a graph drawn with lines. The earlier version pulled every embedded picture out on the server, and could not take vector graphs at all.</li>
       <li>HTML is edited as source next to a live preview, instead of the earlier rich editor. The preview shows formulas as they will look.</li>
       <li>Ownership moves only when the new owner accepts the offer.</li>
       <li>HEIC photos (the iPhone default) upload only in a browser that can open them, such as Safari; in other browsers convert them to JPEG first. The earlier converter needed a kind of script this site does not allow.</li>

@@ -4,7 +4,7 @@
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 let lib = null;
-async function pdfjs() {
+export async function pdfjs() {
   if (!lib) {
     lib = await import('pdfjs-dist');
     lib.GlobalWorkerOptions.workerSrc = workerUrl;
