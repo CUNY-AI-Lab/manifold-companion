@@ -19,6 +19,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.6.1",
     "@cloudflare/workers-types": "5.20261110.1",
+    "parse5": "7.3.0",
     "typescript": "5.9.3",
     "vitest": "4.1.12",
     "wrangler": "4.159.0"

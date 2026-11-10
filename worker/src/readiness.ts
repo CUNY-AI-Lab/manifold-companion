@@ -25,7 +25,7 @@ export async function checkConfigurationReadiness(env: Env): Promise<Configurati
 
   if (env.DB) {
     try {
-      const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('profiles', 'projects', 'text_fts')").first<{ n: number }>();
+      const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('profiles', 'projects', 'r2_cleanup')").first<{ n: number }>();
       if ((row?.n ?? 0) !== 3) errors.push("d1_schema_missing");
     } catch {
       errors.push("d1_unreachable");

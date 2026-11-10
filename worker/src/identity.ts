@@ -66,8 +66,8 @@ export async function loadCachedVerifierConfig(env: Env, audience: string, now?:
  *  1. load BOTH pinned verifier configs; any failure is 503 identity_unavailable;
  *  2. no credential presented at all -> 401 authentication_required;
  *  3. a credential that does not verify (bad signature, expired, wrong
- *     audience, malformed, or a Gateway leg for another subject) -> 401
- *     invalid_credential.
+ *     audience, malformed, a Gateway leg for another subject, or a verified
+ *     app leg with no Gateway leg at all) -> 401 invalid_credential.
  * Caller-supplied identity is never authority until verified here. Only the
  * Gateway leg is kept for forwarding upstream; the app assertion is dropped.
  */
@@ -86,7 +86,10 @@ export async function authenticate(request: Request, env: Env, now?: number): Pr
 
   const keyring = readIdentityKeyring(request.headers);
   if (keyring === null) return { ok: false, response: invalidCredentialResponse() };
-  if (keyring.gatewayJwt === undefined) return { ok: false, response: authRequiredResponse() };
+  // A verified app leg WITHOUT its Gateway leg is a Doorway route-policy fault (the route lost
+  // gatewayIdentity), not a lost session: authentication_required would send the browser to the
+  // launch path, Doorway would return it here with the same headers, and it would loop.
+  if (keyring.gatewayJwt === undefined) return { ok: false, response: invalidCredentialResponse() };
   const gatewayIdentity = await verifyKeyringGatewayJwt(keyring, gatewayLoaded.config, identity.subject);
   if (gatewayIdentity === null) return { ok: false, response: invalidCredentialResponse() };
 

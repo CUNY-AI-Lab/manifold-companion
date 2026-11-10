@@ -21,11 +21,16 @@ describe("identity matrix", () => {
     expect((await json(res)).error).toEqual({ code: "authentication_required", message: expect.any(String), launch: "/launch/manifold-companion" });
   });
 
-  it("app assertion without a gateway leg -> 401 authentication_required", async () => {
+  // A verified app leg with no Gateway leg means the Doorway route lost gatewayIdentity.
+  // authentication_required would make the client navigate to the launch path, which
+  // returns it here with the same headers: a navigation loop. It is a credential fault.
+  it("app assertion without a gateway leg -> 401 invalid_credential, no launch path", async () => {
     const { "x-cail-gateway-identity-jwt": _drop, ...appOnly } = await legs();
     const res = await call(session, { as: null, headers: appOnly });
     expect(res.status).toBe(401);
-    expect((await json(res)).error.code).toBe("authentication_required");
+    const { error } = await json(res);
+    expect(error.code).toBe("invalid_credential");
+    expect(error.launch).toBeUndefined();
   });
 
   it("malformed JWKS secret -> 503 identity_unavailable (config is checked before the token)", async () => {

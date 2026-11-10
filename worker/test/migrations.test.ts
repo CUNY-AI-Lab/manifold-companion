@@ -10,13 +10,13 @@ const norm = (sql: string | null) => (sql ?? "").replace(/\s+/g, " ").trim();
 
 async function dump(db: D1Database): Promise<MasterRow[]> {
   const rows = await db
-    .prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' ORDER BY type, name")
+    .prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' AND name NOT LIKE 'text_fts%' AND name NOT LIKE 'texts_fts_%' ORDER BY type, name")
     .all<MasterRow>();
   return rows.results.map((r) => ({ ...r, sql: norm(r.sql) }));
 }
 
 async function describeSchema(db: D1Database) {
-  const tables = (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' AND name NOT LIKE 'text_fts_%' ORDER BY name").all<{ name: string }>()).results;
+  const tables = (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' AND name NOT LIKE 'text_fts%' ORDER BY name").all<{ name: string }>()).results;
   const out: Record<string, string[]> = {};
   for (const { name } of tables) {
     const cols = (await db.prepare(`SELECT name, type, "notnull", pk FROM pragma_table_info('${name}')`).all<{ name: string; type: string; notnull: number; pk: number }>()).results;
@@ -35,12 +35,32 @@ describe("migrations", () => {
     expect(await dump(env.DB_STEPWISE)).toEqual(await dump(env.DB));
   });
 
+  // FTS5 on remote D1 is unconfirmed, so no migration may depend on it: a refused
+  // migration would block the deploy. The index is created at runtime instead.
+  it("no migration creates an FTS5 object; the runtime creates them idempotently and backfills", async () => {
+    for (const m of env.TEST_MIGRATIONS) expect(m.queries.join("\n").replace(/--[^\n]*/g, ""), m.name).not.toMatch(/fts5|VIRTUAL TABLE/i);
+    await applyD1Migrations(env.DB_STEPWISE, env.TEST_MIGRATIONS);
+    const { ensureSearchIndex, resetSearchIndexState } = await import("../src/search");
+    const t = nowIso();
+    await env.DB_STEPWISE.batch([
+      env.DB_STEPWISE.prepare("INSERT OR IGNORE INTO profiles (subject) VALUES ('cail-00000000000000000000000000000001')"),
+      env.DB_STEPWISE.prepare("INSERT OR IGNORE INTO projects (id, owner_subject, name, created_at, updated_at, last_edited_at) VALUES ('00000000-0000-4000-8000-0000000000aa', 'cail-00000000000000000000000000000001', 'p', ?1, ?1, ?1)").bind(t),
+      env.DB_STEPWISE.prepare("INSERT OR IGNORE INTO texts (id, project_id, name, search_text, created_at, updated_at) VALUES ('00000000-0000-4000-8000-0000000000bb', '00000000-0000-4000-8000-0000000000aa', 'T', 'backfilled words', ?1, ?1)").bind(t),
+    ]);
+    resetSearchIndexState(env.DB_STEPWISE);
+    expect(await ensureSearchIndex(env.DB_STEPWISE)).toBe(true);
+    resetSearchIndexState(env.DB_STEPWISE);
+    expect(await ensureSearchIndex(env.DB_STEPWISE)).toBe(true);
+    const hits = await env.DB_STEPWISE.prepare("SELECT text_id FROM text_fts WHERE text_fts MATCH 'backfilled'").all();
+    expect(hits.results).toHaveLength(1);
+  });
+
   it("re-applying is a no-op", async () => {
     const before = await dump(env.DB);
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await dump(env.DB)).toEqual(before);
     const applied = await env.DB.prepare("SELECT name FROM d1_migrations ORDER BY id").all<{ name: string }>();
-    expect(applied.results.map((r) => r.name)).toEqual(["0001_init.sql", "0002_search.sql", "0003_content.sql", "0004_uploads.sql"]);
+    expect(applied.results.map((r) => r.name)).toEqual(["0001_init.sql", "0002_search.sql", "0003_content.sql", "0004_uploads.sql", "0005_cleanup.sql"]);
   });
 
   it("matches the reviewed schema snapshot (editing an applied migration fails here)", async () => {

@@ -2,6 +2,7 @@ import { E } from "./errors";
 import { projectPrefix } from "./r2-keys";
 import type { Env } from "./env";
 import { limits } from "./env";
+import { nowIso } from "./util";
 
 // Bytes accounted to one text / one project, as SQL, so a release can be computed
 // inside the same D1 batch (transaction) that deletes the rows: the amount released
@@ -80,22 +81,83 @@ export async function releaseStorage(db: D1Database, ownerSubject: string, bytes
 }
 
 /**
- * Delete a project: R2 objects first (so a failure leaves rows that still point
- * at what remains and a retry finishes the job), then one atomic D1 batch that
- * releases the owner's bytes and removes the project (cascading to texts,
- * pages, versions, annotations, members, invites, FTS rows via trigger).
+ * A guard on the project row: SQL over `projects` columns whose placeholders
+ * are written `?G1`, `?G2`, ... and renumbered per statement. The delete
+ * happens only if the guard still holds inside the deleting transaction.
  */
-export async function deleteProject(env: Env, projectId: string): Promise<boolean> {
-  const project = await env.DB.prepare("SELECT owner_subject FROM projects WHERE id = ?1").bind(projectId).first<{ owner_subject: string }>();
-  if (!project) return false;
-  await deleteR2Prefix(env.FILES, projectPrefix(projectId));
-  // Release and delete in one transaction: the bytes released are the bytes the
-  // delete removes, and only the call whose DELETE removes the row releases them.
-  const [, del] = await env.DB.batch([
-    env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${projectBytesSql("?1")}) WHERE subject = (SELECT owner_subject FROM projects WHERE id = ?1)`).bind(projectId),
-    env.DB.prepare("DELETE FROM projects WHERE id = ?1").bind(projectId),
+export interface DeleteGuard {
+  sql: string;
+  binds: unknown[];
+}
+
+function guardAt(guard: DeleteGuard | undefined, first: number): string {
+  return guard ? ` AND (${guard.sql.replace(/\?G(\d+)/g, (_m, n: string) => `?${first + Number(n) - 1}`)})` : "";
+}
+
+/**
+ * Delete a project. ONE D1 batch (one transaction) re-checks the row (and the
+ * optional guard), releases the owner's bytes, records a cleanup tombstone for
+ * the project's R2 prefix and deletes the rows (cascading to texts, pages,
+ * versions, annotations, members, invites; FTS rows by trigger). Only then are
+ * the objects swept. A failed or interrupted sweep leaves the tombstone, and
+ * the daily cron sweeps every tombstone again (which also removes an object an
+ * upload in flight wrote after the first sweep) before forgetting it.
+ *
+ * Rows go first so a guarded delete (retention) can never destroy the files of
+ * a project that was edited after it was selected: if the guard fails, nothing
+ * has been touched.
+ */
+export async function deleteProject(env: Env, projectId: string, guard?: DeleteGuard): Promise<boolean> {
+  const binds = guard?.binds ?? [];
+  const prefix = projectPrefix(projectId);
+  const now = nowIso();
+  const [, , del] = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${projectBytesSql("?1")})
+       WHERE subject = (SELECT owner_subject FROM projects WHERE id = ?1) AND EXISTS (SELECT 1 FROM projects WHERE id = ?1${guardAt(guard, 2)})`,
+    ).bind(projectId, ...binds),
+    env.DB.prepare(`INSERT OR IGNORE INTO r2_cleanup (prefix, created_at) SELECT ?2, ?3 WHERE EXISTS (SELECT 1 FROM projects WHERE id = ?1${guardAt(guard, 4)})`).bind(projectId, prefix, now, ...binds),
+    env.DB.prepare(`DELETE FROM projects WHERE id = ?1${guardAt(guard, 2)}`).bind(projectId, ...binds),
   ]);
-  return (del?.meta.changes ?? 0) > 0;
+  if ((del?.meta.changes ?? 0) === 0) return false;
+  await sweepTombstone(env, prefix);
+  return true;
+}
+
+/** Sweep one tombstoned prefix now. Failure is left to the cron: the tombstone stays. */
+export async function sweepTombstone(env: Env, prefix: string): Promise<boolean> {
+  try {
+    await deleteR2Prefix(env.FILES, prefix);
+    await env.DB.prepare("UPDATE r2_cleanup SET swept_at = ?1 WHERE prefix = ?2").bind(nowIso(), prefix).run();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Tombstones are kept this long after creation so the cron sweeps each one at least once more. */
+export const TOMBSTONE_KEEP_MS = 86_400_000;
+
+/**
+ * Cron: sweep every tombstone (bounded), then forget the ones that are older
+ * than a day and were swept after that day began. Returns [swept, failed].
+ */
+export async function processCleanup(env: Env, nowMs = Date.now(), limit = 100): Promise<{ swept: number; failed: number }> {
+  const rows = await env.DB.prepare("SELECT prefix, created_at FROM r2_cleanup ORDER BY created_at LIMIT ?1").bind(limit).all<{ prefix: string; created_at: string }>();
+  let swept = 0;
+  let failed = 0;
+  const forgetBefore = nowIso(nowMs - TOMBSTONE_KEEP_MS);
+  for (const row of rows.results) {
+    try {
+      await deleteR2Prefix(env.FILES, row.prefix);
+      swept += 1;
+      if (row.created_at < forgetBefore) await env.DB.prepare("DELETE FROM r2_cleanup WHERE prefix = ?1").bind(row.prefix).run();
+      else await env.DB.prepare("UPDATE r2_cleanup SET swept_at = ?1 WHERE prefix = ?2").bind(nowIso(nowMs), row.prefix).run();
+    } catch {
+      failed += 1;
+    }
+  }
+  return { swept, failed };
 }
 
 /**

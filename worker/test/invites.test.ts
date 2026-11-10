@@ -112,6 +112,22 @@ describe("invite lifecycle", () => {
     expect((await call(api("/invites/redeem"), { method: "POST", as: BOB, body: {} })).status).toBe(404);
   });
 
+  // Regression: two links to the same project redeemed at once by the same person made the
+  // second membership insert violate the primary key, which surfaced as a 500.
+  it("one person redeeming two links to the same project at once: one joins, the other is a clean 409", async () => {
+    const pid = await createProject(ALICE);
+    const [a, b] = [await invite(ALICE, pid, "viewer"), await invite(ALICE, pid, "editor")];
+    const results = await Promise.all([redeem(BOB, a.token), redeem(BOB, b.token)]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const loser = results.find((r) => r.status === 409)!;
+    expect((await json(loser)).error.code).toBe("already_member");
+    const members = await env.DB.prepare("SELECT COUNT(*) AS n FROM project_members WHERE project_id = ? AND subject = ?").bind(pid, BOB).first<{ n: number }>();
+    expect(members!.n).toBe(1);
+    // The losing link was not consumed and can still be used by someone else.
+    const used = await env.DB.prepare("SELECT COUNT(*) AS n FROM invites WHERE project_id = ? AND redeemed_at IS NOT NULL").bind(pid).first<{ n: number }>();
+    expect(used!.n).toBe(1);
+  });
+
   it("existing members are not re-added and the invite is not consumed", async () => {
     const id = await createProject(ALICE);
     const inv = await invite(ALICE, id, "editor");

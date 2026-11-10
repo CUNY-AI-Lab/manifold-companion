@@ -7,6 +7,7 @@ import { contentKey, pageVersionKey, type ContentKind } from "./r2-keys";
 import { releaseStorage, reserveStorage } from "./storage";
 import { htmlToPlainText, sanitizeHtml, MAX_SANITIZE_INPUT_CHARS } from "./sanitize/html";
 import { newId, nowIso } from "./util";
+import { ensureSearchIndex } from "./search";
 import type { ProjectRow } from "./authz";
 
 export const CAPS = {
@@ -91,6 +92,7 @@ export async function reindexText(env: Env, textId: string, hint: { html?: strin
   if (meta) parts.push(Object.values(meta).filter(Boolean).join(" "));
   const body = parts.join("\n").slice(0, CAPS.searchTextChars);
   await env.DB.prepare("UPDATE texts SET search_text = ?1 WHERE id = ?2").bind(body, textId).run();
+  if (!(await ensureSearchIndex(env.DB))) return;
   try {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM text_fts WHERE text_id = ?1").bind(textId),

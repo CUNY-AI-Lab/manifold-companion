@@ -1,5 +1,43 @@
 import type { Env } from "./env";
 
+// FTS5 objects, created at runtime (see migrations/0002_search.sql for why).
+// Every statement is idempotent. The backfill indexes texts that already have
+// extracted text, so turning FTS on later loses nothing.
+const FTS_DDL = [
+  "CREATE VIRTUAL TABLE IF NOT EXISTS text_fts USING fts5 (text_id UNINDEXED, project_id UNINDEXED, title, body, tokenize = 'unicode61 remove_diacritics 2')",
+  "CREATE TRIGGER IF NOT EXISTS texts_fts_delete AFTER DELETE ON texts BEGIN DELETE FROM text_fts WHERE text_id = old.id; END",
+  "CREATE TRIGGER IF NOT EXISTS texts_fts_rename AFTER UPDATE OF name ON texts BEGIN UPDATE text_fts SET title = new.name WHERE text_id = new.id; END",
+  "INSERT INTO text_fts (text_id, project_id, title, body) SELECT t.id, t.project_id, t.name, t.search_text FROM texts t WHERE t.search_text IS NOT NULL AND NOT EXISTS (SELECT 1 FROM text_fts f WHERE f.text_id = t.id)",
+];
+const RETRY_UNAVAILABLE_MS = 10 * 60_000;
+const ftsState = new WeakMap<D1Database, { ok: boolean; at: number } | Promise<boolean>>();
+
+/**
+ * Make sure the FTS5 index exists, once per isolate per database. Returns false
+ * (and remembers it for ten minutes) when FTS5 is unavailable, so callers fall
+ * back to the plain-text column without paying for a failing DDL every request.
+ */
+export async function ensureSearchIndex(db: D1Database, now = Date.now()): Promise<boolean> {
+  const state = ftsState.get(db);
+  if (state instanceof Promise) return state;
+  if (state && (state.ok || now - state.at < RETRY_UNAVAILABLE_MS)) return state.ok;
+  const attempt = (async () => {
+    try {
+      await db.batch(FTS_DDL.map((sql) => db.prepare(sql)));
+      ftsState.set(db, { ok: true, at: now });
+      return true;
+    } catch {
+      ftsState.set(db, { ok: false, at: now });
+      return false;
+    }
+  })();
+  ftsState.set(db, attempt);
+  return attempt;
+}
+
+/** For tests: forget what this isolate learned about a database's FTS support. */
+export const resetSearchIndexState = (db: D1Database): void => void ftsState.delete(db);
+
 export interface SearchHit {
   text_id: string;
   text_name: string;
@@ -41,7 +79,7 @@ async function likeSearch(env: Env, subject: string, q: string): Promise<SearchH
  */
 export async function searchTexts(env: Env, subject: string, q: string): Promise<{ hits: SearchHit[]; backend: "fts5" | "like" }> {
   const match = ftsQuery(q);
-  if (match !== null) {
+  if (match !== null && (await ensureSearchIndex(env.DB))) {
     try {
       const rows = await env.DB.prepare(
         `SELECT t.id AS text_id, t.name AS text_name, p.id AS project_id, p.name AS project_name, p.project_type, m.role AS access_role, t.updated_at,

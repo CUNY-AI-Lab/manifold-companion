@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { ALICE, BOB, CAROL, addMember, api, call, createProject, invite, json, makeEnv, redeem } from "./helpers";
 import { runRetentionSweep } from "../src/retention";
-import { deleteProject, projectStorageBytes, releaseStorage, reserveStorage } from "../src/storage";
+import { deleteProject, processCleanup, projectStorageBytes, releaseStorage, reserveStorage, TOMBSTONE_KEEP_MS } from "../src/storage";
 import { htmlKey, pageImageKey, projectPrefix, sourcePdfKey, versionKey } from "../src/r2-keys";
 import { addDays, newId, nowIso } from "../src/util";
 import indexModule from "../src/index";
@@ -61,16 +61,30 @@ describe("project deletion", () => {
     expect(await storage(ALICE)).toBe(6017);
   });
 
-  it("an R2 failure leaves the rows so a retry can finish", async () => {
+  it("an R2 failure leaves a tombstone, and the cron finishes the sweep", async () => {
     const id = await createProject(ALICE);
     await seedContent(id, ALICE);
     const failing = await makeEnv({ FILES: { list: async () => { throw new Error("r2 down"); } } as unknown as R2Bucket });
-    await expect(deleteProject(failing, id)).rejects.toThrow();
-    expect(await count("projects", "id = ?", id)).toBe(1);
-    expect(await storage(ALICE)).toBe(6017);
-    expect(await deleteProject(await makeEnv(), id)).toBe(true);
+    expect(await deleteProject(failing, id)).toBe(true);
     expect(await count("projects", "id = ?", id)).toBe(0);
     expect(await storage(ALICE)).toBe(0);
+    expect(await count("r2_cleanup", "prefix = ? AND swept_at IS NULL", projectPrefix(id))).toBe(1);
+    expect(await r2Count(projectPrefix(id))).toBe(4);
+    expect(await processCleanup(await makeEnv())).toEqual({ swept: 1, failed: 0 });
+    expect(await r2Count(projectPrefix(id))).toBe(0);
+  });
+
+  it("a second cron sweep removes an object an in-flight upload wrote after the first sweep, then forgets the tombstone", async () => {
+    const id = await createProject(ALICE);
+    await seedContent(id, ALICE);
+    expect(await deleteProject(await makeEnv(), id)).toBe(true);
+    // An upload that reserved and passed its checks before the delete finishes its R2 put afterwards.
+    await env.FILES.put(`${projectPrefix(id)}t/late/page/late`, new Uint8Array(10));
+    expect(await processCleanup(await makeEnv())).toEqual({ swept: 1, failed: 0 });
+    expect(await r2Count(projectPrefix(id))).toBe(0);
+    expect(await count("r2_cleanup")).toBe(1);
+    await processCleanup(await makeEnv(), Date.now() + TOMBSTONE_KEEP_MS + 60_000);
+    expect(await count("r2_cleanup")).toBe(0);
   });
 });
 
@@ -198,18 +212,19 @@ describe("retention", () => {
     const e = await makeEnv();
 
     // Day 0 of the sweep: never warned, so warn, do NOT delete.
-    expect(await runRetentionSweep(e)).toEqual({ warned: 1, deleted: 0, failed: 0 });
+    expect(await runRetentionSweep(e)).toEqual({ warned: 1, deleted: 0, failed: 0, cleaned: 0 });
     expect(await count("projects", "id = ?", id)).toBe(1);
     const note = await env.DB.prepare("SELECT * FROM notifications WHERE subject = ?").bind(ALICE).first<any>();
     expect(note).toMatchObject({ type: "retention_warning", read: 0 });
     expect(note.body).toContain("Old");
 
     // Next day: warned only once, nothing else happens.
-    expect(await runRetentionSweep(e, Date.now() + 86_400_000)).toEqual({ warned: 0, deleted: 0, failed: 0 });
+    expect(await runRetentionSweep(e, Date.now() + 86_400_000)).toEqual({ warned: 0, deleted: 0, failed: 0, cleaned: 0 });
     expect(await count("notifications")).toBe(1);
 
     // Eight days later: deleted, with objects and bytes.
-    expect(await runRetentionSweep(e, Date.now() + 8 * 86_400_000)).toEqual({ warned: 0, deleted: 1, failed: 0 });
+    // The cleanup phase sweeps the new tombstone once more in the same run.
+    expect(await runRetentionSweep(e, Date.now() + 8 * 86_400_000)).toEqual({ warned: 0, deleted: 1, failed: 0, cleaned: 1 });
     expect(await count("projects", "id = ?", id)).toBe(0);
     expect(await r2Count(projectPrefix(id))).toBe(0);
     expect(await storage(ALICE)).toBe(0);
@@ -230,7 +245,78 @@ describe("retention", () => {
   it("projects inside the warning window are warned, not deleted", async () => {
     const id = await createProject(ALICE);
     await ageProject(id, 175);
-    expect(await runRetentionSweep(await makeEnv())).toEqual({ warned: 1, deleted: 0, failed: 0 });
+    expect(await runRetentionSweep(await makeEnv())).toEqual({ warned: 1, deleted: 0, failed: 0, cleaned: 0 });
+  });
+
+  // Regression: the sweep used to delete R2 objects first and never re-checked the row,
+  // so an edit landing between the selection and the delete lost the project's files.
+  it("an edit that lands after the sweep selected the project keeps the project and its files", async () => {
+    const id = await createProject(ALICE, "Busy");
+    await seedContent(id, ALICE);
+    await env.DB.prepare("UPDATE projects SET last_edited_at = ?1, retention_warned_at = ?2 WHERE id = ?3").bind(addDays(nowIso(), -200), addDays(nowIso(), -20), id).run();
+    const real = env.DB;
+    const editingDb = new Proxy(real, {
+      get(target, key) {
+        if (key === "prepare") {
+          return (sql: string) => {
+            const statement = target.prepare(sql);
+            if (!/^SELECT id FROM projects WHERE last_edited_at < \?1 AND retention_warned_at IS NOT NULL/.test(sql.trim())) return statement;
+            return {
+              bind: (...args: unknown[]) => ({
+                all: async () => {
+                  const selected = await statement.bind(...args).all();
+                  // Someone edits the project right after it was selected.
+                  await target.prepare("UPDATE projects SET last_edited_at = ?1, retention_warned_at = NULL WHERE id = ?2").bind(nowIso(), id).run();
+                  return selected;
+                },
+              }),
+            };
+          };
+        }
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as D1Database;
+    const result = await runRetentionSweep(await makeEnv({ DB: editingDb }));
+    expect(result.deleted).toBe(0);
+    expect(await count("projects", "id = ?", id)).toBe(1);
+    expect(await r2Count(projectPrefix(id))).toBe(4);
+    expect(await storage(ALICE)).toBe(6017);
+  });
+
+  it("warns every owner and editor (not viewers), once", async () => {
+    const id = await createProject(ALICE, "Shared");
+    await addMember(ALICE, id, BOB, "editor");
+    await addMember(ALICE, id, CAROL, "viewer");
+    await ageProject(id, 170);
+    expect((await runRetentionSweep(await makeEnv())).warned).toBe(1);
+    const notes = await env.DB.prepare("SELECT subject, id FROM notifications WHERE type = 'retention_warning' ORDER BY subject").all<{ subject: string; id: string }>();
+    expect(notes.results.map((n) => n.subject).sort()).toEqual([ALICE, BOB].sort());
+    for (const n of notes.results) expect(n.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect((await runRetentionSweep(await makeEnv())).warned).toBe(0);
+    expect(await count("notifications", "type = 'retention_warning'")).toBe(2);
+  });
+
+  // Regression: the notification used to be inserted even when the compare-and-set stamp
+  // missed because the project had just been edited.
+  it("no warning is issued for a project edited between selection and stamping", async () => {
+    const id = await createProject(ALICE, "Edited");
+    await ageProject(id, 170);
+    const real = env.DB;
+    const editingDb = new Proxy(real, {
+      get(target, key) {
+        if (key === "batch") {
+          return async (statements: D1PreparedStatement[]) => {
+            await target.prepare("UPDATE projects SET last_edited_at = ?1 WHERE id = ?2").bind(nowIso(), id).run();
+            return target.batch(statements);
+          };
+        }
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as D1Database;
+    expect((await runRetentionSweep(await makeEnv({ DB: editingDb }))).warned).toBe(0);
+    expect(await count("notifications")).toBe(0);
   });
 
   it("the scheduled handler runs the sweep", async () => {

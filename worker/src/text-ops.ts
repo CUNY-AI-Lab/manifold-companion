@@ -6,7 +6,7 @@ import { reindexText, touchProject, ownerOf } from "./content";
 import { limits, type Env } from "./env";
 import { E } from "./errors";
 import { pageImageKey, textPrefix } from "./r2-keys";
-import { deleteR2Prefix, releaseStorage, reserveStorage, textBytesSql } from "./storage";
+import { releaseStorage, reserveStorage, sweepTombstone, textBytesSql } from "./storage";
 import { newId, nowIso } from "./util";
 
 export const MAX_PAGES_PER_COPY_OP = 300;
@@ -24,16 +24,22 @@ export async function textStorageBytes(db: D1Database, textId: string): Promise<
   return row?.bytes ?? 0;
 }
 
-/** Delete one text of `project` with its objects, releasing the owner's bytes once. False if this call did not remove it. */
+/**
+ * Delete one text of `project` with its objects, releasing the owner's bytes once.
+ * Rows first (one transaction: release, tombstone, delete), then the R2 sweep;
+ * a failed sweep is finished by the cron from the tombstone. False if this call
+ * did not remove the text.
+ */
 export async function deleteTextObjects(env: Env, project: ProjectRow, textId: string): Promise<boolean> {
-  const exists = await env.DB.prepare("SELECT 1 AS x FROM texts WHERE id = ?1 AND project_id = ?2").bind(textId, project.id).first();
-  if (!exists) return false;
-  await deleteR2Prefix(env.FILES, textPrefix(project.id, textId));
-  const [, del] = await env.DB.batch([
+  const prefix = textPrefix(project.id, textId);
+  const [, , del] = await env.DB.batch([
     env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - ${textBytesSql("?1")}) WHERE subject = ?2 AND EXISTS (SELECT 1 FROM texts WHERE id = ?1 AND project_id = ?3)`).bind(textId, ownerOf(project), project.id),
+    env.DB.prepare("INSERT OR IGNORE INTO r2_cleanup (prefix, created_at) SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?3 AND project_id = ?4)").bind(prefix, nowIso(), textId, project.id),
     env.DB.prepare("DELETE FROM texts WHERE id = ?1 AND project_id = ?2").bind(textId, project.id), // cascades; FTS row by trigger
   ]);
-  return (del?.meta.changes ?? 0) > 0;
+  if ((del?.meta.changes ?? 0) === 0) return false;
+  await sweepTombstone(env, prefix);
+  return true;
 }
 
 interface PageSrc {

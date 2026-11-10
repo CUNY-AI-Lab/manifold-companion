@@ -36,7 +36,8 @@ describe("texts", () => {
     expect((await call(api(`/texts/${ta}`), { as: BOB })).status).toBe(404);
     const strange = await call(api("/texts/00000000-0000-4000-8000-000000000000"), { as: BOB });
     expect((await json(strange)).error.message).toBe((await json(await call(api(`/texts/${ta}`), { as: BOB }))).error.message);
-    expect(b).toBeTruthy();
+    // Bob's own project does not see Alice's text either.
+    expect((await json(await call(api(`/projects/${b}/texts`), { as: BOB }))).texts).toEqual([]);
   });
 
   it("caps the number of texts per project", async () => {

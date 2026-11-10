@@ -1,6 +1,46 @@
 import { describe, expect, it } from "vitest";
 import { htmlToPlainText, safeHref, safeImgSrc, sanitizeHtml } from "../src/sanitize/html";
 import { XSS_CORPUS } from "./xss-corpus";
+import { parse, serialize, type DefaultTreeAdapterMap } from "parse5";
+
+// A second, stronger verdict. HTMLRewriter (lol-html) only TOKENIZES: it does no
+// tree construction, so it cannot see foster parenting, foreign-content
+// namespace switches or the serialize/re-parse mutations behind mXSS. parse5
+// implements the WHATWG tree-construction algorithm. The output is parsed as a
+// browser would, serialized back (what innerHTML returns) and re-parsed, three
+// times, and every tree is checked.
+type P5Node = DefaultTreeAdapterMap["node"];
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+const MATH_NS = "http://www.w3.org/1998/Math/MathML";
+function treeProblems(html: string): string[] {
+  const problems: string[] = [];
+  let current = html;
+  for (let round = 0; round < 3; round += 1) {
+    const doc = parse(`<!doctype html><body>${current}`);
+    const visit = (node: P5Node) => {
+      if ("tagName" in node) {
+        const el = node as DefaultTreeAdapterMap["element"];
+        if (el.namespaceURI !== HTML_NS && el.namespaceURI !== MATH_NS) problems.push(`round ${round}: <${el.tagName}> in ${el.namespaceURI}`);
+        if (["script", "style", "iframe", "object", "embed", "svg", "textarea", "xmp", "noscript", "noembed", "template", "form", "input", "base", "meta", "link"].includes(el.tagName)) problems.push(`round ${round}: <${el.tagName}>`);
+        for (const a of el.attrs) {
+          if (/^on/i.test(a.name) || ["style", "srcdoc", "formaction", "action", "srcset"].includes(a.name) || a.name.includes(":")) problems.push(`round ${round}: <${el.tagName} ${a.name}>`);
+          if (["href", "src", "cite"].includes(a.name)) {
+            const probe = a.value.replace(/[\u0000-\u0020]/g, "").toLowerCase();
+            if (/^[a-z][a-z0-9+.-]*:/.test(probe) && !(a.name === "src" ? /^data:image\/(png|jpeg|gif|webp);/.test(probe) : /^(https?|mailto):/.test(probe))) problems.push(`round ${round}: ${a.name}=${a.value.slice(0, 40)}`);
+            if (/^(\/\/|\\|\/\\)/.test(a.value.trim())) problems.push(`round ${round}: off-origin ${a.name}`);
+          }
+        }
+      }
+      if ("childNodes" in node) for (const child of node.childNodes as P5Node[]) visit(child);
+      if ("content" in node && node.content) visit(node.content as unknown as P5Node);
+    };
+    visit(doc as unknown as P5Node);
+    const htmlEl = doc.childNodes.find((n) => n.nodeName === "html") as DefaultTreeAdapterMap["element"];
+    const body = htmlEl.childNodes.find((n) => n.nodeName === "body") as DefaultTreeAdapterMap["element"];
+    current = serialize(body);
+  }
+  return problems;
+}
 
 // Independent verdict: parse the sanitized output with workerd's HTMLRewriter
 // (lol-html), not with our own tokenizer, and collect everything it sees.
@@ -61,6 +101,7 @@ describe("sanitizer under workerd", () => {
       it(payload.name, async () => {
         const out = sanitizeHtml(payload.html);
         await assertInert(out, payload.name);
+        expect(treeProblems(out), payload.name).toEqual([]);
         for (const bad of payload.forbid ?? []) expect(out.toLowerCase(), `${payload.name} kept "${bad}"`).not.toContain(bad.toLowerCase());
         // Idempotent: re-sanitizing stored output changes nothing, so edits can't ratchet it open.
         expect(sanitizeHtml(out)).toBe(out);
@@ -76,6 +117,7 @@ describe("sanitizer under workerd", () => {
       const html = Array.from({ length: 1 + Math.floor(rand() * 8) }, () => pieces[Math.floor(rand() * pieces.length)]).join(rand() < 0.5 ? "" : " ");
       const out = sanitizeHtml(html);
       await assertInert(out, `fuzz #${i}`);
+      expect(treeProblems(out), `fuzz #${i}`).toEqual([]);
       expect(sanitizeHtml(out)).toBe(out);
     }
   });
@@ -90,6 +132,29 @@ describe("sanitizer under workerd", () => {
       expect(sanitizeHtml(html)).toBe(html);
       const frac = '<math display="block"><mfrac><mrow><mi>a</mi><mo stretchy="false">+</mo><mn>1</mn></mrow><msqrt><mi>b</mi></msqrt></mfrac></math>';
       expect(sanitizeHtml(frac)).toBe(frac);
+    });
+    // Regression: `open` was treated as a boolean on every element, so mfenced lost its
+    // fences (`<mfenced open>`), and `close`/`separators` were dropped by the generic filter.
+    it("MathML fence and quote characters survive; details stays boolean", () => {
+      const fenced = '<math><mfenced open="(" close="]" separators=";"><mi>a</mi><mi>b</mi></mfenced><ms lquote="&lt;" rquote="&gt;">s</ms></math>';
+      expect(sanitizeHtml(fenced)).toBe(fenced);
+      expect(sanitizeHtml('<details open="evil"><summary>s</summary>x</details>')).toBe("<details open><summary>s</summary>x</details>");
+      expect(sanitizeHtml('<math><mfenced open="&#1;x"><mi>a</mi></mfenced></math>')).toBe("<math><mfenced><mi>a</mi></mfenced></math>");
+      expect(sanitizeHtml('<p close="x" lquote="y">p</p>')).toBe("<p>p</p>");
+    });
+    it("mXSS through MathML integration points stays inert after tree construction and round trips", () => {
+      for (const p of [
+        '<math><mi><mglyph><svg><mtext><textarea><path id="</textarea><img onerror=alert(1) src=1>">',
+        '<form><math><mtext></form><form><mglyph><style></math><img onerror=alert(1) src>',
+        '<math><mtext><h1><a><h6></a></h6><mglyph><svg><mtext><style><a title="</style><img src onerror=alert(1)>"></style></h1>',
+        '<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;img src=1 onerror=alert(1)&gt;">',
+        '<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+        '<a href="&#00000106avascript:alert(1)">x</a><a href="jav&#x09;ascript:1">y</a><a href=" &#14;javascript:1">z</a>',
+      ]) {
+        const out = sanitizeHtml(p);
+        expect(treeProblems(out), p).toEqual([]);
+        expect(out).not.toMatch(/onerror|javascript/i);
+      }
     });
     it("links get rel and lose target; http, https, mailto and fragments are kept", () => {
       expect(sanitizeHtml('<a href="https://example.org/a?b=1&c=2" target="_blank">x</a>')).toBe('<a href="https://example.org/a?b=1&amp;c=2" rel="noopener noreferrer nofollow">x</a>');

@@ -68,12 +68,18 @@ const MATH_ATTRS = new Set([
   "separators", "form", "symmetric", "largeop", "movablelimits", "notation", "width", "height", "depth", "voffset", "numalign",
   "denomalign", "bevelled", "align", "frame", "equalrows", "equalcolumns", "rowlines", "columnlines", "rowspacing", "columnspacing",
   "mathbackground", "mathcolor", "scriptminsize", "scriptsizemultiplier", "subscriptshift", "superscriptshift", "side", "xmlns",
+  "lquote", "rquote",
 ]);
 
 const SAFE_TOKEN = /^[A-Za-z][A-Za-z0-9_:.-]{0,63}$/;
 const SAFE_CLASS = /^[A-Za-z0-9_\- :.]{0,200}$/;
 const SAFE_SIMPLE = /^[A-Za-z0-9_\- :.,%#+]{0,200}$/;
 const DIGITS = /^\d{1,9}$/;
+// MathML fence and quote characters (mfenced open/close/separators, ms lquote/rquote): short plain
+// text, which is all these attributes ever hold. Values are re-escaped on output, so any character
+// outside the control range is safe here.
+// eslint-disable-next-line no-control-regex
+const MATH_FENCE = /^[^\u0000-\u001f\u007f]{0,16}$/;
 
 const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
 
@@ -161,7 +167,13 @@ function cleanAttr(tag: string, isMath: boolean, name: string, value: string): s
       return /^[1aAiI]$/.test(v) ? v : null;
     case "dir":
       return v === "ltr" || v === "rtl" || v === "auto" ? v : null;
-    case "reversed": case "open": case "hidden":
+    case "open":
+      // Boolean on <details>; a fence character on MathML (mfenced open="(").
+      if (isMath) return MATH_FENCE.test(v) ? v : null;
+      return "";
+    case "close": case "separators": case "lquote": case "rquote":
+      return isMath && MATH_FENCE.test(v) ? v : null;
+    case "reversed": case "hidden":
       return "";
     case "lang":
       return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/.test(v) ? v : null;

@@ -42,7 +42,9 @@ inviteRoutes.post("/redeem", async (c) => {
   // Atomic: the UPDATE claims the invite only if it is still unredeemed, unrevoked
   // and unexpired; the INSERT runs in the same transaction and only if THIS
   // subject now holds the claim. Two racing redeemers cannot both win.
-  const results = await c.env.DB.batch([
+  let results: D1Result[];
+  try {
+    results = await c.env.DB.batch([
     c.env.DB.prepare(
       "UPDATE invites SET redeemed_by = ?1, redeemed_at = ?2 WHERE id = ?3 AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > ?2",
     ).bind(subject, now, invite.id),
@@ -50,7 +52,13 @@ inviteRoutes.post("/redeem", async (c) => {
       `INSERT INTO project_members (project_id, subject, role, created_at)
        SELECT project_id, ?1, role, ?2 FROM invites WHERE id = ?3 AND redeemed_by = ?1 AND redeemed_at = ?2`,
     ).bind(subject, now, invite.id),
-  ]);
+    ]);
+  } catch (error) {
+    // The same person redeeming two links to one project at once: the second membership
+    // insert hits the primary key and the whole batch (including the claim) rolls back.
+    if (error instanceof Error && /UNIQUE|PRIMARY KEY|constraint/i.test(error.message)) throw E.conflict("You already have access to this project.", "already_member");
+    throw error;
+  }
   if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) throw E.gone("This invite link has already been used.", "invite_used");
   return c.json({ project_id: invite.project_id, role: invite.role, already_redeemed: false }, 201);
 });

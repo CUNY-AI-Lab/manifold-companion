@@ -21,3 +21,7 @@ export function randomToken(): string {
 export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 export const addDays = (iso: string, days: number): string => nowIso(Date.parse(iso) + days * 86_400_000);
+
+/** A random lowercase UUIDv4 computed inside SQLite, for set-based inserts (one row per member). */
+export const UUID_V4_SQL =
+  "(lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))))";
