@@ -280,3 +280,85 @@ test('Settings counts the edits kept in this browser and deletes them', async ({
   await expect(page.getByText('None are kept now.')).toBeVisible();
   expect(await draftKeys(page)).toEqual([]);
 });
+
+test('keyboard shortcuts: a visible list, ? and /, N and P outside fields, Mod+S in an editor, single keys can be turned off', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  await page.keyboard.press('?');
+  const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('table', { name: 'Keyboard shortcuts' }).getByRole('row')).toHaveCount(8);
+  expect(await axe(page, 'shortcuts dialog')).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Keyboard shortcuts' }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('button', { name: 'Keyboard shortcuts' })).toBeFocused();
+  await page.keyboard.press('/');
+  await expect(page.getByLabel('Search your texts')).toBeFocused();
+  await page.keyboard.type('?'); // typed into the search box, not a shortcut
+  await expect(page.getByLabel('Search your texts')).toHaveValue('?');
+  await expect(dialog).toHaveCount(0);
+
+  const api = apiOf(page);
+  const { text } = await imageTextWithPages(page, api, ['First page.', 'Second page.', 'Third page.']);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const editor = page.getByLabel(/^Text of page/);
+  await expect(editor).toHaveValue('First page.');
+  await page.locator('h1').click(); // focus outside any field
+  await page.keyboard.press('n');
+  await expect(page.getByLabel(/^Text of page 2/)).toHaveValue('Second page.');
+  await page.keyboard.press('p');
+  await expect(page.getByLabel(/^Text of page 1/)).toHaveValue('First page.');
+
+  // In the editor, N is a letter; Mod+S saves; Mod+Shift+S saves and opens the next page.
+  await editor.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' nnn');
+  await expect(editor).toHaveValue('First page. nnn');
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
+  expect((await api(`/texts/${text.id}`)).pages[0].ocr_text).toBe('First page. nnn');
+  await editor.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' again');
+  await page.keyboard.press('ControlOrMeta+Shift+S');
+  await expect(page.getByLabel(/^Text of page 2/)).toHaveValue('Second page.');
+  expect((await api(`/texts/${text.id}`)).pages[0].ocr_text).toBe('First page. nnn again');
+
+  // Turned off: N does nothing, and that is remembered in this browser.
+  await page.locator('h1').click();
+  await page.keyboard.press('?');
+  await dialog.getByLabel(/Single-key shortcuts/).uncheck();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await page.locator('h1').click();
+  await page.keyboard.press('n');
+  await page.keyboard.press('?');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByLabel(/^Text of page 1/)).toBeVisible();
+  await page.getByRole('button', { name: 'Keyboard shortcuts' }).click();
+  await dialog.getByLabel(/Single-key shortcuts/).check();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await page.locator('h1').click();
+  await page.keyboard.press('n');
+  await expect(page.getByLabel(/^Text of page 2/)).toBeVisible();
+});
+
+test('Mod+S saves the HTML of a PDF text', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const project = (await api('/projects', 'POST', { name: 'Keys HTML', project_type: 'pdf_to_html' })).project;
+  const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Chapter' })).text;
+  await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<p>One.</p>' });
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const source = page.getByLabel(/^HTML/);
+  await expect(source).toHaveValue('<p>One.</p>');
+  await source.fill('<p>One, saved from the keyboard.</p>');
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('button', { name: 'Save HTML' })).toBeDisabled();
+  expect((await api(`/texts/${text.id}/html`)).html_content).toBe('<p>One, saved from the keyboard.</p>');
+});

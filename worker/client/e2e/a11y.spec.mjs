@@ -97,6 +97,10 @@ for (const [size, viewport] of Object.entries(VIEWPORTS)) {
       await expect(page.getByRole('region', { name: 'Recent notifications' })).toBeVisible();
       found.push(...(await violations(page, 'notification menu open')));
       await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Keyboard shortcuts' }).click();
+      await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
+      found.push(...(await violations(page, 'keyboard shortcuts dialog')));
+      await page.keyboard.press('Escape');
       await page.getByLabel('Show resolved comments').check();
       found.push(...(await violations(page, 'comments with resolved shown')));
       await page.getByRole('button', { name: 'Dublin Core metadata' }).click();

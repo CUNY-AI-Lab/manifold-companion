@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useSession } from '../api/session.jsx';
 import { LegacyDifferences, ToolRules, WhatItDoes } from '../components/ToolFacts';
+import { ShortcutList } from '../hooks/useShortcuts';
 
 export default function HelpPage() {
   const { session } = useSession();
@@ -39,7 +40,8 @@ export default function HelpPage() {
       </section>
       <section aria-labelledby="help-keys">
         <h2 id="help-keys" className="text-lg">Keyboard</h2>
-        <p className="mt-1">Everything works from the keyboard: Tab moves between controls, Enter or Space activates them. Use the arrow buttons next to a page or a text to move it up or down; the export follows that order.</p>
+        <p className="mt-1">Everything works from the keyboard: Tab moves between controls, Enter or Space activates them. Use the arrow buttons next to a page or a text to move it up or down; the export follows that order. These shortcuts save steps (single-key ones work only outside text fields, and can be turned off in Settings):</p>
+        <div className="mt-2"><ShortcutList /></div>
       </section>
       <p><Link to="/">Back to your projects</Link></p>
     </article>

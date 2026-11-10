@@ -16,6 +16,7 @@ import { replaceWarning } from '../lib/versions';
 import { useConfirm } from '../components/ConfirmDialog';
 import useFileDrop, { DropOverlay } from '../hooks/useFileDrop';
 import { DraftBanner, useDraftKeeper, useLeaveGuard, useStoredDraft } from '../hooks/useUnsaved';
+import { useShortcut } from '../hooks/useShortcuts';
 import { draftDiffers, savedChangedSince } from '../lib/drafts';
 
 /** "1, 3-5" -> Set {1,3,4,5} */
@@ -131,6 +132,8 @@ export default function HtmlTextPage({ data, reload }) {
       setVersionKey((k) => k + 1);
     } catch (e) { setError(e); }
   };
+
+  useShortcut('save', () => { if (dirty) save(); }, canEdit);
 
   const repair = async () => {
     const broken = brokenFormulas(html ?? '');

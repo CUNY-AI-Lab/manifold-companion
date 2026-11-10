@@ -13,6 +13,7 @@ import NotificationsPage from './pages/NotificationsPage';
 import SearchPage from './pages/SearchPage';
 import HelpPage from './pages/HelpPage';
 import { useNoFileNavigation } from './hooks/useFileDrop';
+import { ShortcutProvider } from './hooks/useShortcuts';
 
 function NotFound() {
   return <div className="mx-auto max-w-3xl px-4 py-10"><h1 className="text-xl">Page not found</h1><p className="mt-2 text-sm">Go back to <a href="./">your projects</a>.</p></div>;
@@ -29,6 +30,7 @@ export default function App() {
   return (
     <AnnounceProvider>
       <ConfirmProvider>
+      <ShortcutProvider>
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:bg-white focus:px-4 focus:py-2">Skip to content</a>
       <div className="flex min-h-screen flex-col">
         <Header />
@@ -47,6 +49,7 @@ export default function App() {
         </main>
         <footer className="mx-auto w-full max-w-6xl px-4 pb-6"><DataNotice /></footer>
       </div>
+      </ShortcutProvider>
       </ConfirmProvider>
     </AnnounceProvider>
   );

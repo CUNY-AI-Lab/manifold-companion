@@ -4,6 +4,7 @@ import { useSession } from '../api/session.jsx';
 import { ErrorNote, formatBytes, QuotaLine } from '../components/ui';
 import { clearAllDrafts, countDrafts } from '../lib/drafts';
 import { browserStorage } from '../lib/storage';
+import { SingleKeyToggle } from '../hooks/useShortcuts';
 
 const PREF_LABELS = { inapp_comment_reply: 'Replies to my comments', inapp_comment_mention: 'Mentions of me', inapp_project_shared: 'Someone joins a project I own' };
 
@@ -48,6 +49,11 @@ export default function SettingsPage() {
         <h2 className="text-lg">Usage</h2>
         <p>Storage: {formatBytes(session.storage.used_bytes)} of {formatBytes(session.storage.quota_bytes)} in projects you own (uploads by your collaborators count here too).</p>
         <QuotaLine />
+      </section>
+      <section className="space-y-2 text-sm">
+        <h2 className="text-lg">Keyboard shortcuts</h2>
+        <p>The list is under “Keyboard shortcuts” at the top of every page, and on the Help page. This setting is kept in this browser.</p>
+        <SingleKeyToggle />
       </section>
       <section className="space-y-2 text-sm">
         <h2 className="text-lg">Unsaved changes kept in this browser</h2>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSession } from '../api/session.jsx';
+import { useShortcutSettings } from '../hooks/useShortcuts';
 
 /** The notification menu: unread count on the button; the latest ten in a panel; open one to go there and mark it read. */
 function Bell() {
@@ -66,6 +67,7 @@ function Bell() {
 
 export default function Header() {
   const { session } = useSession();
+  const { openShortcuts } = useShortcutSettings();
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   return (
@@ -78,6 +80,7 @@ export default function Header() {
         </form>
         <nav className="flex items-center gap-4">
           <NavLink to="/help" className="text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200">Help</NavLink>
+          <button type="button" className="text-sm text-slate-700 hover:text-cail-link dark:text-slate-200 dark:hover:text-cail-link-dark" onClick={openShortcuts} aria-keyshortcuts="?">Keyboard shortcuts</button>
           <Bell />
           <NavLink to="/settings" className="text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200">{session?.profile?.display_name || 'Settings'}</NavLink>
         </nav>

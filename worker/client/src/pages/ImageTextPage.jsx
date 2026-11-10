@@ -17,6 +17,7 @@ import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
 import useFileDrop, { DropOverlay, sortDropped } from '../hooks/useFileDrop';
 import { DraftBanner, useDraftKeeper, useLeaveGuard, useStoredDraft } from '../hooks/useUnsaved';
+import { useShortcut } from '../hooks/useShortcuts';
 import { draftDiffers, savedChangedSince } from '../lib/drafts';
 
 const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
@@ -179,8 +180,20 @@ export default function ImageTextPage({ data, reload }) {
     try {
       await api.post(`/api/texts/${text.id}/pages/${page.id}`, { text: draft });
       reload();
-    } catch (e) { setError(e); }
+      return true;
+    } catch (e) { setError(e); return false; }
   };
+  const inFullText = () => !!document.activeElement?.closest?.('[data-editor="fulltext"]');
+  const pageIndex = pages.findIndex((p) => p.id === selected);
+  useShortcut('save', () => { if (!inFullText() && pageDirty) savePage(); }, canEdit && !!page);
+  useShortcut('save-next', async () => {
+    if (inFullText()) return;
+    if (pageDirty && !(await savePage())) return;
+    const next = pages[pageIndex + 1];
+    if (next) setSelected(next.id);
+  }, canEdit && !!page);
+  useShortcut('next-page', () => { const next = pages[pageIndex + 1]; if (next) selectPage(next.id); }, pages.length > 1);
+  useShortcut('prev-page', () => { const prev = pages[pageIndex - 1]; if (prev) selectPage(prev.id); }, pages.length > 1);
 
   const ocrOne = async () => {
     if (page.ocr_text && !(await confirm({ title: 'Read this page again?', message: replaceWarning(`Read page ${page.page_number} again with the model?${draft !== page.ocr_text ? ' Your unsaved changes to this page will be lost.' : ''}`), confirmLabel: 'Read again' }))) return;

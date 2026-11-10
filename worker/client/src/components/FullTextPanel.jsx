@@ -5,6 +5,7 @@ import SandboxedPreview from './SandboxedPreview';
 import VersionHistory from './VersionHistory';
 import { ErrorNote } from './ui';
 import { useDraftKeeper } from '../hooks/useUnsaved';
+import { useShortcut } from '../hooks/useShortcuts';
 
 /**
  * The whole text of an image text in one editor (the legacy compiled text).
@@ -53,6 +54,9 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
       setStatus('Full text saved. The export uses it.');
     } catch (e) { setError(e); }
   };
+  const region = useRef(null);
+  useShortcut('save', () => { if (dirty && region.current?.contains(document.activeElement)) save(); }, canEdit && open);
+
   const usePages = async () => {
     if (!(await confirm({ title: 'Use the pages again?', message: 'Export this text from its page texts again? The full text is kept in its version history, where you can view or restore it.', confirmLabel: 'Use the pages again' }))) return;
     setError(null);
@@ -73,7 +77,7 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
         </button>
       </h2>
       {open ? (
-        <div className="space-y-3 border-t border-slate-200 px-4 py-3 text-sm dark:border-slate-700">
+        <div ref={region} data-editor="fulltext" className="space-y-3 border-t border-slate-200 px-4 py-3 text-sm dark:border-slate-700">
           <ErrorNote error={error} onDismiss={() => setError(null)} />
           {saved === undefined ? <p role="status">Loading the full text</p> : (
             <>
