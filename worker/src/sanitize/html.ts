@@ -35,7 +35,11 @@ const MATHML_TAGS = new Set([
   "msup", "mtable", "mtd", "mtext", "mtr", "munder", "munderover", "none",
 ]);
 
-const VOID = new Set(["br", "hr", "img", "col", "wbr", "mspace", "mprescripts", "none", "malignmark", "maligngroup"]);
+const VOID = new Set(["br", "hr", "img", "col", "wbr"]);
+// MathML elements that never have children. HTML syntax only self-closes a foreign element
+// with "/>", so a bare <mspace> would swallow its following siblings in a browser. They are
+// always emitted with an explicit end tag and never take content.
+const MATH_EMPTY = new Set(["mspace", "mprescripts", "none", "malignmark", "maligngroup", "mglyph"]);
 
 // Content is discarded along with the element. RAW elements are tokenized as raw
 // text up to their end tag (the browser would not parse markup inside them).
@@ -303,7 +307,7 @@ export function sanitizeHtml(input: string): string {
     if (!known) continue; // unwrap: drop the tag, keep its content
 
     if (tag.closing) {
-      if (VOID.has(name)) continue;
+      if (VOID.has(name) || MATH_EMPTY.has(name)) continue;
       const at = stack.lastIndexOf(name);
       if (at === -1) continue;
       while (stack.length > at) {
@@ -337,6 +341,10 @@ export function sanitizeHtml(input: string): string {
     }
     if (relNeeded) parts.push(' rel="noopener noreferrer nofollow"');
     out.push(`<${name}${parts.join("")}>`);
+    if (MATH_EMPTY.has(name)) {
+      out.push(`</${name}>`);
+      continue;
+    }
     if (!VOID.has(name)) {
       stack.push(name);
       if (name === "math") mathDepth += 1;

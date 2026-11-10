@@ -1,0 +1,42 @@
+{
+  "generator": "server/routes/export.js run unmodified with stubbed data access (temml 0.13.1, archiver 7.0.1)",
+  "projects": {
+    "md": [
+      {
+        "name": "section-01-part-i.md",
+        "text": "---\ntitle: \"Part I\"\n---\n\n# Part I"
+      },
+      {
+        "name": "text-02-chapter-one.md",
+        "text": "---\ntitle: \"Capítulo Uno\"\nlanguage: \"es\"\ncreator: \"Ana Pérez\"\n---\n\nPrimera página.\n\nSegundo párrafo.\n\n---\n\nTercera *página*."
+      },
+      {
+        "name": "text-03-chapter-two-quotes-stuff.md",
+        "text": "---\ntitle: \"Chapter Two: \\\"Quotes\\\" & stuff\"\nlanguage: \"es\"\ncreator: \"Ana Pérez; Bo Li\"\n---\n\nOnly page with a back\\slash."
+      },
+      {
+        "name": "manifest.yml",
+        "text": "# Manifold Companion Export\n\nmeta:\n  title: \"Notebook\"\n  creators:\n    - name: \"Ana Pérez\"\n    - name: \"Bo Li\"\n  date: \"2026-11-01\"\n  language: \"es\"\n  rights: \"CC BY 4.0\"\n  description: \"A \\\"quoted\\\" description\"\n\ntoc:\n  - label: \"Part I\"\n    source_path: \"section-01-part-i.md\"\n    start_section: true\n    children:\n      - label: \"Capítulo Uno\"\n        source_path: \"text-02-chapter-one.md\"\n  - label: \"Chapter Two: \\\"Quotes\\\" & stuff\"\n    source_path: \"text-03-chapter-two-quotes-stuff.md\""
+      }
+    ],
+    "html": [
+      {
+        "name": "images-01/page-1-fig-1.png",
+        "sha256": "949e22933c7b68cf5e247bb85d75e71af8d008d9446101fe6a3768e66744bfb1",
+        "bytes": 73
+      },
+      {
+        "name": "text-01-lecture-1.html",
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Lecture One</title>\n</head>\n<body>\n<article class=\"pdf-html-document\"><section data-page=\"1\"><h1>Limits</h1><p>Inline <math display=\"inline\"><mrow><msup><mi>x</mi><mn class=\"tml-sml-pad\">2</mn></msup><mo>+</mo><msub><mi>y</mi><mn>1</mn></msub></mrow></math> and display:</p><p><math display=\"block\" class=\"tml-display\" style=\"display:block math;\"><mrow><mfrac><mi>a</mi><mi>b</mi></mfrac><mo>=</mo><msqrt><mrow><mi>c</mi><mspace width=\"0pt\" height=\"0.5em\"></mspace></mrow></msqrt></mrow></math></p><figure><img src=\"images-01/page-1-fig-1.png\" alt=\"A plot\"><figcaption>Figure 1</figcaption></figure><table><tr><th>n</th><td><math display=\"inline\"><mrow><mi>n</mi><mo form=\"postfix\" stretchy=\"false\">!</mo></mrow></math></td></tr></table></section></article>\n</body>\n</html>"
+      },
+      {
+        "name": "text-02-empty-lecture.md",
+        "text": "---\ntitle: \"Empty lecture\"\nlanguage: \"en\"\ncreator: \"\"\n---\n\n"
+      },
+      {
+        "name": "manifest.yml",
+        "text": "# Manifold Companion Export\n\nmeta:\n  title: \"Math Book\"\n  creators:\n  date: \"2026-11-02\"\n  language: \"en\"\n  rights: \"\"\n  description: \"\"\n\ntoc:\n  - label: \"Lecture One\"\n    source_path: \"text-01-lecture-1.html\"\n    children:\n      - label: \"Empty lecture\"\n        source_path: \"text-02-empty-lecture.md\""
+      }
+    ]
+  }
+}

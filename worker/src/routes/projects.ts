@@ -7,6 +7,7 @@ import { deleteProject } from "../storage";
 import { addDays, isSubject, newId, nowIso } from "../util";
 import { projectInviteRoutes as inviteRoutes } from "./project-invites";
 import { projectTextRoutes } from "./project-texts";
+import { exportRoutes } from "./export";
 import type { AppEnv } from "../app";
 import type { ProjectRow, Role } from "../authz";
 
@@ -145,3 +146,4 @@ projectRoutes.delete("/:id/members/:subject", async (c) => {
 
 projectRoutes.route("/:id/invites", inviteRoutes);
 projectRoutes.route("/:id/texts", projectTextRoutes);
+projectRoutes.route("/", exportRoutes);

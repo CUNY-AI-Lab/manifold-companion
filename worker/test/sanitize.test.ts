@@ -135,6 +135,14 @@ describe("sanitizer under workerd", () => {
     });
     // Regression: `open` was treated as a boolean on every element, so mfenced lost its
     // fences (`<mfenced open>`), and `close`/`separators` were dropped by the generic filter.
+    // Regression: mspace/none/mprescripts were emitted as bare <mspace>, which a browser does not
+    // self-close in MathML, so the next siblings became invisible children of the mspace.
+    it("empty MathML elements always get an explicit end tag and take no content", () => {
+      expect(sanitizeHtml('<math><mrow><mspace width="1em"><mi>x</mi></mrow></math>')).toBe('<math><mrow><mspace width="1em"></mspace><mi>x</mi></mrow></math>');
+      expect(sanitizeHtml('<math><mmultiscripts><mi>X</mi><none/><mi>a</mi><mprescripts/><mi>b</mi><none></none></mmultiscripts></math>')).toBe("<math><mmultiscripts><mi>X</mi><none></none><mi>a</mi><mprescripts></mprescripts><mi>b</mi><none></none></mmultiscripts></math>");
+      const doc = parse(`<!doctype html><body>${sanitizeHtml('<math><mrow><mspace width="1em"><mi>x</mi></mrow></math>')}`);
+      expect(serialize(doc)).toContain("<mspace width=\"1em\"></mspace><mi>x</mi>");
+    });
     it("MathML fence and quote characters survive; details stays boolean", () => {
       const fenced = '<math><mfenced open="(" close="]" separators=";"><mi>a</mi><mi>b</mi></mfenced><ms lquote="&lt;" rquote="&gt;">s</ms></math>';
       expect(sanitizeHtml(fenced)).toBe(fenced);

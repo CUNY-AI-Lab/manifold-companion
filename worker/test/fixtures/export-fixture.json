@@ -1,0 +1,120 @@
+{
+  "projects": [
+    {
+      "key": "md",
+      "name": "Field Notes",
+      "project_type": "image_to_markdown",
+      "default_language": "es",
+      "description": "Notebooks from the field",
+      "texts": [
+        {
+          "key": "t1",
+          "name": "Chapter One",
+          "pages": [
+            "Primera página.\n\nSegundo párrafo.",
+            "",
+            "Tercera *página*."
+          ],
+          "metadata": {
+            "dc_title": "Capítulo Uno",
+            "dc_creator": "Ana Pérez",
+            "dc_language": "es"
+          }
+        },
+        {
+          "key": "t2",
+          "name": "Chapter Two: \"Quotes\" & stuff",
+          "pages": [
+            "Only page with a back\\slash."
+          ]
+        }
+      ],
+      "request": {
+        "meta": {
+          "title": "Notebook",
+          "creators": "Ana Pérez; Bo Li",
+          "date": "2026-11-01",
+          "language": "es",
+          "rights": "CC BY 4.0",
+          "description": "A \"quoted\" description"
+        },
+        "toc": [
+          {
+            "type": "section",
+            "label": "Part I",
+            "children": [
+              {
+                "type": "text",
+                "textKey": "t1",
+                "label": "Chapter One",
+                "children": []
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "textKey": "t2",
+            "label": "Chapter Two: \"Quotes\" & stuff",
+            "children": []
+          }
+        ]
+      }
+    },
+    {
+      "key": "html",
+      "name": "Math Book",
+      "project_type": "pdf_to_html",
+      "default_language": "en",
+      "description": null,
+      "texts": [
+        {
+          "key": "h1",
+          "name": "Lecture 1",
+          "figures": [
+            "page-1-fig-1.png",
+            "page-2-fig-1.png"
+          ],
+          "html": "<article class=\"pdf-html-document\"><section data-page=\"1\"><h1>Limits</h1><p>Inline \\(x^2 + y_1\\) and display:</p><p>\\[\\frac{a}{b} = \\sqrt{c}\\]</p><figure><img src=\"page-1-fig-1.png\" alt=\"A plot\"><figcaption>Figure 1</figcaption></figure><table><tr><th>n</th><td>\\(n!\\)</td></tr></table></section></article>",
+          "metadata": {
+            "dc_title": "Lecture One",
+            "dc_language": "en"
+          }
+        },
+        {
+          "key": "h2",
+          "name": "Empty lecture",
+          "html": null
+        }
+      ],
+      "request": {
+        "meta": {
+          "title": "Math Book",
+          "creators": "",
+          "date": "2026-11-02",
+          "language": "en",
+          "rights": "",
+          "description": ""
+        },
+        "toc": [
+          {
+            "type": "text",
+            "textKey": "h1",
+            "label": "Lecture 1",
+            "children": [
+              {
+                "type": "text",
+                "textKey": "h2",
+                "label": "Empty lecture",
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "figureFiles": {
+    "page-1-fig-1.png": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR4nGM4IScHRww4OQD1xwwxB+utmQAAAABJRU5ErkJggg==",
+    "page-2-fig-1.png": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOQkzsBRAwQCgAZ1gQRShBSHAAAAABJRU5ErkJggg=="
+  }
+}

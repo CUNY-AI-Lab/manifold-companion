@@ -14,7 +14,9 @@
     "@cuny-ai-lab/cail-client": "6.3.0",
     "@cuny-ai-lab/cail-identity": "5.2.6",
     "@cuny-ai-lab/cail-log": "0.6.4",
-    "hono": "4.13.17"
+    "fflate": "0.8.2",
+    "hono": "4.13.17",
+    "temml": "0.13.1"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.6.1",
