@@ -111,12 +111,19 @@ export async function pruneVersions(env: Env, project: ProjectRow, textId: strin
     .bind(textId, contentType, CAPS.maxVersions)
     .all<{ id: string; r2_key: string; bytes: number }>();
   if (old.results.length === 0) return;
+  const owner = ownerOf(project);
   for (let i = 0; i < old.results.length; i += 80) {
     const chunk = old.results.slice(i, i + 80);
-    await env.DB.prepare(`DELETE FROM text_versions WHERE id IN (${chunk.map((_, n) => `?${n + 1}`).join(",")})`).bind(...chunk.map((c) => c.id)).run();
+    const marks = chunk.map((_, n) => `?${n + 2}`).join(",");
+    const ids = chunk.map((c) => c.id);
+    // One transaction: the release is computed from the rows that still exist, so a
+    // concurrent prune that already removed them releases nothing the second time.
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE profiles SET storage_bytes = MAX(0, storage_bytes - COALESCE((SELECT SUM(bytes) FROM text_versions WHERE id IN (${marks}) AND text_id = ?${chunk.length + 2}), 0)) WHERE subject = ?1`).bind(owner, ...ids, textId),
+      env.DB.prepare(`DELETE FROM text_versions WHERE id IN (${marks}) AND text_id = ?${chunk.length + 2}`).bind(owner, ...ids, textId),
+    ]);
     await env.FILES.delete(chunk.map((c) => c.r2_key)).catch(() => undefined); // an orphan is swept with the project
   }
-  await releaseStorage(env.DB, ownerOf(project), old.results.reduce((n, v) => n + v.bytes, 0));
 }
 
 const KIND_COLS = {

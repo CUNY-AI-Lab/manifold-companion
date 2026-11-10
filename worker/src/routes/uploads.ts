@@ -8,7 +8,7 @@ import { limits } from "../env";
 import { E } from "../errors";
 import { serveBody } from "../files";
 import { figureKey, pageImageKey, sourcePdfRevisionKey } from "../r2-keys";
-import { releaseStorage } from "../storage";
+import { deleteRowAndRelease, releaseStorage } from "../storage";
 import { cleanFilename, declaredSize, imageKind, receive, sniffImage, sniffPdf } from "../uploads";
 import { isUuid, newId, nowIso } from "../util";
 import type { AppEnv } from "../app";
@@ -123,7 +123,11 @@ uploadRoutes.post("/:id/figures", async (c) => {
   const key = figureKey(project.id, text.id, id);
   try {
     await c.env.FILES.put(key, got.bytes, { httpMetadata: { contentType: got.type } });
-    await c.env.DB.prepare("INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)").bind(id, text.id, filename, key, got.type, size, nowIso()).run();
+    // Conditional insert: the per-text cap is checked inside the statement, so racing uploads cannot pass it together.
+    const res = await c.env.DB.prepare(
+      "INSERT INTO figures (id, text_id, filename, image_key, image_type, bytes, created_at) SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE (SELECT COUNT(*) FROM figures WHERE text_id = ?2) < ?8",
+    ).bind(id, text.id, filename, key, got.type, size, nowIso(), lim.maxFiguresPerText).run();
+    if (res.meta.changes !== 1) throw E.conflict(`A text can hold at most ${lim.maxFiguresPerText} figures.`, "figure_limit_reached");
   } catch (error) {
     await c.env.FILES.delete(key).catch(() => undefined);
     await got.release();
@@ -153,11 +157,11 @@ uploadRoutes.get("/:id/figures/:figureId", async (c) => {
 uploadRoutes.delete("/:id/figures/:figureId", async (c) => {
   const { text, project } = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
   const fid = c.req.param("figureId") as string;
-  const fig = isUuid(fid) ? await c.env.DB.prepare("SELECT id, image_key, bytes FROM figures WHERE id = ?1 AND text_id = ?2").bind(fid, text.id).first<{ id: string; image_key: string; bytes: number }>() : null;
+  const fig = isUuid(fid) ? await c.env.DB.prepare("SELECT id, image_key FROM figures WHERE id = ?1 AND text_id = ?2").bind(fid, text.id).first<{ id: string; image_key: string }>() : null;
   if (!fig) throw E.notFound("Figure not found.");
-  await c.env.FILES.delete(fig.image_key);
-  await c.env.DB.prepare("DELETE FROM figures WHERE id = ?1").bind(fig.id).run();
-  await releaseStorage(c.env.DB, ownerOf(project), fig.bytes);
+  // Only the request whose DELETE removes the row releases the bytes (one atomic batch).
+  if (!(await deleteRowAndRelease(c.env.DB, ownerOf(project), "figures", fig.id, "bytes"))) throw E.notFound("Figure not found.");
+  await c.env.FILES.delete(fig.image_key).catch(() => undefined);
   await touchProject(c.env.DB, project.id);
   await reindexText(c.env, text.id);
   return c.json({ ok: true });

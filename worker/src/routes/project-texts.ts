@@ -46,11 +46,16 @@ projectTextRoutes.post("/", async (c) => {
   const { project } = await requireRole(c.env.DB, subject, c.req.param("id") as string, "editor");
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
   const name = requiredString(body, "name", 200);
-  const count = await c.env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(MAX(sort_order), 0) AS m FROM texts WHERE project_id = ?1").bind(project.id).first<{ n: number; m: number }>();
-  if ((count?.n ?? 0) >= CAPS.maxTextsPerProject) throw E.conflict(`A project can hold at most ${CAPS.maxTextsPerProject} texts.`, "text_limit_reached");
+  const lim = limits(c.env);
   const id = newId();
   const now = nowIso();
-  await c.env.DB.prepare("INSERT INTO texts (id, project_id, name, sort_order, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?5)").bind(id, project.id, name, (count?.m ?? 0) + 1, now).run();
+  // Conditional insert: the cap is checked inside the statement (no check-then-insert window).
+  const res = await c.env.DB.prepare(
+    `INSERT INTO texts (id, project_id, name, sort_order, created_at, updated_at)
+     SELECT ?1, ?2, ?3, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM texts WHERE project_id = ?2), ?4, ?4
+     WHERE (SELECT COUNT(*) FROM texts WHERE project_id = ?2) < ?5`,
+  ).bind(id, project.id, name, now, lim.maxTextsPerProject).run();
+  if (res.meta.changes !== 1) throw E.conflict(`A project can hold at most ${lim.maxTextsPerProject} texts.`, "text_limit_reached");
   await touchProject(c.env.DB, project.id, now);
   await reindexText(c.env, id);
   const row = await c.env.DB.prepare(`SELECT ${listColumns} FROM texts t WHERE t.id = ?1`).bind(id).first();

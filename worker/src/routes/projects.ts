@@ -58,17 +58,18 @@ projectRoutes.post("/", async (c) => {
   const language = optionalString(body, "default_language", 20) ?? "en";
   if (!LANG.test(language)) throw E.badRequest("default_language must be a language code such as en or pt-BR.");
 
-  const owned = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE owner_subject = ?1").bind(subject).first<{ n: number }>();
-  if ((owned?.n ?? 0) >= lim.maxProjectsPerPerson) throw E.conflict(`You can own at most ${lim.maxProjectsPerPerson} projects.`, "project_limit_reached");
-
   const id = newId();
   const now = nowIso();
-  await c.env.DB.batch([
+  // Both statements in one transaction. The project insert is conditional on the
+  // per-person cap, and the owner row only exists if its project does.
+  const [created] = await c.env.DB.batch([
     c.env.DB.prepare(
-      "INSERT INTO projects (id, owner_subject, name, description, project_type, default_language, created_at, updated_at, last_edited_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?7,?7)",
-    ).bind(id, subject, name, description, type, language, now),
-    c.env.DB.prepare("INSERT INTO project_members (project_id, subject, role, created_at) VALUES (?1, ?2, 'owner', ?3)").bind(id, subject, now),
+      `INSERT INTO projects (id, owner_subject, name, description, project_type, default_language, created_at, updated_at, last_edited_at)
+       SELECT ?1,?2,?3,?4,?5,?6,?7,?7,?7 WHERE (SELECT COUNT(*) FROM projects WHERE owner_subject = ?2) < ?8`,
+    ).bind(id, subject, name, description, type, language, now, lim.maxProjectsPerPerson),
+    c.env.DB.prepare("INSERT INTO project_members (project_id, subject, role, created_at) SELECT ?1, ?2, 'owner', ?3 WHERE EXISTS (SELECT 1 FROM projects WHERE id = ?1)").bind(id, subject, now),
   ]);
+  if (created?.meta.changes !== 1) throw E.conflict(`You can own at most ${lim.maxProjectsPerPerson} projects.`, "project_limit_reached");
   const { project, role } = await requireRole(c.env.DB, subject, id, "owner");
   return c.json({ project: projectBody(project, role, lim, now) }, 201);
 });

@@ -22,19 +22,16 @@ projectInviteRoutes.post("/", async (c) => {
     throw E.badRequest(`expires_in_days must be an integer from 1 to ${lim.maxInviteTtlDays}.`);
   }
   const now = nowIso();
-  const active = await c.env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM invites WHERE project_id = ?1 AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > ?2",
-  )
-    .bind(project.id, now)
-    .first<{ n: number }>();
-  if ((active?.n ?? 0) >= lim.maxActiveInvitesPerProject) throw E.conflict("Too many active invite links. Revoke some first.", "invite_limit_reached");
-
   const token = randomToken();
   const id = newId();
   const expiresAt = addDays(now, days);
-  await c.env.DB.prepare("INSERT INTO invites (id, project_id, token_hash, role, created_by, created_at, expires_at) VALUES (?1,?2,?3,?4,?5,?6,?7)")
-    .bind(id, project.id, await sha256Hex(token), role, subject, now, expiresAt)
-    .run();
+  // Conditional insert: the active-invite cap is checked inside the statement.
+  const res = await c.env.DB.prepare(
+    `INSERT INTO invites (id, project_id, token_hash, role, created_by, created_at, expires_at)
+     SELECT ?1,?2,?3,?4,?5,?6,?7
+     WHERE (SELECT COUNT(*) FROM invites WHERE project_id = ?2 AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > ?6) < ?8`,
+  ).bind(id, project.id, await sha256Hex(token), role, subject, now, expiresAt, lim.maxActiveInvitesPerProject).run();
+  if (res.meta.changes !== 1) throw E.conflict("Too many active invite links. Revoke some first.", "invite_limit_reached");
   // The token goes in the URL fragment so it never reaches a server log or a Referer.
   return c.json({ invite: { id, role, created_at: now, expires_at: expiresAt, token, url: `${canonicalOrigin(c.env)}${BASE_PATH}/invite#t=${token}` } }, 201);
 });

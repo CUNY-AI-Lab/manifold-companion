@@ -7,7 +7,7 @@ import { byteLength, CAPS, getContent, prepareHtml, reindexText, touchProject, w
 import { limits } from "../env";
 import { E } from "../errors";
 import { deleteTextObjects, splitText } from "../text-ops";
-import { releaseStorage } from "../storage";
+import { deleteRowAndRelease } from "../storage";
 import { isUuid, nowIso } from "../util";
 import type { AppEnv } from "../app";
 
@@ -137,9 +137,8 @@ textRoutes.post("/:id/pages/:pageId", async (c) => {
 textRoutes.delete("/:id/pages/:pageId", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
   const page = await loadPage(c.env.DB, ctx.text.id, c.req.param("pageId") as string);
-  if (page.image_key) await c.env.FILES.delete(page.image_key);
-  await c.env.DB.prepare("DELETE FROM pages WHERE id = ?1").bind(page.id).run();
-  await releaseStorage(c.env.DB, ownerOf(ctx.project), page.image_bytes);
+  if (!(await deleteRowAndRelease(c.env.DB, ownerOf(ctx.project), "pages", page.id, "image_bytes"))) throw E.notFound("Page not found.");
+  if (page.image_key) await c.env.FILES.delete(page.image_key).catch(() => undefined);
   await touchProject(c.env.DB, ctx.project.id);
   await reindexText(c.env, ctx.text.id);
   return c.json({ ok: true });
