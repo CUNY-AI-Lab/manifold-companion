@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from 'react';
 import useFocusTrap from './useFocusTrap';
 import { SHORTCUTS, SINGLE_KEY_PREF, applies, keyLabel } from '../lib/shortcuts';
 import { browserStorage } from '../lib/storage';
@@ -17,7 +17,8 @@ export function ShortcutProvider({ children }) {
   }, []);
   const state = useRef({ singleKeysOn });
   state.current = { singleKeysOn };
-  useEffect(() => {
+  // Layout effects: the keys work from the first paint of the screen that offers them.
+  useLayoutEffect(() => {
     const onKey = (e) => {
       if (e.defaultPrevented) return;
       const by = (id) => applies(SHORTCUTS.find((s) => s.id === id), e, state.current);
@@ -44,7 +45,7 @@ export function useShortcut(id, handler, enabled = true) {
   h.current = handler;
   const on = useRef(ctx?.singleKeysOn ?? true);
   on.current = ctx?.singleKeysOn ?? true;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled) return undefined;
     const shortcut = SHORTCUTS.find((s) => s.id === id);
     const onKey = (e) => {
