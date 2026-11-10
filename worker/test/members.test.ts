@@ -175,4 +175,13 @@ describe("leaving a project ends what it offered you", () => {
       expect((await offer(pid, CAROL)).status).toBe(201);
     });
   }
+
+  it("a reply notifies the thread's author only while they are a member", async () => {
+    const { pid, tid } = await projectWithBytes();
+    const root = (await json(await post(`/texts/${tid}/annotations`, { body: "Bob's note", anchor_type: "global" }, BOB))).annotation;
+    expect((await call(api(`/projects/${pid}/members/${BOB}`), { method: "DELETE", as: BOB })).status).toBe(200);
+    expect((await post(`/texts/${tid}/annotations/${root.id}/replies`, { body: "Private follow-up" })).status).toBe(201);
+    const notes = (await json(await call(api("/notifications?all=1"), { as: BOB }))).notifications;
+    expect(notes.filter((n: any) => n.type === "comment_reply")).toEqual([]);
+  });
 });

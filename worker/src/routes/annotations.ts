@@ -177,14 +177,15 @@ annotationRoutes.post("/:id/annotations", async (c) => {
   }
   const mentions = await mentionsOf(c.env.DB, ctx.project.id, body.mentions);
   const id = await create(c, ctx, { anchorType: parent?.anchor_type ?? body.anchor_type, anchorData: parent ? parent.anchor_data : anchorData, body: text, parentId, mentions });
-  await afterWrite(c.env.DB, me, ctx.text.id, ctx.text.name, text, mentions, parentId);
+  await afterWrite(c.env.DB, me, ctx.project.id, ctx.text.id, ctx.text.name, text, mentions, parentId);
   return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, id), me) }, 201);
 });
 
-async function afterWrite(db: D1Database, me: string, textId: string, textName: string, text: string, mentions: string[], parentId: string | null) {
+async function afterWrite(db: D1Database, me: string, projectId: string, textId: string, textName: string, text: string, mentions: string[], parentId: string | null) {
   const who = (await db.prepare("SELECT display_name FROM profiles WHERE subject = ?1").bind(me).first<{ display_name: string | null }>())?.display_name || "Someone";
   if (parentId) {
-    const root = await db.prepare("SELECT author_subject FROM annotations WHERE id = ?1").bind(parentId).first<{ author_subject: string }>();
+    // The thread's author hears of a reply only while still a member: the notification carries the text's name and the reply.
+    const root = await db.prepare("SELECT a.author_subject FROM annotations a WHERE a.id = ?1 AND EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = ?2 AND m.subject = a.author_subject)").bind(parentId, projectId).first<{ author_subject: string }>();
     if (root) await notify(db, [root.author_subject], me, { type: "comment_reply", title: `${who} replied to your comment on "${bodyPreview(textName, 80)}"`, body: text, link: linkFor(textId) });
   }
   if (mentions.length > 0) await notify(db, mentions, me, { type: "comment_mention", title: `${who} mentioned you on "${bodyPreview(textName, 80)}"`, body: text, link: linkFor(textId) });
@@ -237,6 +238,6 @@ annotationRoutes.post("/:id/annotations/:annotId/replies", async (c) => {
   const mentions = await mentionsOf(c.env.DB, ctx.project.id, body.mentions);
   const rootId = parent.parent_id ?? parent.id;
   const id = await create(c, ctx, { anchorType: parent.anchor_type, anchorData: parent.anchor_data, body: text, parentId: rootId, mentions });
-  await afterWrite(c.env.DB, me, ctx.text.id, ctx.text.name, text, mentions, rootId);
+  await afterWrite(c.env.DB, me, ctx.project.id, ctx.text.id, ctx.text.name, text, mentions, rootId);
   return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, id), me) }, 201);
 });
