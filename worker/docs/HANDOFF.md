@@ -1,117 +1,146 @@
-# Handoff: phase 1 (foundation) to phase 2+
+# Handoff: Manifold Companion on the CAIL stack
 
-Read `DESIGN.md` first (architecture, data model, route map, model tasks, email, Doorway changes). This file says what is done, what is stubbed, what to build next, and what is still unknown.
+State on 2026-11-09, branch `cail-stack` (local commits only; nothing pushed or deployed). Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
 
-Run everything from `worker/`: `npm ci`, `npm run typecheck`, `npm test`, `npx wrangler deploy --dry-run --outdir .wrangler/dry-run`. The dry run needs `client/dist` (`npm ci --workspace client --include-workspace-root --ignore-scripts && npm run build --workspace client` at the repo root). `.npmrc` pins the `@cuny-ai-lab` registry to npmjs and sets `legacy-peer-deps` (npm's resolver crashes on the vitest plugin's optional peer set without it).
+## 1. Run it
 
-## 1. Done (tested)
+From `worker/`:
 
-- Worker skeleton: Hono app, typed env + config validation, identity (both legs, config-first 503), CSRF, request ids, error envelope, bounded bodies, security headers/CSP, canonical-origin 404, SPA serving under `/manifold-companion`, readiness (`/health/live`, `/health/ready`, `ManifoldCompanionReadiness` RPC), `scheduled()`.
-- D1 schema (`0001_init.sql`, `0002_search.sql`), FK cascade fix, FTS5 table + triggers, storage counter helpers, R2 key layout and prefix deletion.
-- `requireRole` and routes: `GET /session`, `PUT /profile`, `DELETE /me/data`, projects CRUD, members list/remove/leave, invites create/list/revoke/redeem.
-- Retention sweep (warn then delete) and its cron trigger.
-- HTML sanitizer module + 100-payload XSS corpus + fuzz, verified under workerd; `serveBody` for stored files.
-- 201 tests, CI workflow `.github/workflows/worker-ci.yml` (typecheck, test, dry-run, no deploy job).
+```bash
+npm ci
+npm run typecheck
+npm run check:logging          # fails on any console use or other logging library in src/
+npm test                       # Worker suite in workerd (Miniflare D1/R2), 390 tests
+npm run build:client           # worker/client: npm ci + vite build -> worker/client/dist
+npm run test:client            # client unit tests, 11
+npm run test:e2e               # Playwright: wrangler dev + Doorway double + Gateway stub, 3 journeys
+npx wrangler deploy --dry-run --outdir .wrangler/dry-run   # needs client/dist
+```
 
-## 2. Stubbed / not done (do not assume it exists)
+`.npmrc` pins the `@cuny-ai-lab` scope to npmjs and sets `legacy-peer-deps`. The e2e harness (`client/e2e/doorway-double.mjs`) applies the migrations to a throwaway local D1, starts `wrangler dev -c wrangler.jsonc -c client/e2e/gateway-stub.jsonc` with the test issuer's JWKS as a var and `--local-upstream` set to the double's origin, and mints real app and Gateway legs per request (cookie `e2e_as=alice|bob|none`). Playwright browsers must be installed (`npx playwright install chromium`).
 
-| Item | State |
-|---|---|
-| Sanitizer | Module exists and is tested, **not wired to any route** (no text routes yet). The write path for `html` must call `sanitizeHtml` before R2 `put` and before indexing. |
-| FTS | Table and cleanup triggers exist; **nothing writes `text_fts` rows** except tests. Writer (`upsertTextIndex(text_id, project_id, title, htmlToPlainText(...))`, capped 500 KB) and `GET /search` are WP1. |
-| Quota | `reserveStorage` / `releaseStorage` / `projectStorageBytes` exist and are tested; no upload route calls them yet. `MAX_FILE_BYTES` and `MAX_PROJECT_PAGES` are config only. |
-| `GATEWAY` binding | Declared in `wrangler.jsonc` and required by readiness; **no Gateway call is made anywhere**. No `cail-client` code is written. |
-| Logging | `console.error` of the error class only. `@cuny-ai-lab/cail-log` is installed (correlation only); no structured events yet. |
-| `touchProject` | Only `PUT /projects/:id` bumps `last_edited_at`. Every content write must too (and clear `retention_warned_at`). |
-| Member role change | `PUT /projects/:id/members/:subject` not built (remove + re-invite works). |
-| Client | **Untouched.** It still calls `/api/auth/*`, expects the legacy shapes, uses `EventSource` for OCR, and `BASE_URL` already equals `/manifold-companion/`. |
-| Email | Design only (DESIGN section 9). Nothing implemented. |
-| Real infra | D1 id in `wrangler.jsonc` is `REPLACE_WITH_D1_DATABASE_ID`; D1 database, R2 bucket, `CAIL_IDENTITY_JWKS` secret, R2 lifecycle rule for `p/*/export/` (1 day) and multipart-abort rule do not exist. |
-| Doorway mount | Not made (DESIGN section 12 lists every file). |
-| Deploy | None. Never run `wrangler deploy` without `--dry-run` from this branch until Doorway is ready (receiver-first). |
+The legacy Express app (`server/`, `client/`) is untouched on this branch and still serves its old host from `main`.
 
-## 3. Next work packages
+## 2. Review of the earlier work (phase 1 and the first three phase-2 commits)
 
-Order: WP0 can run in parallel with everything; WP1 before WP2-WP6; WP3 and WP4 need WP2.
+Defects found and fixed in `5a0155d` and later commits, each with a test that fails on the old code:
 
-### WP0: infra and mount (owner + Stephen, not code-heavy)
-- Create D1 + R2 bucket; paste D1 id; `wrangler d1 migrations apply DB --remote` on a **scratch** database first.
-- **Acceptance:** migrations apply remotely (this settles FTS5-on-D1, open question 1); `ManifoldCompanionReadiness.getReadiness()` returns `ok: true` after setting `CAIL_IDENTITY_JWKS` (Doorway's public JWKS) via `wrangler secret put`; R2 lifecycle rules created and read back; Doorway mount PR (DESIGN section 12) opened as **draft** in `cail-tools-admission` with the mutation tests written first; release probes pass; `workers.dev` 404s.
+| Severity | Defect | Failure scenario | Fix |
+|---|---|---|---|
+| High | Retention deleted a project's R2 objects before re-checking eligibility, and `deleteProject` never re-checked | A person edits a 180-day-old project while the cron runs: the files are gone and then the rows | Rows first, in one transaction that re-checks the retention condition, releases bytes and writes a cleanup tombstone; R2 sweep after; cron re-sweeps tombstones |
+| Medium | A refused FTS5 migration would block the deploy | Remote D1 rejects `CREATE VIRTUAL TABLE ... fts5` (unconfirmed in docs): `0002` fails, `0003+` never apply | FTS5 objects created at runtime (`ensureSearchIndex`), LIKE fallback; no migration mentions FTS5 (tested) |
+| Medium | Verified app leg with no Gateway leg returned `authentication_required` | A Doorway policy regression drops `gatewayIdentity`: every API call navigates to `/launch`, Doorway returns the browser, loop | `401 invalid_credential` (shown, not navigated) |
+| Medium | MathML empty elements (`mspace`, `none`, `mprescripts`, ...) emitted as bare start tags | Browsers do not self-close foreign elements without `/>`, so the next siblings became invisible children of `mspace` (formulas lost content) | Always emit an explicit end tag; found while comparing the export golden |
+| Low | Retention warning inserted even when its compare-and-set stamp missed; only the owner was warned | A project edited during the sweep gets a spurious warning; an editor keeping a project alive is never told | Notifications inserted only if the stamp landed; owners and editors warned |
+| Low | MathML fences dropped (`open` treated as boolean everywhere; `close`/`separators` rejected) | `mfenced open="("` stored as `<mfenced open>` | Fence values kept on MathML; boolean only on `details` |
+| Low | One person redeeming two links to the same project at once | Primary-key violation surfaced as `500` | `409 already_member`, losing link unconsumed |
+| Low | Network failure from cail-client (`status 0`) mapped to a retryable `502` (draft) | The UI would invite retrying a call that may already have been billed | Non-retryable `network_error` |
+| Test | Sanitizer "independent verdict" used HTMLRewriter, which only tokenizes | Tree-construction mutations (foster parenting, namespace switches, serialize/re-parse mXSS) were never checked | parse5 tree construction plus three serialize/re-parse rounds over the whole corpus and fuzz |
+| Test | `expect(b).toBeTruthy()` asserted nothing | | replaced with a real isolation assertion |
 
-### WP1: texts, pages, versions, metadata, settings, search (no models)
-Routes in the DESIGN section 11 "Texts, pages, files" table that do not touch files or models: create/get/put/delete text, reorder, page save/delete/reorder, `result`, `html` get/put, `save`, metadata, settings, versions list/get/revert, split/merge/bulk-delete/bulk-status, `GET /search`.
-- Each route calls `requireRole` once; **add each to `ROUTES` in `test/authz.test.ts`** (the coverage test fails otherwise; extend its filter to `/texts/:id`).
-- `html` writes: `sanitizeHtml` -> R2 `htmlKey` -> `text_versions` row (R2 `versionKey`, sha256, bytes) -> `touchProject` -> FTS upsert of `htmlToPlainText`. Prune to 50 versions per text+type, deleting the R2 bodies and releasing bytes.
-- Page `ocr_text` cap 256 KB, `summary` cap 20 KB, FTS body cap 500 KB (D1 2 MB row limit; local Miniflare does not enforce it, so write explicit tests of your caps).
-- Keep the `__compiled__` sentinel? Recommended: replace with a real `texts.compiled_key` pointer (R2) so the sentinel page row disappears. Decide and document.
-- **Acceptance:** authz matrix covers every new route (owner/editor/viewer/stranger); viewers cannot write; search returns only the caller's projects (test with two people sharing a term); deleting a text removes its R2 objects, bytes and FTS row; bulk operations chunk D1 binds <= 90; an XSS payload saved through `PUT html` is inert on read.
+Reviewed and found sound: identity order (config first -> 503; missing -> 401 `authentication_required`; bad/expired/wrong audience/subject mismatch -> 401 `invalid_credential`; only the Gateway leg forwarded), exact-Origin CSRF before identity, canonical-origin 404, authorization on every route (the matrix covers 65 project/text routes for owner/editor/viewer/stranger, plus a route-coverage test; file serving, figures, versions, invites and exports are all bound to the authorized text or project), quota reservation and every count cap under concurrency (conditional inserts), R2 keys from server UUIDs only, FK cascades, the 2 MB row limit enforced by caps in code (page text 128 KiB, summary 20 KiB, search text 400k chars, annotation anchor 4 KiB, export settings 64 KiB, notifications bounded). The sanitizer withstood the mXSS, namespace, `srcdoc`, `javascript:`/`data:`/entity and protocol-relative cases tried (`test/sanitize.test.ts`), and CPU on 2 MB adversarial inputs stays under 0.3 s. The previous agent's notes claimed a `Co-Authored-By` trailer on its commits; none of the commits carries one.
 
-### WP2: uploads with enforced quota
-`POST /texts/:id/pages` (images), `PUT /texts/:id/source-pdf`, image/PDF GET via `serveBody`.
-- Order: validate role -> check page cap (`pages` count vs `MAX_PROJECT_PAGES`) -> check declared and streamed size vs `MAX_FILE_BYTES` (Doorway strips `content-length`; use `readBoundedBytes`) -> **magic-byte check** (JPEG/PNG/WebP/PDF; reject everything else) -> `reserveStorage(owner)` -> `R2.put` -> insert row; any failure after reserve calls `releaseStorage`.
-- Charge the **project owner**, not the uploader (DESIGN section 6).
-- Never use client file names in keys. Store the cleaned name in `pages.filename` only.
-- **Acceptance:** upload over the cap, over quota, wrong type (valid content-type, wrong bytes), and over page cap are each refused with a stable code and leave no R2 object and no counter change; concurrent uploads cannot exceed quota; a viewer cannot upload; owner `storage_bytes` equals `projectStorageBytes` after a mix of uploads and deletes (add a reconcile test); responses carry the right content type + `nosniff`.
+The uncommitted model-task draft was kept and repaired (type error, conflict handling, distinct length errors, retry semantics, logging), not rewritten.
 
-### WP3: Gateway client; OCR, summary, translation, models, quota
-- `src/gateway.ts` modelled on LanGames `gateway.ts` (client with `app: "manifold-companion"`, `fetchImpl` = `env.GATEWAY.fetch`, correlation headers, `appErrorFrom`), `src/models.ts` (catalog filter by capability, 60 s cache, **fail closed** when the catalog is down for vision tasks rather than falling back to a hard-coded model; LanGames' fallback is a text-only convenience), `GET /api/models`, `GET /api/quota` (proxy Gateway `/quota`, microdollars), `POST /texts/:id/pages/:pageId/ocr`, summary and translation routes.
-- Per-page, person-initiated only. Output headroom +4000 tokens for catalog `reasoning` models; `enable_thinking:false`/`reasoning_effort:"low"` only for reasoning models; treat empty + `finish_reason: length` as `model_output_truncated`. One attempt, no retries, forward `x-should-retry`, pass `c.req.raw.signal`.
-- Sanitize/clean model output before storing; cap stored OCR at 256 KB; log nothing about prompts or output.
-- **Acceptance:** tests use the real Hono app, real identity verification, real `cail-client` and `@cuny-ai-lab/cail-client/testing` helpers with only the Gateway **binding** substituted (follow `LanGames/cail/test/app.test.ts`): the Gateway sees the **Gateway leg only** (assert the `x-cail-identity-jwt` value equals the leg, and the app assertion is absent); request body contains an `image_url` data URI and no file/PDF part; a model not in the catalog is `model_not_allowed` with no Gateway call; a text-only model is refused for OCR; quota exhaustion maps to non-retryable `quota_exceeded`; no loop exists that processes more than one page per request; reasoning model gets headroom, non-reasoning model gets no `enable_thinking`. A **live** smoke with a personal key against the real Gateway is a manual gate (see LanGames' September 20 test) before release.
+## 3. Built (tested)
 
-### WP4: PDF to HTML, including math
-- Client-side first: pdf.js rendering to canvas, text-layer hint, figure extraction (replacing `pdftohtml`), per-page "math/tables" toggle, `pdfBedrockPipeline.js` rewritten to call `POST /texts/:id/pages/:n/html` one page at a time with Cancel.
-- Worker: page HTML route (math model per DESIGN section 8), `html/cleanup`, `formula-repair` (text model on unresolved formulas), figure upload (WP2 rules), `PUT html` through the sanitizer (WP1).
-- **Measure before choosing the default math model:** build a 5-10 page math PDF fixture (formulas, tables, multi-column), run each candidate catalog model (vision, and vision+reasoning) with a real key, compare, record cost/time/quality in `worker/docs/math-model-comparison.md`.
-- **Acceptance:** math page request uses `math_model`; non-math uses `model`; both validated against the live catalog; MathML and TeX delimiters survive sanitize -> store -> export; hostile model output (`<script>`, `javascript:` links, `onerror`) is inert after storage; preview renders in `<iframe sandbox srcdoc>` **without** `allow-same-origin` (client test).
+| Package | Commit | What | Worker tests after |
+|---|---|---|---|
+| Review fixes | `5a0155d` | section 2 | 308 |
+| Gateway client and model tasks | `e76ac4d` | `src/gateway.ts`, `src/models.ts`, tasks: OCR one page, page image to HTML with the separate math model, cleanup, summary, translate one chunk, formula repair; `/models`, `/quota` | 349 |
+| Export | `11ddb33` | streamed Manifold ZIP (fflate, temml), golden-compared with the legacy exporter; export settings | 365 |
+| Annotations and notifications | `ebdb3e4` | legacy roles, legacy bugs fixed, member-only mentions, in-app notifications and preferences | 386 |
+| Logging | `9346e8b` | cail-log catalog, CI gate, leak test | 390 |
+| Client | `13abf19` | `worker/client`, unit tests (11), Playwright journeys (3) | 390 |
 
-### WP5: export
-Port `export.js` ZIP structure exactly (Manifold ingestion depends on it): `fflate` in the Worker (streaming `Zip`, R2 bodies as entries) or client-side; `temml` TeX->MathML at export; `export_settings` routes.
-- **Acceptance:** golden test comparing the ZIP listing and a representative HTML file against a fixture produced by the legacy exporter from the same input; 300-page project exports under the Worker memory/CPU limits (test with a synthetic project; if it does not fit, fall back to client-side assembly); export requires viewer; ZIP served with `application/zip`, `attachment`, `nosniff`; temp export objects expire (R2 lifecycle).
+Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
-### WP6: annotations, notifications, mentions
-Per DESIGN section 11. Mentions restricted to current members; notification fan-out is subject-scoped; retention warnings already create `retention_warning` notifications (client must render that type and link).
-- **Acceptance:** authz matrix rows; a viewer cannot edit others' annotations; deleting a profile removes their annotations and replies; mention of a non-member is rejected; no email address appears anywhere.
+## 4. Not built, stubbed, or different from legacy
 
-### WP7: client adaptation
-- Remove login/register/forgot/reset/admin pages and `AuthContext` password logic; `AuthContext` calls `GET /api/session`.
-- **Session-expiry navigation** (Browser Sign-In contract): in `client/src/api/client.js`, on a `401` whose `error.code` is `authentication_required` **or** `session_invalid`, do a full-page `window.location.assign("/launch/manifold-companion")` (fixed path, never derived from the response; no retry; no fetch of the login URL; no following redirects in `fetch`). Media Tools and Agent Studio each missed one of the two codes; handle both and unit-test both. A `401 invalid_credential` is a deployment fault: show an error, do not navigate.
-- Replace `EventSource` OCR with the client-driven per-page loop; replace sharp-dependent upload assumptions with canvas resize + HEIC handling; sandboxed `srcdoc` previews for all stored HTML (no `allow-same-origin`, no `allow-scripts`); remove DOMPurify-as-only-defence assumptions (server sanitizes too); invite redemption page at `/invite` reading `location.hash` (`#t=...`) then `history.replaceState` to clear it; dashboard retention banner from `project.retention.warning`; model pickers from `/api/models`; Gateway quota display; "Delete my data" in Settings (two-step confirm); remove token-usage bars and mailto quota requests.
-- The CSP is `script-src 'self'`: no inline scripts, no CDN scripts (pdf.js worker must be bundled and served same-origin; KaTeX CSS/fonts bundled). Test the built bundle with the real CSP in a browser (Playwright) before release.
-- **Acceptance:** Playwright against `wrangler dev` with the test issuer's JWKS: sign-in state, create project, upload page (stubbed Gateway), OCR one page, invite flow between two test subjects, expiry navigation for both 401 codes, no CSP violations in console.
+API complete, no UI yet in `worker/client` (the legacy UI had these):
+- version history and revert; split and merge; bulk status/delete; reordering pages and texts; Dublin Core metadata editing; per-text saved settings (prompt, temperature, max tokens; models are chosen per run instead); the compiled full-text editor for image texts (`POST /save`); export TOC sections and nesting (the panel exports a flat list); comment anchoring to text ranges, editing a comment, and viewing resolved comments; notification dropdown (a page instead); member role change (no API either: remove and re-invite).
 
-### WP8: logging
-`@cuny-ai-lab/cail-log` schema-approved events only (unhandled error class, auth outcome codes, model-call outcome and duration, retention sweep counts). Never log prompts, page content, filenames, subjects or arbitrary exception text. **Acceptance:** a test captures log output through a full OCR failure and asserts none of the request content, subject or JWT appears.
+Replaced or reduced:
+- Rich HTML editing (contenteditable with KaTeX, find and replace, colours) is replaced by an HTML source editor next to a sandboxed preview. Deliberate for safety; a richer editor must still never render stored HTML in the app origin.
+- **Figure extraction from PDFs** (`pdftohtml -xml` on the server) is gone. Figures are added by hand ("Add a figure image") and referenced by file name; the model prompt supports a figure list but the client does not send one. Automatic extraction would need pdf.js operator-list image extraction or crops of the rendered canvas.
+- Native-PDF model input is gone (the Gateway rejects PDF parts): pages are rasterised with pdf.js in the browser; the text layer goes along as a hint.
+- No server-side bulk OCR or SSE: the browser drives one page per request with Cancel.
+- Email notifications, the OCR-complete notification, admin users and usage, backups, token ledger and allowances, usage breakdown, password and account flows: removed by decision.
+- Keyboard shortcuts, autosaved drafts, drag-and-drop, the About page and pagination beyond 50 texts per project: not carried over.
 
-### WP9: retention in production
-Cron is configured and the sweep is tested. Remaining: verify in production that the scheduled handler fires (Cloudflare dashboard cron history), add alerting on `failed > 0`, decide the email path (DESIGN section 9), and decide the client's handling of a deleted project (404 -> friendly message).
+Unverified client risks: `heic2any` under `script-src 'self'` (no HEIC fixture was run; if it needs eval, HEIC uploads fail with an error and other formats are unaffected); very large PDFs (each page is rendered and held as one JPEG at a time).
 
-### WP10: release
-Receiver-first: deploy Worker -> readiness readback -> Doorway mount PR out of draft -> CUNY Login journey, one real OCR page, quota movement, expiry navigation, `workers.dev` 404. Retire the legacy host only after the owner agrees (fresh start: no migration).
+## 5. Infrastructure that does not exist yet
 
-## 4. Rules for whoever continues
+D1 database (id in `wrangler.jsonc` is `REPLACE_WITH_D1_DATABASE_ID`), R2 bucket, the `CAIL_IDENTITY_JWKS` secret, the Doorway mount. Nothing has been deployed.
 
-- Do not add a route without `requireRole` and an authz-matrix row. Do not read `subject` from request bodies, params you did not validate, or headers other than through `authenticate`.
-- Do not add a hidden retry, a server-side bulk model loop, a provider key, a parallel ledger, or a way to look up a person by email or name.
-- Do not serve user HTML as a page; do not store HTML that did not pass `sanitizeHtml`.
-- Do not log prompts, files, subjects, tokens or exception messages.
-- Never edit an applied migration; add `0003_*.sql`. `test/migrations.test.ts` compares to `test/schema.snapshot.json`; regenerate it by emptying the file to `{}`, running that test (it prints the new snapshot), reviewing the diff by hand, and committing.
-- Tests share a database per file; `test/setup.ts` empties it before each test through the real cascade.
-- Legacy code on `main` keeps running; do not delete `server/` or change root `package.json` workspaces until cutover.
+## 6. Deploy checklist (receiver first)
 
-## 5. Open questions
+### 6.1 Cloudflare resources (account `452c33847cf5cb1e46f391fca32fd1b5`)
 
-1. **FTS5 on remote D1.** Works in Miniflare; not confirmed in D1 docs. Test on a scratch D1 (WP0). Fallback in DESIGN section 3.
-2. **Real D1 2 MB row limit is not enforced locally.** Enforce caps in code (WP1) and consider a staging test with an oversized insert.
-3. **Gateway `tool` attribution.** Doorway's `GATEWAY_TOOLS` and the claims-contract enum list four tools. Adding `manifold-companion` touches Doorway, the shared contract and possibly the Gateway; without it the Gateway reports calls as unattributed (still billed to the person). Ask Stephen Zweibel; check how LanGames' PR #234 handled it.
-4. **Does a `gatewayIdentity` Doorway route get Admission membership enforcement automatically?** The Integration Contract says membership-protected forwards check the resolver; confirm in `doorway.ts` for authenticated JWT routes (I did not trace it end to end).
-5. **Doorway request-body ceiling over the service binding.** Media Tools uses 6 MB JSON bodies; I found only a class-claim body limit in the files I read. Confirm the limit for mounted tools before committing to 4 MB page images and 10 MB uploads (multi-part and raw PUT).
-6. **Viewer commenting.** Legacy let viewers comment (annotations needed `viewer`? I did not re-verify). Product decision: can viewers annotate? DESIGN assumes editor+ write.
-7. **Email (DESIGN section 9).** Owner/Stephen: is in-app-only acceptable for launch? The retention warning is only seen by people who sign in. Request `AdmissionToolNotice` from Admission now (lead time).
-8. **Math model default** and whether any catalog model has both `vision` and `reasoning` today. Measure (WP4).
-9. **Server-side vs client-side ZIP.** Depends on Worker memory with real projects (WP5).
-10. **Quota accounting charged to owner.** Is it acceptable that an editor's uploads consume the owner's 500 MB? Alternative is charging the uploader; DESIGN explains why not. Owner to confirm.
-11. **Version-count pruning and storage.** 50 versions/text/type of large HTML can approach the quota; consider snapshot dedupe by `sha256` or a lower cap.
-12. **`workerd` observability.** `invocation_logs:false` is copied from the references; confirm what Workers Logs will contain for this Worker.
-13. **Repository policy conflict.** Root `CLAUDE.md` says never to add AI attribution to commits; the task brief required a `Co-Authored-By` trailer, which was used on this branch's commits. Rewrite the trailer if the repo rule should win.
-14. **Retention ownership edge:** projects with a non-owner who is actively editing but the owner never returns: editor edits bump `last_edited_at` (WP1 `touchProject`), so the project lives on; the owner never gets email. Confirm that is the intent.
+```bash
+cd worker
+npx wrangler d1 create cail-manifold-companion            # paste database_id into wrangler.jsonc
+npx wrangler r2 bucket create cail-manifold-companion-files
+# Optional guard (the Worker uses no multipart today): abort incomplete multipart uploads after 1 day.
+npx wrangler r2 bucket lifecycle add cail-manifold-companion-files --help   # check the flags, then add the rule
+npx wrangler d1 migrations apply DB --remote               # 0001..0006; try on a scratch D1 first
+npx wrangler secret put CAIL_IDENTITY_JWKS                 # Doorway's public JWKS (the only secret)
+```
+
+Vars are in `wrangler.jsonc` (`CAIL_IDENTITY_ISSUER`, `CAIL_CANONICAL_ORIGIN`, `CAIL_API_BASE`, limits, retention). No provider key, no SES or email credential, no other secret. The cron (`17 6 * * *` UTC) deploys with the Worker; check its history in the dashboard after the first day. `workers_dev` and `preview_urls` are off.
+
+Deploy: `npm run build:client && npx wrangler deploy`. Read back readiness over RPC (`ManifoldCompanionReadiness.getReadiness()` must be `ok: true` with a version id and tag) before touching Doorway. After the first authenticated search, check whether FTS5 was created on the remote D1 (`SELECT name FROM sqlite_master WHERE name = 'text_fts'`); if not, search uses the LIKE fallback and nothing else changes.
+
+### 6.2 Doorway mount in `cail-tools-admission` (draft PR, mutation tests first)
+
+Checked against `1bf54e0`; PDF Accessibility (`pdf-accessibility-*`) is the closest precedent.
+
+1. `apps/doorway/wrangler.toml`: `[[services]] binding = "MANIFOLD_COMPANION"`, `service = "cail-manifold-companion"`.
+2. `apps/doorway/src/config.ts`: `MANIFOLD_COMPANION?: ServiceFetcher` in the env interface, `manifoldCompanion: ServiceFetcher` in `DoorwayConfig`, `manifoldCompanion: requiredService(env.MANIFOLD_COMPANION, "MANIFOLD_COMPANION")`.
+3. `apps/doorway/src/policy.ts`: add both routes to `GATEWAY_ROUTE_CONTRACTS` exactly as in item 5 (the page entry without `gatewayIdentity`), and extend the `validateGatewayRoute` guard so it also runs for `toolId === "manifold-companion"`; otherwise a policy that drops the API route's Gateway leg, or makes it public, still validates.
+4. `apps/doorway/src/doorway.ts`: `const MANIFOLD_COMPANION_ROUTES = new Set(["manifold-companion-page", "manifold-companion-api"])`, add `"manifoldCompanion"` to `MountOwningService` and one row to `MOUNT_OWNING_SERVICES` (no new `if` in `boundServiceTarget`). The original path, including `/manifold-companion`, is forwarded, which is what the Worker expects.
+5. `apps/doorway/config/route-policy.json`: in `tools[]` `{"id": "manifold-companion", "label": "Manifold Companion", "steward": "CUNY AI Lab", "landingPath": "/manifold-companion/", "listed": true}`; in `routes[]`:
+   ```json
+   { "name": "manifold-companion-api", "match": "prefix", "path": "/manifold-companion/api", "access": "authenticated", "requestKind": "api", "identityMode": "jwt", "toolId": "manifold-companion", "audience": "cail:manifold-companion", "gatewayIdentity": true },
+   { "name": "manifold-companion-page", "match": "prefix", "path": "/manifold-companion", "access": "authenticated", "requestKind": "page", "identityMode": "jwt", "toolId": "manifold-companion", "audience": "cail:manifold-companion" }
+   ```
+6. `scripts/release/doorway.sh`: `check_service MANIFOLD_COMPANION cail-manifold-companion ""`, add `"MANIFOLD_COMPANION"` to the exact binding list, add `/manifold-companion/` to the page-route loop, and probes `probe_mounted_auth "$origin/manifold-companion/api/session" '/launch/manifold-companion'` plus the forged-header variant.
+7. Tests: `apps/doorway/vitest.config.ts` (`MANIFOLD_COMPANION: "ManifoldCompanionDouble"`), `test/runtime/products.ts` (a `ManifoldCompanionDouble` WorkerEntrypoint, product `"manifold-companion"`), `test/doorway-env.ts`, `test/admission-config.test.ts` and `test/runtime/configuration.test.ts` (binding lists), `test/decision.test.ts` (`/manifold-companion/api`, `/manifold-companion/api/projects`, `/manifold-companion`, `/manifold-companion/`, `/manifold-companionx` denied), `test/runtime/identity-legs.test.ts` (both legs on the API route, app leg only on the page route, header and cookie stripping, forged identity refused, missing binding fails config), `test/integration/release-components.test.ts` (binding list and the anonymous `401` fixture with `launch: "/launch/manifold-companion"`), `test/browser/welcome.spec.ts` (portal card). Mutation tests first: removing `gatewayIdentity` from the API route, or making either route public, must fail `policy.ts` validation.
+8. Docs: a "Manifold Companion mount" section in `docs/workflows/README.md` in the PDF Accessibility format, and the product lists in `apps/doorway/README.md` / `AGENTS.md`.
+
+**`tool` enumeration: not required.** Doorway drops a `tool` not in `GATEWAY_TOOLS` (`apps/doorway/src/identity.ts`), so the Gateway leg verifies and spends the person's budget without it, as PDF Accessibility's does today; the CAIL Client still sends `X-CAIL-App: manifold-companion`. Adding `"manifold-companion"` to `GATEWAY_TOOLS` and to the `tool` enum in `config/contract/identity-jwt-claims-v1.json` only adds per-tool attribution in the Gateway usage breakdown; it changes a shared identity contract, so propose it separately to Stephen Zweibel.
+
+Admission membership needs no change: Doorway checks it per request for authenticated JWT routes (`currentAdmissionExpiry`).
+
+### 6.3 Acceptance run (after the mount is released)
+
+1. Anonymous `GET /manifold-companion/api/session` -> `401 authentication_required` with `/launch/manifold-companion`; forged `x-cail-*` headers refused; `workers.dev` 404; `/manifold-companion/` without sign-in starts CUNY Login.
+2. Signed in: dashboard loads with no CSP violations in the console; set a name; create an image project and a PDF-to-HTML project.
+3. Upload a phone photo and a PDF; OCR one page with the default model; check the allowance moves on `/usage` (the in-app estimate is delayed).
+4. Convert a two-page PDF with one math page; confirm the math model was used, MathML renders in the preview and in the export.
+5. Invite a second person as editor; they redeem; they edit; the owner's storage counts their upload.
+6. Export the image project; the ZIP has `manifest.yml` and one file per text.
+7. Let the session expire (or clear the Doorway cookie) and click: exactly one navigation to `/launch/manifold-companion`.
+8. Next day: cron history shows a run; `retention.sweep` appears in Workers Logs with counts and no failures.
+
+## 7. Open questions for the owner
+
+1. **FTS5 on remote D1.** Unconfirmed in the docs; the app works either way (LIKE fallback). Worth one look after the first deploy (6.1).
+2. **Math model default.** The default is the Gateway's top-ranked vision+reasoning model. Which catalog model is best for mathematics, and whether 8,000 tokens of headroom with thinking on is right, needs a measured run with a real key on a small math PDF (no real model call was made here).
+3. **Retention by editors.** Edits and comments by any editor keep a project alive and editors get the warning too. Confirm that is the intent for projects whose owner has left.
+4. **Viewer export.** Kept from legacy (viewers can export); only editors and owners save export settings.
+5. **Email.** In-app only at launch. The retention warning reaches only people who sign in; the Admission-owned notice capability (DESIGN section 9) remains a design.
+6. **Gateway `tool` attribution** (6.2): leave unattributed for launch, or ask Stephen for the enum change?
+7. **Doorway body size.** No Doorway-specific request-body cap was found in source beyond the edge limit; uploads are <= 10 MB (25 MB PDFs) and page-image JSON <= 6 MB. Confirm on the first acceptance run.
+8. **Missing UI** (section 4): which of version history, split/merge, metadata and the rich editor are needed before launch.
+
+## 8. Rules for whoever continues
+
+- Every route calls `requireRole`/`requireTextRole` once and gets an authz-matrix row; never read a subject from a request body or header other than through `authenticate`.
+- No hidden retry, no server-side bulk model loop, no provider key, no spend ledger, no lookup of people by email or name.
+- Stored HTML passes `sanitizeHtml` and is shown only in the sandboxed preview; never in the app origin.
+- Logging goes through `src/logging.ts` only (`npm run check:logging`); never log prompts, files, names, subjects, tokens or exception messages.
+- Never edit an applied migration; add a new one and regenerate `test/schema.snapshot.json` deliberately (empty it to `{}`, run the migrations test, review the printed snapshot). No migration may mention FTS5.
+- Deletion is rows first with a tombstone, then R2.
+- No AI attribution in commits, code or docs (repository `CLAUDE.md`).
