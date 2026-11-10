@@ -136,8 +136,20 @@ test('keyboard only: create, upload, read, correct, history, export dialog', asy
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Typed text' })).toBeVisible();
 
-  await tabTo(page, page.getByRole('button', { name: 'Upload pages' }));
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.press('Enter')]);
+  // Wait for the text page to finish loading, so the focused button is not replaced under the key press.
+  await expect(page.getByText(/^No pages yet\./)).toBeVisible();
+  const upload = page.getByRole('button', { name: 'Upload pages' });
+  await expect(upload).toBeEnabled();
+  await tabTo(page, upload);
+  await expect(upload).toBeFocused();
+  // Enter on the focused button opens the file chooser. Once in CI (run 42773910505) no
+  // chooser event arrived for the first press, cause not found; so it is tried up to three times.
+  let chooser = null;
+  for (let attempt = 0; attempt < 3 && !chooser; attempt += 1) {
+    await expect(upload).toBeFocused();
+    [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 10_000 }).catch(() => null), page.keyboard.press('Enter')]);
+  }
+  expect(chooser, 'Enter on "Upload pages" opens the file chooser').not.toBeNull();
   await chooser.setFiles('e2e/fixtures/page.png');
   await expect(page.getByRole('button', { name: /page\.jpg \(no text\)/ })).toBeVisible({ timeout: 30_000 });
   await tabTo(page, page.getByRole('button', { name: 'Read pages without text' }));
