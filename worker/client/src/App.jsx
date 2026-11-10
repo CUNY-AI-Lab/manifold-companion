@@ -12,6 +12,7 @@ import SettingsPage from './pages/SettingsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import SearchPage from './pages/SearchPage';
 import HelpPage from './pages/HelpPage';
+import { useNoFileNavigation } from './hooks/useFileDrop';
 
 function NotFound() {
   return <div className="mx-auto max-w-3xl px-4 py-10"><h1 className="text-xl">Page not found</h1><p className="mt-2 text-sm">Go back to <a href="./">your projects</a>.</p></div>;
@@ -19,6 +20,7 @@ function NotFound() {
 
 export default function App() {
   const { session, error } = useSession();
+  useNoFileNavigation();
   // There is no sign-in page: Doorway signs people in before this app loads. A
   // lost session navigates away inside the API client.
   if (!session) {

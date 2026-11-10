@@ -13,6 +13,7 @@ import { blobToDataUri, prepareImage } from '../lib/image';
 import { checkList, convertPdf } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { useConfirm } from '../components/ConfirmDialog';
+import useFileDrop, { DropOverlay } from '../hooks/useFileDrop';
 
 /** "1, 3-5" -> Set {1,3,4,5} */
 export function parsePages(spec) {
@@ -64,6 +65,29 @@ export default function HtmlTextPage({ data, reload }) {
   };
   useEffect(() => { loadHtml(); loadFigures().catch(setError); }, [text.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const addFigure = async (f) => {
+    const { blob, width, height } = await prepareImage(f);
+    await api.upload(`/api/texts/${text.id}/figures`, blob, { filename: f.name.replace(/\.[^.]+$/, '') + '.jpg', query: { width: String(width), height: String(height) } });
+  };
+  const chooseFile = (f) => { setFile(f); done.current = new Map(); pageWarnings.current = new Map(); };
+  // A dropped PDF becomes the file to convert (nothing is sent until "Convert PDF"); dropped images become figures.
+  const dragging = useFileDrop({
+    enabled: canEdit && !progress,
+    onDrop: async (files) => {
+      setError(null);
+      const pdfs = files.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+      const imgs = files.filter((f) => !pdfs.includes(f) && (/^image\//i.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|tiff?|hei[cf]|avif)$/i.test(f.name)));
+      const refused = files.filter((f) => !pdfs.includes(f) && !imgs.includes(f)).map((f) => f.name);
+      if (pdfs.length) chooseFile(pdfs[0]);
+      try {
+        for (const f of imgs) await addFigure(f);
+        if (imgs.length) { await loadFigures(); refresh(); }
+      } catch (err) { setError(err); return; }
+      const notes = [pdfs.length > 1 ? `Only one PDF is converted at a time; chose ${pdfs[0].name}.` : '', refused.length ? `Not used, not a PDF or an image: ${refused.join(', ')}.` : ''].filter(Boolean);
+      if (notes.length) setError({ message: notes.join(' ') });
+    },
+  });
+
   const convert = async () => {
     if (!file) return;
     if (saved && done.current.size === 0 && !(await confirm({ title: 'Replace the current HTML?', message: replaceWarning('Convert this PDF and replace the current HTML?'), confirmLabel: 'Convert and replace' }))) return;
@@ -109,6 +133,7 @@ export default function HtmlTextPage({ data, reload }) {
 
   return (
     <div>
+      <DropOverlay show={dragging} label="Drop a PDF to convert, or images to add as figures" />
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
       <ErrorNote error={error} onDismiss={() => setError(null)} />
@@ -123,7 +148,10 @@ export default function HtmlTextPage({ data, reload }) {
         <section className="mt-4 space-y-3 rounded-md border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
           <h2 className="text-base">Convert a PDF</h2>
           <p className="text-sm text-slate-600 dark:text-slate-300">Each page is drawn as an image in your browser and converted one page at a time. Mark pages with mathematics or complex tables to send them to the stronger math model.</p>
-          <input type="file" accept="application/pdf" aria-label="PDF file" onChange={(e) => { setFile(e.target.files[0] ?? null); done.current = new Map(); pageWarnings.current = new Map(); }} />
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <input type="file" accept="application/pdf" aria-label="PDF file" onChange={(e) => chooseFile(e.target.files[0] ?? null)} />
+            <span role="status" className="text-slate-700 dark:text-slate-200">{file ? `Chosen: ${file.name}` : 'Or drop a PDF anywhere on this page (images dropped become figures).'}</span>
+          </div>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label><input type="checkbox" checked={allMath} onChange={(e) => setAllMath(e.target.checked)} /> Every page has math or tables</label>
             {!allMath ? <label>Math or table pages <input className="field inline-block w-40" placeholder="e.g. 2, 5-9" value={mathSpec} onChange={(e) => setMathSpec(e.target.value)} /></label> : null}
@@ -150,7 +178,7 @@ export default function HtmlTextPage({ data, reload }) {
               <input ref={figureInput} type="file" accept="image/*" className="hidden" onChange={async (e) => {
                 const f = e.target.files[0]; e.target.value = '';
                 if (!f) return;
-                try { const { blob, width, height } = await prepareImage(f); await api.upload(`/api/texts/${text.id}/figures`, blob, { filename: f.name.replace(/\.[^.]+$/, '') + '.jpg', query: { width: String(width), height: String(height) } }); await loadFigures(); refresh(); } catch (err) { setError(err); }
+                try { await addFigure(f); await loadFigures(); refresh(); } catch (err) { setError(err); }
               }} />
               <button className="btn-quiet" type="button" onClick={() => figureInput.current?.click()}>Add a figure image</button>
             </div>

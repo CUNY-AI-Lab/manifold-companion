@@ -84,6 +84,7 @@ Reviewed and found sound: the transfer batch's nonce discipline (concurrent acce
 | Pre-deploy review of the above | `bd829e4`..`ab2b78e` | section 2a | 510 |
 | **Deployed: `ddd17dc`** (tag `mc-ddd17dc`, migrations 0001-0010) | | | |
 | Upload read deadline | see git log | body reads end at a deadline in proportion to the declared size (DESIGN 6, "Read deadline"); a stalled upload is `408 upload_too_slow` and its reservation is released at once | 516 |
+| Drag and drop, HEIC | see git log | files dropped anywhere on a text's page upload (image text: images and PDFs as pages; PDF text: the PDF is chosen for conversion, images become figures; other files named and refused); a file dropped elsewhere never replaces the app. HEIC: `heic2any` removed (verified under the page CSP: its Emscripten glue calls `new Function`, refused by `script-src 'self'`, and the upload hung silently); the browser decodes HEIC itself (Safari) or the person is told how to convert | 516 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
@@ -102,7 +103,7 @@ Replaced or reduced:
 - Email notifications, the OCR-complete notification, admin users and usage, backups, token ledger and allowances, usage breakdown, password and account flows: removed by decision.
 - The About page is replaced by a short Help page (`/help`) and a first-run welcome on the dashboard.
 
-Unverified client risks: `heic2any` under `script-src 'self'` (no HEIC fixture was run; if it needs eval, HEIC uploads fail with an error and other formats are unaffected); very large PDFs (each page is rendered and held as one JPEG at a time).
+Unverified client risks: very large PDFs (each page is rendered and held as one JPEG at a time).
 
 ## 5. Infrastructure (provisioned and live)
 

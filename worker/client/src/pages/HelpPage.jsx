@@ -16,6 +16,10 @@ export default function HelpPage() {
         <h2 id="help-rules" className="text-lg">Rules and limits</h2>
         <div className="mt-2"><ToolRules session={session} /></div>
       </section>
+      <section aria-labelledby="help-upload">
+        <h2 id="help-upload" className="text-lg">Uploading</h2>
+        <p className="mt-1">Use the upload buttons, or drop files anywhere on a text's page. An image text takes photos, scans (JPEG, PNG, WebP) and PDFs; each PDF page becomes a page image in your browser. A PDF text takes one PDF to convert (dropping it only chooses it; nothing is sent until you press Convert) and images, which become figures. Other files are named and left out. HEIC photos work only in a browser that opens them, such as Safari; elsewhere convert them to JPEG first. An upload that stops arriving is cancelled after a few minutes and its storage is given back; try again on a steadier connection.</p>
+      </section>
       <section aria-labelledby="help-checks">
         <h2 id="help-checks" className="text-lg">Checking model output</h2>
         <p className="mt-1">Models make mistakes, especially with graphs, handwriting and dense tables. Compare every page with its image before you export. After a PDF conversion the editor lists pages to check by eye, for example a figure description that gives values read off a graph, or a numbered list that restarts at 1.</p>

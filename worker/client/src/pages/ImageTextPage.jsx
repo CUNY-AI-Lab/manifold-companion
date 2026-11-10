@@ -13,6 +13,11 @@ import { runOcr, translateText } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
+import useFileDrop, { DropOverlay, sortDropped } from '../hooks/useFileDrop';
+
+const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+/** What a page upload takes: an image (any the browser may open; HEIC gets its own message) or a PDF. */
+export const takesAsPage = (file) => isPdf(file) || /^image\//i.test(file.type) || /\.(jpe?g|png|webp|gif|bmp|tiff?|hei[cf]|avif)$/i.test(file.name);
 
 const LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'nl', 'pl', 'el', 'tr', 'he', 'uk', 'la'];
 
@@ -76,7 +81,7 @@ export default function ImageTextPage({ data, reload }) {
     setError(null);
     for (const file of files) {
       try {
-        if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        if (isPdf(file)) {
           const pdf = await openPdf(file);
           for (let n = 1; n <= pdf.numPages; n += 1) {
             setBusy(`Rasterising ${file.name}, page ${n} of ${pdf.numPages}`);
@@ -94,6 +99,15 @@ export default function ImageTextPage({ data, reload }) {
     reload();
     refresh();
   };
+
+  const dragging = useFileDrop({
+    enabled: canEdit && !busy && !run,
+    onDrop: (files) => {
+      const { taken, refused } = sortDropped(files, takesAsPage);
+      if (taken.length) upload(taken).then(() => { if (refused.length) setError({ message: `Not uploaded, not an image or a PDF: ${refused.join(', ')}.` }); });
+      else setError({ message: `Not uploaded, not an image or a PDF: ${refused.join(', ')}.` });
+    },
+  });
 
   const startOcr = async (overwrite) => {
     const targets = overwrite ? pages : pages.filter((p) => !p.ocr_text);
@@ -145,6 +159,7 @@ export default function ImageTextPage({ data, reload }) {
 
   return (
     <div>
+      <DropOverlay show={dragging} label={`Drop to add pages to “${text.name}”`} />
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
       <p className="text-xs text-slate-500 dark:text-slate-400">{pages.length} pages, {text.status}</p>
@@ -155,6 +170,7 @@ export default function ImageTextPage({ data, reload }) {
         <section className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
           <input ref={fileInput} type="file" multiple accept="image/*,.heic,.heif,application/pdf" className="hidden" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} />
           <button className="btn-quiet" type="button" onClick={() => fileInput.current?.click()} disabled={!!busy || !!run}>Upload pages</button>
+          <span className="text-xs text-slate-600 dark:text-slate-300">or drop images or a PDF anywhere on this page</span>
           <label className="text-sm">Rotate uploads <select className="field inline-block w-auto" value={rotate} onChange={(e) => setRotate(Number(e.target.value))}>{[0, 90, 180, 270].map((d) => <option key={d} value={d}>{d}°</option>)}</select></label>
           <ModelPicker task="ocr" value={model} onChange={setModel} label="OCR model" />
           {run ? (

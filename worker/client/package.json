@@ -9,7 +9,6 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "heic2any": "0.0.4",
     "katex": "0.16.38",
     "marked": "15.0.12",
     "pdfjs-dist": "4.10.38",

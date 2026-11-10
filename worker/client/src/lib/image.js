@@ -4,16 +4,35 @@
 
 export const MAX_DIMENSION = 2048;
 
-const isHeic = (file) => /image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+export const isHeic = (file) => /image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+
+/**
+ * HEIC/HEIF photos are decoded by the browser itself or not at all. The
+ * converter library the earlier version used (heic2any, an Emscripten build)
+ * compiles code with `new Function`, which the page policy (script-src 'self',
+ * no 'unsafe-eval', on an origin every CAIL tool shares) refuses: under it a
+ * HEIC upload hung with nothing shown. Safari opens HEIC natively; elsewhere
+ * the person gets this message.
+ */
+export function heicMessage(name) {
+  return `“${name}” is a HEIC photo, which this browser cannot open. Convert it to JPEG first (on a Mac, open it in Preview and choose File > Export > JPEG; on an iPhone, Settings > Camera > Formats > Most Compatible makes new photos JPEG), or upload it from Safari, which opens HEIC itself.`;
+}
+
+export class ImageDecodeError extends Error {
+  constructor(file) {
+    super(isHeic(file) ? heicMessage(file.name) : `“${file.name}” could not be opened as an image. Upload a JPEG, PNG or WebP file, or a PDF.`);
+    this.name = 'ImageDecodeError';
+    this.code = isHeic(file) ? 'heic_unsupported' : 'image_unreadable';
+  }
+}
 
 async function decode(file) {
-  let source = file;
-  if (isHeic(file)) {
-    const { default: heic2any } = await import('heic2any');
-    source = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
-  }
   // from-image applies the EXIF orientation, so phone photos come out upright.
-  return createImageBitmap(source, { imageOrientation: 'from-image' });
+  try {
+    return await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    throw new ImageDecodeError(file);
+  }
 }
 
 /** Fit (w, h) into maxDim on the long side, never upscaling. */
