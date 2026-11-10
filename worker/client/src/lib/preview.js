@@ -20,35 +20,45 @@ img{max-width:100%;height:auto}.katex-display{overflow-x:auto;overflow-y:hidden}
 @media (prefers-color-scheme: dark){html,body{background:#1e293b;color:#e2e8f0}.katex{color:inherit}}`;
 
 const SLOT = /(\d+)/g;
+const RASTER_DATA_URI = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 // Pandoc's inline-math rule for $...$: no space just inside either dollar, and the
 // closing dollar not followed by a digit, so "$5 and $10" stays text. OCR models
 // write Markdown maths this way; legacy rendered no maths in Markdown at all.
 const PANDOC_DOLLAR = /(?<![\\$])\$(?![\s$])((?:\\\$|[^$\n])+?)(?<![\s\\])\$(?![\d$])/g;
 
-/** Markdown: TeX is set aside before marked (its backslash escapes would eat \( ), then rendered after sanitizing. */
-function markdownBody(md) {
+// Escapes for text AND attribute positions: whatever marked put a slot into, the restored TeX stays inert.
+const escAll = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+/**
+ * Markdown. TeX is set aside before marked (its backslash escapes would eat \( )
+ * and put back BEFORE sanitizing, so the sanitizer judges the final markup and
+ * nothing is ever inserted into sanitized output. The sentinels are private-use
+ * code points stripped from the source first, so a slot cannot be forged, and
+ * each formula is restored fully escaped in its legacy delimiters.
+ */
+export function markdownToSanitizedHtml(md) {
+  const source = md.replace(/[]/g, '');
   const slots = [];
-  const slot = (p) => (slots.push(p), `${slots.length - 1}`);
-  const protectedMd = splitAtDelimiters(md, [{ left: '$$', right: '$$', display: true }, ...LEGACY_DELIMITERS])
-    .map((p) => (p.type === 'math' ? slot(p) : p.data.replace(PANDOC_DOLLAR, (_m, tex) => slot({ data: tex, rawData: `\\(${tex}\\)` }))))
+  const slot = (tex, display) => (slots.push({ tex, display }), `${slots.length - 1}`);
+  const protectedMd = splitAtDelimiters(source, [{ left: '$$', right: '$$', display: true }, ...LEGACY_DELIMITERS])
+    .map((p) => (p.type === 'math' ? slot(p.data, p.display) : p.data.replace(PANDOC_DOLLAR, (_m, tex) => slot(tex, false))))
     .join('');
-  const clean = sanitizeHtml(marked.parse(protectedMd, { async: false }));
-  // Put each formula back as escaped TeX in its original delimiters, then let renderMath do what it does for HTML.
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const restored = clean.replace(SLOT, (m, i) => {
-    const p = slots[Number(i)];
-    if (!p) return '';
-    const raw = p.rawData.startsWith('$$') ? `\\[${p.data}\\]` : p.rawData;
-    return esc(decodeEntities(raw));
+  // marked escapes text and attribute values, so a slot reaches us as itself, wherever it landed.
+  const restored = marked.parse(protectedMd, { async: false }).replace(SLOT, (_m, i) => {
+    const s = slots[Number(i)];
+    return s ? escAll(decodeEntities(s.display ? `\\[${s.tex}\\]` : `\\(${s.tex}\\)`)) : '';
   });
-  return renderMath(restored);
+  return sanitizeHtml(restored.replace(/[]/g, ''));
 }
+
+const markdownBody = (md) => renderMath(markdownToSanitizedHtml(md));
 
 /** The preview body (sanitized, maths rendered) and how many formulas it holds. */
 export function previewBody({ html, markdown, images = {} }) {
   const { html: body, count, errors } = markdown !== undefined ? markdownBody(markdown ?? '') : renderMath(sanitizeHtml(html ?? ''));
   // Figures: the frame cannot fetch app URLs, so a referenced figure is swapped for its data: URI.
-  const withImages = body.replace(/ src="([^"/]+)"/g, (m, name) => (images[name] ? ` src="${images[name]}"` : m));
+  // Only a strict raster data: URI (no quote, no markup character can occur in it) is ever written into an attribute here.
+  const withImages = body.replace(/ src="([^"/]+)"/g, (m, name) => (typeof images[name] === 'string' && RASTER_DATA_URI.test(images[name]) ? ` src="${images[name]}"` : m));
   return { body: withImages, mathCount: count, mathErrors: errors };
 }
 
