@@ -36,10 +36,13 @@
     }
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "cail-manifold-companion-files" }],
-  // Daily retention sweep (warn, then delete projects 180 days after last edit), 06:17 UTC.
-  "triggers": { "crons": ["17 6 * * *"] },
+  // Daily retention sweep (warn, then delete projects 180 days after last edit), 06:17 UTC;
+  // and a readiness self-check every 15 minutes (logs readiness.failed; docs/HANDOFF.md 6.3).
+  "triggers": { "crons": ["17 6 * * *", "*/15 * * * *"] },
   "exports": { "ManifoldCompanionReadiness": { "type": "worker" } },
-  // CAIL_IDENTITY_JWKS is a Worker secret (Doorway's public JWKS), not a var.
+  // CAIL_IDENTITY_JWKS is a Worker secret (Doorway's public JWKS), not a var. A deploy
+  // without it fails; upload it with `wrangler deploy --secrets-file` (HANDOFF 6.2).
+  "secrets": { "required": ["CAIL_IDENTITY_JWKS"] },
   "vars": {
     "CAIL_API_BASE": "https://tools.ailab.gc.cuny.edu",
     "CAIL_IDENTITY_ISSUER": "https://tools.ailab.gc.cuny.edu/cail-sso",

@@ -68,4 +68,23 @@ describe("operational logging carries no content, names, subjects or credentials
     expect(errorTypeName(new AppError({ code: "quota_exceeded", message: "x", status: 429 }))).toBe("quota_exceeded");
     expect(errorTypeName("a string")).toBe("string");
   });
+
+  it("the 15-minute readiness cron logs each failing check by code, and nothing when ready", async () => {
+    const run = async (env: Awaited<ReturnType<typeof makeEnv>>, cron: string) => {
+      const pending: Promise<unknown>[] = [];
+      indexModule.scheduled!({ cron, scheduledTime: Date.now(), noRetry() {} } as ScheduledController, env, { waitUntil: (p: Promise<unknown>) => pending.push(p) } as unknown as ExecutionContext);
+      await Promise.all(pending);
+    };
+    await run(await gatewayEnv({}, { CF_VERSION_METADATA: { id: "v1", tag: "t", timestamp: "now" } }), "*/15 * * * *");
+    expect(named("readiness.failed")).toEqual([]);
+    expect(named("readiness.checked")).toEqual([]); // the verdict is daily only
+    expect(named("retention.sweep")).toEqual([]); // the sweep is daily only
+    await run(await gatewayEnv({ catalog: () => new Response("<html>404</html>", { status: 404 }) }), "*/15 * * * *");
+    const failed = JSON.stringify(named("readiness.failed"));
+    expect(failed).toContain("gateway_catalog_unreachable");
+    expect(failed).toContain("version_untagged");
+    expect(failed).not.toContain("<html>");
+    await run(await gatewayEnv({}, { CF_VERSION_METADATA: { id: "v1", tag: "t", timestamp: "now" } }), "17 6 * * *");
+    expect(JSON.stringify(named("readiness.checked"))).toContain('"ready"');
+  });
 });

@@ -19,6 +19,10 @@ const catalog = defineEventCatalog({
   // Daily retention sweep counts packed into one slug: w<warned>_d<deleted>_f<failed>_c<cleaned>.
   "retention.sweep": { source: "tenant", severity: "info", required: ["error_type"], optional: ["duration_ms"] },
   "retention.sweep_failed": { source: "tenant", severity: "error", required: ["error_type"], optional: ["duration_ms"] },
+  // Scheduled readiness self-check (the Gateway catalog through the binding, D1, identity, version tag).
+  // readiness.failed: one event per failing check, error_type is its code. readiness.checked: the daily verdict.
+  "readiness.failed": { source: "tenant", severity: "warn", required: ["error_type"], optional: ["duration_ms"] },
+  "readiness.checked": { source: "tenant", severity: "info", required: ["error_type"], optional: ["duration_ms"] },
 });
 
 const loggers = new WeakMap<object, ReturnType<typeof build>>();

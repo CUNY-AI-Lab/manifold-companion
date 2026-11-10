@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ALICE, BASE, ORIGIN, api, call, json, legs, makeEnv } from "./helpers";
 import app from "../src/app";
 import { readinessResult } from "../src/readiness";
+import { gatewayEnv } from "./gateway-stub";
 import { validateConfig } from "../src/env";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -124,7 +125,7 @@ describe("security headers and static serving", () => {
 
 describe("readiness", () => {
   it("is ready with a complete configuration and migrated schema", async () => {
-    const env = await makeEnv({ CF_VERSION_METADATA: { id: "v1", tag: "t", timestamp: "now" } });
+    const env = await gatewayEnv({}, { CF_VERSION_METADATA: { id: "v1", tag: "t", timestamp: "now" } });
     expect(await readinessResult(env)).toMatchObject({ ok: true, configuration: "ready", service: "manifold-companion" });
     const res = await app.fetch(new Request(`${ORIGIN}/health/ready`), env);
     expect(res.status).toBe(200);
@@ -148,5 +149,18 @@ describe("readiness", () => {
   });
   it("live probe works", async () => {
     expect((await app.fetch(new Request(`${ORIGIN}/health/live`), await makeEnv())).status).toBe(200);
+  });
+});
+
+describe("the Worker entry module", () => {
+  // workerd refuses to start when the main module exports anything other than handlers
+  // ("Incorrect type for map entry"); the test pool does not catch it, wrangler dev does.
+  it("exports only the default handler and WorkerEntrypoint classes", async () => {
+    const mod = await import("../src/index");
+    const { WorkerEntrypoint } = await import("cloudflare:workers");
+    for (const [name, value] of Object.entries(mod)) {
+      if (name === "default") continue;
+      expect(typeof value === "function" && (value as { prototype: unknown }).prototype instanceof WorkerEntrypoint, `export ${name}`).toBe(true);
+    }
   });
 });

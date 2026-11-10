@@ -23,7 +23,9 @@ browser ──► Doorway (CUNY Login, Admission membership, CSRF-independent)
           ├─ canonical-origin gate ─ request id ─ security headers
           ├─ /manifold-companion/api/*  CSRF(Origin) ─ identity(both legs) ─ profile upsert ─ routes
           ├─ /manifold-companion/*      static SPA from ASSETS (index.html fallback for client routes)
-          ├─ /health/live, /health/ready, ManifoldCompanionReadiness RPC (Doorway release probe)
+          ├─ /health/live, /health/ready, ManifoldCompanionReadiness RPC (Doorway release probe),
+          │  /manifold-companion/api/health (public canary: verdict only; readiness includes the
+          │  Gateway catalog read through the GATEWAY binding), */15 cron self-check
           ├─ scheduled: daily retention sweep
           ├─ D1  (DB)     relational data; FTS5 created at runtime when available
           ├─ R2  (FILES)  uploads, large text, version bodies

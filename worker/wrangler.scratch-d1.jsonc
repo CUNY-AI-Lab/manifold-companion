@@ -1,0 +1,15 @@
+{
+  // Only for rehearsing the migrations on a throwaway remote D1 before the
+  // real one (docs/HANDOFF.md 6.1). Not a Worker configuration; never deploy
+  // with it. Paste the scratch database id below for the rehearsal, then
+  // restore this file (`git checkout wrangler.scratch-d1.jsonc`).
+  "name": "cail-manifold-companion-scratch",
+  "d1_databases": [
+    {
+      "binding": "SCRATCH_DB",
+      "database_name": "cail-manifold-companion-scratch",
+      "database_id": "REPLACE_WITH_SCRATCH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

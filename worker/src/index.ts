@@ -1,7 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import app from "./app";
 import type { Env } from "./env";
-import { readinessResult, type ReadinessResult } from "./readiness";
+import { READINESS_CRON, readinessResult, selfCheck, type ReadinessResult } from "./readiness";
 import { runRetentionSweep } from "./retention";
 import { logger } from "./logging";
 
@@ -9,9 +9,12 @@ export type { ReadinessResult } from "./readiness";
 
 export default {
   fetch: (request: Request, env: Env, ctx: ExecutionContext) => app.fetch(request, env, ctx),
-  // Daily retention sweep (wrangler.jsonc `triggers.crons`).
-  scheduled: (_controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
+  // wrangler.jsonc `triggers.crons`: the daily retention sweep, and a readiness
+  // self-check every 15 minutes (the post-release canary in Workers Logs).
+  scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
     const started = Date.now();
+    ctx.waitUntil(selfCheck(env, controller.cron !== READINESS_CRON));
+    if (controller.cron === READINESS_CRON) return;
     ctx.waitUntil(
       runRetentionSweep(env).then(
         (r) => {

@@ -5,7 +5,7 @@ import { AppError, E, errorResponse } from "./errors";
 import { authenticate, type Principal } from "./identity";
 import { isMutation, originAllowed } from "./csrf";
 import { withSecurityHeaders } from "./security";
-import { checkConfigurationReadiness } from "./readiness";
+import { checkConfigurationReadiness, publicHealth } from "./readiness";
 import { sessionRoutes } from "./routes/session";
 import { projectRoutes } from "./routes/projects";
 import { inviteRoutes } from "./routes/invites";
@@ -51,6 +51,14 @@ app.get("/health/ready", async (c) => {
   const result = await checkConfigurationReadiness(c.env);
   const version = c.env.CF_VERSION_METADATA?.id ?? null;
   return result.ok ? c.json({ ok: true, status: "ready", version }) : c.json({ ok: false, status: "not_ready", version }, 503);
+});
+
+// The credential-free canary, for Doorway's public exact route of the same path
+// (docs/HANDOFF.md 6.3): the same checks as /health/ready, including the
+// Gateway catalog through the GATEWAY binding, before any identity middleware.
+app.get(`${BASE_PATH}/api/health`, async (c) => {
+  const { ok, version } = await publicHealth(c.env);
+  return c.json({ ok, status: ok ? "ready" : "not_ready", version }, ok ? 200 : 503, { "cache-control": "no-store" });
 });
 
 const api = new Hono<AppEnv>();
