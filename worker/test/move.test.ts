@@ -352,5 +352,18 @@ describe("moving texts: an interrupted move leaves no stored object behind", () 
     expect(r.failed.map((f: { code: string }) => f.code)).toEqual(["move_conflict"]);
     expect((await json(await call(api(`/texts/${second.tid}`)))).text.project_id).toBe(second.src);
     await clean();
+
+    // A sweep that ignores the date (an older version during a rollback) marks the tombstone swept: refused too.
+    const third = await richImageText(ALICE);
+    const { deleteR2Prefix } = await import("../src/storage");
+    const e3 = await makeEnv({ FILES: files(env.FILES, { onPut: async (n) => {
+      if (n !== 1) return;
+      const rows = await env.DB.prepare("SELECT prefix FROM r2_cleanup WHERE prefix LIKE ?1").bind(`${projectPrefix(dst)}%`).all<{ prefix: string }>();
+      for (const { prefix } of rows.results) { await deleteR2Prefix(env.FILES, prefix); await env.DB.prepare("UPDATE r2_cleanup SET swept_at = ?1 WHERE prefix = ?2").bind(new Date().toISOString(), prefix).run(); }
+    } }) });
+    const r3 = await json(await move(third.src, { textIds: [third.tid], to: dst }, ALICE, e3));
+    expect(r3.failed.map((f: { code: string }) => f.code)).toEqual(["move_conflict"]);
+    expect((await json(await call(api(`/texts/${third.tid}`)))).text.project_id).toBe(third.src);
+    await clean();
   });
 });

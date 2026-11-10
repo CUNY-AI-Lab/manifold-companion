@@ -157,7 +157,7 @@ export async function moveText(env: Env, subject: string, src: ProjectRow, dst: 
          ?3, html_bytes, ?4, compiled_bytes, ?5, translation_bytes, ?6, source_pdf_bytes, source_pdf_revision, search_text, created_at, ?7
        FROM texts WHERE id = ?8 AND project_id = ?9 AND html_key IS ?10 AND compiled_key IS ?11 AND translation_key IS ?12 AND source_pdf_key IS ?13
          AND EXISTS (SELECT 1 FROM projects WHERE id = ?2) AND ${editorSql("?9", "?14")} AND ${editorSql("?2", "?14")}
-         AND EXISTS (SELECT 1 FROM r2_cleanup WHERE prefix = ?15 AND created_at > ?16)`,
+         AND EXISTS (SELECT 1 FROM r2_cleanup WHERE prefix = ?15 AND created_at > ?16 AND swept_at IS NULL)`,
     ).bind(id, dst.id, nk(t.html_key), nk(t.compiled_key), nk(t.translation_key), nk(t.source_pdf_key), now, oldId, src.id, t.html_key, t.compiled_key, t.translation_key, t.source_pdf_key, subject, prefix, nowIso(Date.now() + MOVE_PENDING_MARGIN_MS)),
     // The copies are now named by rows: the pending tombstone goes.
     env.DB.prepare(`DELETE FROM r2_cleanup WHERE prefix = ?2 AND ${moved}`).bind(id, prefix),
