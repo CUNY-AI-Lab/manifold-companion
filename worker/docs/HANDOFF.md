@@ -10,10 +10,10 @@ From `worker/`:
 npm ci
 npm run typecheck
 npm run check:logging          # fails on any console use or other logging library in src/
-npm test                       # Worker suite in workerd (Miniflare D1/R2), 452 tests
+npm test                       # Worker suite in workerd (Miniflare D1/R2), 472 tests
 npm run build:client           # worker/client: npm ci + vite build -> worker/client/dist
-npm run test:client            # client unit tests, 132
-npm run test:e2e               # Playwright: wrangler dev + Doorway double + Gateway stub: 5 journeys, axe WCAG 2.2 A/AA on every screen (desktop and phone, light and dark), a keyboard-only walk
+npm run test:client            # client unit tests, 143
+npm run test:e2e               # Playwright: wrangler dev + Doorway double + Gateway stub: 11 journeys, axe WCAG 2.2 A/AA on every screen (desktop and phone, light and dark), a keyboard-only walk
 npx wrangler deploy --dry-run --outdir .wrangler/dry-run   # needs client/dist
 ```
 
@@ -64,7 +64,7 @@ The uncommitted model-task draft was kept and repaired (type error, conflict han
 | Export sections | `a900a57` | nested TOC editor, saved per project by editors, validated server-side | 457 |
 | Member roles, transfer | `fe3574a`, `0f14d0d`, `cbaefde` | role change; ownership transfer as an offer the member accepts (migration 0008), nonce-guarded single batch; in-app confirmation dialogs everywhere | 471 |
 | Storage reservations | `8af8bf1` | explicit reservations (migration 0009), committed in the row's batch; daily recount to the invariant (DESIGN 6) | 472 |
-| Anchored comments, notification menu, split/merge/bulk | this commit | comments on a text range with re-anchoring and detach, edit own, resolved view; header notification menu; split, merge, bulk status and delete UI | 473 |
+| Anchored comments, notification menu, split/merge/bulk | `c6a3c6f` | comments on a text range with re-anchoring and detach, edit own, resolved view; header notification menu; split, merge, bulk status and delete UI | 472 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
