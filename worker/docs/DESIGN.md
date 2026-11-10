@@ -56,7 +56,7 @@ browser ──► Doorway (CUNY Login, Admission membership, CSRF-independent)
 | `src/logging.ts`, `scripts/check-logging.sh` | cail-log event catalog; CI gate against any other logging |
 | `src/sanitize/html.ts` | allowlist HTML sanitizer (no DOM), MathML subset |
 | `src/r2-keys.ts`, `src/files.ts` | R2 key layout; serving stored objects with explicit types |
-| `migrations/0001`..`0007` | schema (see section 3) |
+| `migrations/0001`..`0010` | schema (see section 3) |
 | `client/` | the browser app (React, Vite, Tailwind); `client/e2e/` the Playwright journeys |
 
 Request pipeline, in order, and why:
@@ -89,6 +89,8 @@ D1 schema is in `migrations/`. Everything is keyed on `subject` (`cail-` + 32 he
 | `notifications`, `notification_preferences` | in-app only; `email_enabled` reserved (default 0, unread by anything) |
 | `figures` | figure crops of a PDF-to-HTML text (`filename`, `image_key`, sniffed `image_type`, `bytes`, `width`, `height`) |
 | `r2_cleanup` | deletion tombstones: an R2 prefix whose rows were deleted; swept at once and again by the cron, forgotten after a day |
+| `transfer_offers` (0008) | one pending ownership offer per project (`project_id` UNIQUE), `from_subject`, `to_subject`, `expires_at`; `claim_nonce`/`claim_bytes` exist only inside the accepting batch. `projects.transfer_nonce` marks the accept that last moved the project |
+| `storage_reservations` (0009, 0010) | quota held for bytes not yet in a row: `subject` (whose counter holds it), `project_id` (whose bytes they are), `bytes`, `expires_at` (1 h) |
 | `text_fts` (FTS5, **runtime**) | `title`, `body` = `texts.search_text`; created with its triggers and a backfill by `ensureSearchIndex()` when D1 accepts FTS5, never by a migration |
 
 ### Changes from the legacy schema (`server/db.js`)
@@ -150,7 +152,7 @@ One function: `requireRole(db, subject, projectId, minRole)` in `src/authz.ts`. 
 | read project, list members, read texts/pages/versions/annotations/search, export, edit or delete one's own comment | viewer |
 | leave project (self-removal) | viewer |
 | edit text content, upload, run model tasks, comment, reply, resolve, revert a version, save export settings | editor |
-| rename/delete project, remove others, create/list/revoke invites, delete anyone's comment | owner |
+| rename/delete project, remove others, change a member's role, offer/view/revoke an ownership transfer, create/list/revoke invites, delete anyone's comment | owner |
 | profile, `/session`, `/me/data` | self only (no project; subject comes from the verified principal, never from the request) |
 | `POST /invites/redeem` | any signed-in person holding a valid token (no role yet by definition) |
 
@@ -175,21 +177,30 @@ One function: `requireRole(db, subject, projectId, minRole)` in `src/authz.ts`. 
 
 **Invariant.** For every person S, at every committed state of D1:
 
-`profiles.storage_bytes(S) = Σ bytes the rows of the projects S owns account for (projectBytesSql: texts' html, translation, compiled and source-PDF bytes; pages' image bytes; text_versions' bytes; figures' bytes) + Σ live storage_reservations of S`
+`profiles.storage_bytes(S) = Σ bytes the rows of the projects S owns account for (projectBytesSql: texts' html, translation, compiled and source-PDF bytes; pages' image bytes; text_versions' bytes; figures' bytes) + Σ storage_reservations held by S`
 
-Every change to the counter happens in the same D1 transaction (one statement or one batch) as the change to the rows or reservations it reflects, and every follow-up statement in such a batch is conditioned on a value unique to that request (a new row id, a new R2 key, a nonce), so a repeated or concurrent request can never apply it twice. `src/storage.ts` holds the helpers.
+(The recount deletes expired reservations before it applies the formula, so between recounts "held" means every reservation row with that subject.)
+
+Three rules make it hold:
+1. Every change to the counter happens in the same D1 transaction (one statement or one batch) as the change to the rows or reservations it reflects.
+2. Every follow-up statement in such a batch is conditioned on a value unique to that request (a new row id, a new R2 key, a nonce), so a repeated or concurrent request can never apply it twice.
+3. The person charged is named **in SQL, as the transaction sees it** (`ownerSql` in `src/storage.ts`: the project's `owner_subject`; for a reservation, its `subject`), never the owner read when the request was authorized. A transfer can commit between a request's authorization and its writes.
 
 | Path | What happens to the counter, and where |
 |---|---|
-| Reserve (before any bytes are read or written) | `reserveStorage`: one batch inserts a `storage_reservations` row only if counter + bytes <= quota, then raises the counter only if THAT row exists. Concurrent reservations serialize; none overshoots. TTL 1 h. |
-| Commit (the row is written) | `commitReservation`, appended to the batch that writes the row: deletes the reservation only if that batch wrote the row (page or figure id, new content key, version id, every new page id of a split/merge). The counter does not change: the bytes move from "reserved" to "rows". Used by page upload, figure upload, source-PDF upload, `writeContent` (HTML, compiled text, translation), `writePageText` (page-version snapshot), split and merge (`copyIntoNewTexts`). |
-| Release (the write failed) | `releaseReservation`: lowers the counter only if the reservation still exists, and deletes it, in one batch; a no-op after a commit. |
-| Shrink or replace (rows now account for fewer bytes) | `releaseStatement` in the swapping batch, conditioned on the new key: smaller unversioned content (`writeContent`), the old source PDF on replace. |
-| Delete a page, figure, text or project | `deleteRowAndRelease`, `deleteTextObjects`, `deleteProject`: the release statement runs first in the deleting batch and only while the row still exists, computed from the rows themselves (`textBytesSql`, `projectBytesSql`), so a replay releases nothing. Version pruning likewise. R2 objects go after the rows (tombstones). |
-| Transfer ownership | `POST /transfers/:id/accept`: one batch claims the offer with a nonce and measures the project's bytes inside the transaction (`claim_bytes`), moves the owner only with that claim and room under the new owner's quota, then credits the new owner and debits the old one by exactly `claim_bytes`, each conditioned on the project carrying the nonce; a failed move releases the claim in the same batch. |
-| Recount (daily backstop) | `recountStorage` in the retention sweep: deletes expired reservations (left by an interrupted Worker) and sets every counter to the invariant's right-hand side (rows + live reservations), so a leak is corrected and an upload in progress keeps its quota. Logged as `_r<n>` in the `retention.sweep` slug. |
+| Reserve (before any bytes are read or written) | `reserveStorage(env, projectId, bytes)`: one batch inserts a `storage_reservations` row for the project's current owner only if counter + bytes <= quota, then raises the counter of that row's subject only if the row exists. Concurrent reservations serialize; none overshoots. TTL 1 h. A missing project is 404. |
+| Commit (the row is written) | `commitReservation`, appended to the batch that writes the row, both statements only if that batch wrote the row (page or figure id, new content key, version id, every new page id of a split/merge): (1) if the reservation is gone, charge the project's owner for the bytes (only the recount removes a live request's reservation, when the request outlived the 1 h TTL; uploads have no read deadline); (2) delete the reservation (the bytes move from "reserved" to "rows"). Used by page, figure and source-PDF upload, `writeContent` (HTML, compiled text, translation), `writePageText` (page-version snapshot), split and merge. |
+| Release (the write failed) | `releaseReservation`: lowers the counter of the reservation's subject only if the reservation still exists, and deletes it, in one batch; a no-op after a commit or after the recount dropped it. |
+| Shrink or replace (rows now account for fewer bytes) | `releaseStatement(db, projectId, ...)` in the swapping batch, conditioned on the new key, from the project's current owner: smaller unversioned content (`writeContent`), the old source PDF on replace. |
+| Delete a page, figure, text or project; prune versions | `deleteRowAndRelease(db, projectId, ...)`, `deleteTextObjects`, `deleteProject`, `pruneVersions`: the release statement runs first in the deleting batch, only while the row still exists, computed from the rows themselves (`textBytesSql`, `projectBytesSql`) and applied to the project's current owner, so a replay releases nothing and a transfer in between cannot misdirect it. R2 objects go after the rows (tombstones). |
+| Split and merge (`copyIntoNewTexts`) | All or nothing: one batch inserts every new text and page (each insert re-checks the caps), commits the reservation, and ends with a guard that breaks `profiles.storage_bytes >= 0` if any insert wrote nothing, which rolls the whole batch back. No partial copy is ever left for a cleanup an interrupted Worker might not run. Copies get new R2 keys; no object is shared by two rows. |
+| Transfer ownership | `POST /transfers/:id/accept`: one batch claims the offer with a nonce and measures, inside the transaction, the project's row bytes **plus its reservations** (`claim_bytes`); moves the owner only with that claim, the offerer still owning it, the accepter still a member and room for `claim_bytes` under the new owner's quota; then credits the new owner and debits the old one by exactly `claim_bytes`, **moves the project's reservations to the new owner**, and swaps the roles, each conditioned on the project carrying the nonce; a failed move releases the claim in the same batch. An upload in flight during the accept therefore commits or releases on the new owner's counter. |
+| Delete by an owner (`DELETE /projects/:id`, "delete my data") | The deleting batch re-checks that the caller still owns the project (`ownedBy` guard); otherwise nothing is deleted (`409 owner_changed` on the route). "Delete my data" deletes the profile only once it owns nothing, so no project is ever removed by the profile cascade (which would skip its tombstone and leave its objects). |
+| Recount (daily backstop) | `recountStorage` in the retention sweep: deletes expired reservations (left by an interrupted Worker) and sets every counter to rows + remaining reservations in the same batch, so a leak is corrected and an upload in progress keeps its quota. Logged as `_r<n>` in the `retention.sweep` slug. |
 
-Known edge: if ownership transfers while an upload to that project is in flight, the reservation stays on the old owner and the row lands in the new owner's project; the counters are off by that upload until the next daily recount.
+Checked by `test/storage-property.test.ts` (seeded random batches of concurrent uploads, edits, deletes, splits, merges, content writes, transfers, recounts and a "delete my data", asserting the invariant, no leftover reservation, and that R2 holds exactly the objects rows name, after every batch), `test/storage-owner.test.ts` (each transfer interleaving held open deterministically) and `test/copy-atomic.test.ts`.
+
+Residual: a request that outlives its reservation and is committed after the recount is charged without a quota check (bounded by one request's bytes, at most 25 MB). While two Worker versions run side by side across the 06:17 recount (a deploy or rollback at that minute), an upload on the older version (which keeps no reservation) is not counted until the next recount.
 
 ## 7. Retention
 
@@ -278,7 +289,8 @@ Base: legacy `/api/...` becomes `/manifold-companion/api/...`. Every project- or
 | Area | Worker routes | Legacy | Notes |
 |---|---|---|---|
 | Session | `GET /session`, `PUT /profile`, `DELETE /me/data` | `/auth/*` | no passwords, registration, approval, reset or local sessions |
-| Projects | `GET/POST /projects`, `GET/PUT/DELETE /projects/:id`, `GET /projects/:id/members`, `DELETE /projects/:id/members/:subject` | `projects.js`, `shares.js` | owner removes, member leaves; **no role-change route** (remove and re-invite) |
+| Projects | `GET/POST /projects`, `GET/PUT/DELETE /projects/:id`, `GET /projects/:id/members`, `PUT/DELETE /projects/:id/members/:subject`, `GET/POST/DELETE /projects/:id/transfer` | `projects.js`, `shares.js` | owner removes or changes a member between editor and viewer, member leaves (which ends an offer made to them); the owner offers ownership to one member |
+| Transfers | `GET /transfers`, `POST /transfers/:offerId/accept`, `.../decline` | none | only the named member, while still a member, sees or answers an offer; accepting makes the previous owner an editor |
 | Invites | `POST/GET /projects/:id/invites`, `DELETE .../invites/:inviteId`, `POST /invites/redeem` | share by email | single use, bound to redeemer, fragment token |
 | Texts | `POST/GET /projects/:id/texts`, `PUT .../reorder`, `.../bulk-status`, `.../bulk-delete`, `.../merge`; `GET/PUT/DELETE /texts/:id`, `POST /texts/:id/split` | `texts.js` | |
 | Pages | `GET /texts/:id/pages`, `PUT .../pages/reorder`, `POST/DELETE .../pages/:pageId`, `POST /texts/:id/pages` (upload), `GET .../pages/:pageId/image` | upload, page-image | browser resizes; Worker sniffs JPEG/PNG/WebP |

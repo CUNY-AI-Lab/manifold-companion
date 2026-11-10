@@ -1,6 +1,6 @@
 # Handoff: Manifold Companion on the CAIL stack
 
-State on 2026-11-10. **Live**: `be19329` deployed by the coordinator (version `6a1805df…`, tag `mc-be19329`) behind the Doorway mount (cail-tools-admission #383, merged), migrations 0001-0007 applied to the real D1, accepted by the owner on 2026-11-10. Later commits are on branch `cail-stack` (pushed, CI green), not yet deployed; they add migrations 0008 and 0009, both additive. Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
+State on 2026-11-10. **Live**: `be19329` deployed by the coordinator (version `6a1805df…`, tag `mc-be19329`) behind the Doorway mount (cail-tools-admission #383, merged), migrations 0001-0007 applied to the real D1, accepted by the owner on 2026-11-10. Later commits are on branch `cail-stack` (pushed, CI green), not yet deployed; they add migrations 0008, 0009 and 0010, all additive. Read `DESIGN.md` for the architecture. This file says what is built, what is not, how to run it, how to deploy it, and what is still open.
 
 ## 1. Run it
 
@@ -10,7 +10,7 @@ From `worker/`:
 npm ci
 npm run typecheck
 npm run check:logging          # fails on any console use or other logging library in src/
-npm test                       # Worker suite in workerd (Miniflare D1/R2), 472 tests
+npm test                       # Worker suite in workerd (Miniflare D1/R2), 510 tests
 npm run build:client           # worker/client: npm ci + vite build -> worker/client/dist
 npm run test:client            # client unit tests, 143
 npm run test:e2e               # Playwright: wrangler dev + Doorway double + Gateway stub: 11 journeys, axe WCAG 2.2 A/AA on every screen (desktop and phone, light and dark), a keyboard-only walk
@@ -42,6 +42,22 @@ Reviewed and found sound: identity order (config first -> 503; missing -> 401 `a
 
 The uncommitted model-task draft was kept and repaired (type error, conflict handling, distinct length errors, retry semantics, logging), not rewritten.
 
+### 2a. Review of the post-deploy batch (`be19329..04929ac`), 2026-11-10
+
+Independent pass over storage accounting, transfer, role change, split/merge/bulk, comments and notifications, export settings, metadata and migrations 0008/0009. Each fix has a test that fails on the previous code.
+
+| Severity | Defect | Failure scenario | Fix |
+|---|---|---|---|
+| High | Counter changes named the owner read at authorization; reservations stayed on the old owner across a transfer, and the accept measured rows only | A delete, prune or shrinking write authorized just before an accept releases from the old owner; an upload, split or merge in flight during the accept lands unpaid on the new owner (who may be pushed over quota by bytes they never saw, e.g. a 300-page split started just before) while the old owner keeps the charge | `bd829e4`: owner resolved in SQL (`ownerSql`); reservations carry `project_id` (migration 0010); the accept counts and moves them |
+| High | "Delete my data" and `DELETE /projects/:id` deleted by an id list / authorization read before an accept could commit | Alice offers a project to Bob, then deletes her data; Bob accepts in between; Bob's project and files are deleted | `da55a80`: `ownedBy` guard in the deleting batch; profile deleted only once it owns nothing |
+| Medium | A write committed after the recount dropped its expired reservation was never charged | A slow upload held open past an hour across 06:17 UTC is stored for free; many at once store a whole quota uncounted | `99e0bf3`: the commit charges the owner when the reservation is gone |
+| Medium | Split/merge could commit partially (a racing cap refused some inserts) and cleaned up row by row outside the transaction | An interrupted cleanup leaves texts and pages whose image bytes no counter holds | `3d92f74`: a guard statement rolls the whole batch back |
+| Medium | An upload, figure, split, merge, new text or comment whose parent was deleted mid-request answered 500 (foreign key failure) | Uploading into a text a collaborator just deleted shows "Internal server error" | `fb57bb1`: parent-conditional inserts; 404 |
+| Low | A transfer offer outlived the named member's membership | A removed member still sees the project's name in their offers; the owner gets `transfer_pending` for anyone else | `d7a762c`: leaving or removal ends the offer; listing and answering need membership |
+| Low | Reply notifications went to a thread's author after they left the project | A former member keeps receiving the text's name and each reply | `48c389b`: sent only to current members |
+
+Reviewed and found sound: the transfer batch's nonce discipline (concurrent accepts, accept vs revoke, abandoned claims), one pending offer per project, expiry, owner-only offer/revoke/role routes (authz matrix rows exist), the previous owner becoming an editor, bulk status/delete and merge scoped to the project (ids from another project are ignored or refused), R2 keys never shared between rows after split/merge, range anchors validated (known keys, bounds, page of the same text) and shown only as text, mentions limited to members, export settings and Dublin Core validated and bounded (labels and metadata reach the ZIP only through `escapeYaml`), migrations 0008-0010 additive (new tables, nullable columns, indexes on new tables only, no FTS5). `test/storage-property.test.ts` asserts the storage invariant and the R2 object set after random concurrent batches (16 seeds in the suite, 64 run locally).
+
 ## 3. Built (tested)
 
 | Package | Commit | What | Worker tests after |
@@ -65,6 +81,7 @@ The uncommitted model-task draft was kept and repaired (type error, conflict han
 | Member roles, transfer | `fe3574a`, `0f14d0d`, `cbaefde` | role change; ownership transfer as an offer the member accepts (migration 0008), nonce-guarded single batch; in-app confirmation dialogs everywhere | 471 |
 | Storage reservations | `8af8bf1` | explicit reservations (migration 0009), committed in the row's batch; daily recount to the invariant (DESIGN 6) | 472 |
 | Anchored comments, notification menu, split/merge/bulk | `c6a3c6f` | comments on a text range with re-anchoring and detach, edit own, resolved view; header notification menu; split, merge, bulk status and delete UI | 472 |
+| Pre-deploy review of the above | `bd829e4`..`ab2b78e` | section 2a | 510 |
 
 Export limits designed for (one request, 128 MB isolate, default 30 s CPU): entries are written one at a time with stream backpressure; figures stream from R2 into stored entries; text is deflated in 64 KiB pushes. Budget checked from D1 sizes before the first byte: 64 MiB of text (allowing 2x for MathML), 256 MiB of figures, 1000 TOC nodes, depth 10, 2000 entries; over it is a clean `413 export_too_large`. Peak memory is about one HTML body (<= 5 MiB stored) plus its MathML and the deflate window. Not measured on production hardware.
 
@@ -87,7 +104,7 @@ Unverified client risks: `heic2any` under `script-src 'self'` (no HEIC fixture w
 
 ## 5. Infrastructure (provisioned and live)
 
-Provisioned 2026-11-10 in the CUNY AI Lab account: D1 `cail-manifold-companion` (`67481a76-aaf2-4035-b261-04e37d099246`, in `wrangler.jsonc`; `test/config.test.ts` fails if a placeholder comes back) and R2 `cail-manifold-companion-files`. The migration rehearsal on a scratch remote D1 passed (0001-0007, 15 tables plus `d1_migrations`, matching the snapshot), and FTS5 works on remote D1. Done by the coordinator on 2026-11-10: migrations 0001-0007 applied to the real D1, the JWKS secret set, `be19329` deployed with tag `mc-be19329`, the self-check cron ran clean, the Doorway mount (cail-tools-admission #383) merged, anonymous `/manifold-companion/api/session` returns 401 with `/launch/manifold-companion`. Before deploying a later commit, apply its new migrations first (0008, 0009: both additive, so the running version keeps working against the newer schema and a rollback stays safe).
+Provisioned 2026-11-10 in the CUNY AI Lab account: D1 `cail-manifold-companion` (`67481a76-aaf2-4035-b261-04e37d099246`, in `wrangler.jsonc`; `test/config.test.ts` fails if a placeholder comes back) and R2 `cail-manifold-companion-files`. The migration rehearsal on a scratch remote D1 passed (0001-0007, 15 tables plus `d1_migrations`, matching the snapshot), and FTS5 works on remote D1. Done by the coordinator on 2026-11-10: migrations 0001-0007 applied to the real D1, the JWKS secret set, `be19329` deployed with tag `mc-be19329`, the self-check cron ran clean, the Doorway mount (cail-tools-admission #383) merged, anonymous `/manifold-companion/api/session` returns 401 with `/launch/manifold-companion`. Before deploying a later commit, apply its new migrations first (0008, 0009, 0010: all additive, so the running version keeps working against the newer schema and a rollback stays safe).
 
 ## 6. Release runbook (in order; receiver first)
 
@@ -177,7 +194,7 @@ npx wrangler rollback <VERSION_ID> --message "rollback: <reason>"
 npx wrangler deployments status
 ```
 
-Migrations are additive (0007 adds a nullable column and an index), so an older version runs against the newer schema; roll the code back first. If a migration itself damaged data, D1 Time Travel restores the whole database to a point in time (it discards every write after it, so tell users):
+Migrations are additive (0007 adds a nullable column and an index; 0008 and 0009 add tables and a nullable column; 0010 a nullable column and an index), so an older version runs against the newer schema; roll the code back first. After rolling back past 0009, an interrupted upload's reservation stays on its owner's counter until a version with the daily recount runs again (the older version has none). If a migration itself damaged data, D1 Time Travel restores the whole database to a point in time (it discards every write after it, so tell users):
 
 ```bash
 npx wrangler d1 time-travel info cail-manifold-companion     # note the bookmark BEFORE applying a migration
