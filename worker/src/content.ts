@@ -142,6 +142,13 @@ const KIND_COLS = {
   translation: { key: "translation_key", bytes: "translation_bytes", versioned: false },
 } as const;
 
+/**
+ * A version's author as the transaction sees it: NULL once their profile is
+ * gone ("delete my data" while their write was in flight), as the profile's
+ * ON DELETE SET NULL would have made it, instead of a foreign-key failure.
+ */
+const AUTHOR = (placeholder: string): string => `(SELECT subject FROM profiles WHERE subject = ${placeholder})`;
+
 export interface WriteOptions {
   /** Extra column assignments applied in the same atomic update (names are fixed by callers, never user input). */
   extraSets?: { sql: string; value: unknown }[];
@@ -179,7 +186,7 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
       statements.push(
         env.DB.prepare(
           `INSERT INTO text_versions (id, text_id, content_type, r2_key, bytes, created_by, created_at, reason)
-           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND ${cols.key} IS ?4)`,
+           SELECT ?1, ?2, ?3, ?4, ?5, ${AUTHOR("?6")}, ?7, ?8 WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND ${cols.key} IS ?4)`,
         ).bind(newId(), text.id, kind, oldKey, oldBytes, authorSubject, now, opts.reason ?? "save"),
       );
     }
@@ -225,7 +232,7 @@ export async function clearCompiled(env: Env, project: ProjectRow, text: TextRow
   if (versioned) {
     statements.push(env.DB.prepare(
       `INSERT INTO text_versions (id, text_id, content_type, r2_key, bytes, created_by, created_at, reason)
-       SELECT ?1, ?2, 'compiled', ?3, ?4, ?5, ?6, 'save' WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND compiled_key = ?3 AND compiled_bytes = ?4)`,
+       SELECT ?1, ?2, 'compiled', ?3, ?4, ${AUTHOR("?5")}, ?6, 'save' WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2 AND compiled_key = ?3 AND compiled_bytes = ?4)`,
     ).bind(newId(), text.id, oldKey, text.compiled_bytes, authorSubject, now));
   }
   statements.push(env.DB.prepare("UPDATE texts SET compiled_key = NULL, compiled_bytes = 0, updated_at = ?1 WHERE id = ?2 AND compiled_key = ?3 AND compiled_bytes = ?4").bind(now, text.id, oldKey, text.compiled_bytes));
@@ -268,7 +275,7 @@ export async function writePageText(env: Env, project: ProjectRow, textId: strin
       statements.push(
         env.DB.prepare(
           `INSERT INTO text_versions (id, text_id, content_type, page_filename, r2_key, bytes, created_by, created_at, reason)
-           SELECT ?1, ?2, 'page', ?3, ?4, ?5, ?6, ?7, ?10 WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?8 AND text_id = ?2 AND ocr_text IS ?9)`,
+           SELECT ?1, ?2, 'page', ?3, ?4, ?5, ${AUTHOR("?6")}, ?7, ?10 WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?8 AND text_id = ?2 AND ocr_text IS ?9)`,
         ).bind(versionId, textId, page.filename, vKey, snapBytes, authorSubject, now, page.id, old, reason),
       );
     }

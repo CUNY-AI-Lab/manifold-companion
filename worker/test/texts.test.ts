@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { ALICE, BOB, CAROL, addMember, api, call, createProject, createText, dbWithoutFts, json, makeEnv, seedPage, storageOf } from "./helpers";
+import { ALICE, BOB, CAROL, JPEG, addMember, api, call, createProject, createText, dbWithoutFts, hookedDb, json, makeEnv, seedPage, storageDrift, storageOf, upload } from "./helpers";
 import { CAPS, writeContent, type TextRow } from "../src/content";
 import { projectStorageBytes } from "../src/storage";
 import { projectPrefix } from "../src/r2-keys";
@@ -515,4 +515,29 @@ describe("the edited full text of an image text", () => {
       expect(await objectDrift()).toEqual({ dangling: [], orphans: [] });
     }
   });
+});
+
+describe("an author who deletes their data while their write is in flight", () => {
+  for (const kind of ["save the full text", "give up the full text", "edit a page"] as const) {
+    it(`${kind}: no 500; the version keeps no author`, async () => {
+      const pid = await createProject(ALICE, `Shared ${kind}`);
+      await addMember(ALICE, pid, CAROL, "editor");
+      const tid = await createText(ALICE, pid);
+      await call(api(`/texts/${tid}/save`), { method: "POST", as: CAROL, body: { text: "one" } });
+      const pageId = (await json(await upload(api(`/texts/${tid}/pages`), JPEG(80), ALICE, { query: { filename: "p.jpg" } }))).page.id;
+      await call(api(`/texts/${tid}/pages/${pageId}`), { method: "POST", as: CAROL, body: { text: "first" } });
+      // Carol's request is authorized; then she deletes her data (she owns nothing, so her profile goes).
+      const db = hookedDb(env.DB, /JOIN project_members m ON m.project_id = p.id/, async () => {
+        expect((await call(api("/me/data"), { method: "DELETE", as: CAROL, body: { confirm: "delete my data" } })).status).toBe(200);
+      });
+      const e = await makeEnv({ DB: db });
+      const res = kind === "save the full text" ? await call(api(`/texts/${tid}/save`), { method: "POST", as: CAROL, body: { text: "two" }, env: e })
+        : kind === "give up the full text" ? await call(api(`/texts/${tid}/compiled`), { method: "DELETE", as: CAROL, env: e })
+        : await call(api(`/texts/${tid}/pages/${pageId}`), { method: "POST", as: CAROL, body: { text: "second" }, env: e });
+      expect(res.status, await res.clone().text()).toBeLessThan(500);
+      const authors = (await env.DB.prepare("SELECT created_by FROM text_versions WHERE text_id = ?1").bind(tid).all<{ created_by: string | null }>()).results.map((r) => r.created_by);
+      expect(authors.every((a) => a === null)).toBe(true);
+      expect(await storageDrift()).toEqual([]);
+    });
+  }
 });
