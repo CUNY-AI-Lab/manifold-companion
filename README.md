@@ -82,11 +82,13 @@ data/             Runtime data (SQLite DBs, uploaded files) — gitignored
 
 ## License
 
-This work is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+Copyright © 2026 CUNY AI Lab, The Graduate Center, City University of New York.
 
-You are free to share and adapt this software for non-commercial purposes, provided you give appropriate credit to the CUNY AI Lab and distribute any derivative works under the same license.
+This software is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later). You may use, study, change, and share it, including for commercial purposes. If you distribute a modified version, or run one as a network service that other people use, you must make its complete source code available to them under the same license.
 
-See [LICENSE](LICENSE) for the full license text.
+This license applies to every version of this repository, including earlier commits. Copies obtained before November 10, 2026 under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License may still be used under that license, because earlier license grants cannot be withdrawn.
+
+Questions about licensing: [ailab@gc.cuny.edu](mailto:ailab@gc.cuny.edu). See CAIL's [licensing page](https://ailab.gc.cuny.edu/license/).
 
 ## Contact
 
