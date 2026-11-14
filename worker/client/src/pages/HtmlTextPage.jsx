@@ -17,6 +17,7 @@ const readView = () => { try { return browserStorage().getItem(VIEW_PREF) === 's
 const SIDE_PREF = 'manifold-companion:prefs:html-side';
 const readSide = () => { try { return browserStorage().getItem(SIDE_PREF) === 'export' ? 'export' : 'pdf'; } catch { return 'pdf'; } };
 import SandboxedPreview from '../components/SandboxedPreview';
+import { useTextUndo } from '../hooks/useTextUndo';
 import SourcePdfPane, { pageAtOffset } from '../components/SourcePdfPane';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
@@ -81,6 +82,8 @@ export default function HtmlTextPage({ data, reload }) {
   const [versionKey, setVersionKey] = useState(0);
   const figureInput = useRef(null);
   const source = useRef(null);
+  // The source view keeps its own undo: Safari loses the browser's with every preview reload (lib/text-undo.js).
+  const sourceUndo = useTextUndo(html, setHtml, source, text.id);
   // Beside the text: the source PDF (to proofread against) or the page as exported.
   const [side, setSideState] = useState(readSide);
   const setSide = (v) => { setSideState(v); try { browserStorage().setItem(SIDE_PREF, v); } catch { /* unavailable */ } };
@@ -314,7 +317,7 @@ export default function HtmlTextPage({ data, reload }) {
           ) : (
             <>
               <label className="label" htmlFor="html-source">HTML (sanitized when saved). Write formulas as TeX in \( \) or \[ \]: the preview renders them with KaTeX, and the export converts them to MathML.</label>
-              <textarea ref={source} id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} onSelect={sourceCursor} onClick={sourceCursor} onKeyUp={sourceCursor} />
+              <textarea ref={source} id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onKeyDown={canEdit ? sourceUndo.onKeyDown : undefined} onChange={(e) => { sourceUndo.typed(); setHtml(e.target.value); }} onSelect={sourceCursor} onClick={sourceCursor} onKeyUp={sourceCursor} />
             </>
           )}
           {canEdit ? (

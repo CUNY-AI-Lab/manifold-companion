@@ -163,6 +163,11 @@ test('a document the editor cannot hold opens as source with a notice, and nothi
   await expect(page.getByRole('button', { name: 'HTML source', exact: true })).toHaveAttribute('aria-pressed', 'true');
   // Fixing it in the source lets the visual editor open it.
   await page.getByLabel(/^HTML/).fill('<p>Defined terms: Term, Meaning.</p>');
+  // The source view keeps its own undo (Safari loses the browser's with each preview reload).
+  await page.getByLabel(/^HTML/).press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect(page.getByLabel(/^HTML/)).toHaveValue(stored);
+  await page.getByLabel(/^HTML/).press(process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z');
+  await expect(page.getByLabel(/^HTML/)).toHaveValue('<p>Defined terms: Term, Meaning.</p>');
   await page.getByRole('button', { name: 'Visual editor' }).click();
   await expect(page.locator('.mc-editor')).toContainText('Defined terms: Term, Meaning.');
   await page.getByRole('button', { name: 'Save HTML' }).click();

@@ -6,6 +6,7 @@ import VersionHistory from './VersionHistory';
 import { ErrorNote } from './ui';
 import { useDraftKeeper } from '../hooks/useUnsaved';
 import { useShortcut } from '../hooks/useShortcuts';
+import { useTextUndo } from '../hooks/useTextUndo';
 import { saveFromBase } from '../lib/stale-save';
 
 /**
@@ -26,6 +27,9 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
   const [error, setError] = useState(null);
   const savedRef = useRef(undefined);
   const revRef = useRef(undefined); // the rev of the full text as loaded or last saved here (stale-save check)
+  const editor = useRef(null);
+  // Its own undo: Safari loses the browser's with every preview reload (lib/text-undo.js).
+  const undo = useTextUndo(draft, setDraft, editor, textId);
   // A reload (pages changed, a restore) keeps an unsaved edit; otherwise the editor shows what is saved.
   const load = async ({ keepEdit = true } = {}) => {
     const [c, r] = await Promise.all([api.get(`/api/texts/${textId}/compiled`), api.get(`/api/texts/${textId}/result`)]);
@@ -95,7 +99,7 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
               {editing ? (
                 <div className="grid gap-3 lg:grid-cols-2">
                   <label className="flex flex-col gap-1"><span className="label">Full text (Markdown)</span>
-                    <textarea className="field min-h-[20rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => { setDraft(e.target.value); setStatus(''); }} />
+                    <textarea ref={editor} className="field min-h-[20rem] font-mono" value={draft} readOnly={!canEdit} onKeyDown={canEdit ? undo.onKeyDown : undefined} onChange={(e) => { undo.typed(); setDraft(e.target.value); setStatus(''); }} />
                   </label>
                   <SandboxedPreview markdown={draft} flags title="Preview of the full text" className="min-h-[20rem]" />
                 </div>

@@ -1,7 +1,7 @@
 import { Btn, Toolbar } from './RichEditor';
 import { formatMarkdown } from '../lib/markdown-format';
 
-/** Replace a range of a textarea through the browser's own editing, so Ctrl/Cmd+Z undoes it; fall back to setting the value. */
+/** Replace a range of a textarea through the browser's editing (input events, as typing), falling back to setting the value. Undo is the app's own (hooks/useTextUndo.js). */
 export function applyToTextarea(el, edit, setValue) {
   el.focus();
   el.setSelectionRange(edit.from, edit.to);
@@ -17,10 +17,11 @@ export function applyToTextarea(el, edit, setValue) {
 }
 
 /** The legacy page-editor toolbar: bold, italic, headings, separator, quotation, for Markdown in a textarea. */
-export default function MarkdownToolbar({ textareaRef, controls, onChange, disabled = false }) {
+export default function MarkdownToolbar({ textareaRef, controls, onChange, onFormat, disabled = false }) {
   const run = (action) => () => {
     const el = textareaRef.current;
     if (!el || disabled) return;
+    onFormat?.();
     applyToTextarea(el, formatMarkdown(el.value, el.selectionStart, el.selectionEnd, action), onChange);
   };
   return (
@@ -37,11 +38,12 @@ export default function MarkdownToolbar({ textareaRef, controls, onChange, disab
 }
 
 /** Ctrl/Cmd+B and Ctrl/Cmd+I in the page text, as in the visual editor. */
-export function markdownKeys(e, textareaRef, onChange) {
+export function markdownKeys(e, textareaRef, onChange, onFormat) {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
   const action = { b: 'bold', i: 'italic' }[e.key.toLowerCase()];
   if (!action) return;
   e.preventDefault();
   const el = textareaRef.current;
+  onFormat?.();
   applyToTextarea(el, formatMarkdown(el.value, el.selectionStart, el.selectionEnd, action), onChange);
 }

@@ -11,6 +11,7 @@ import TranslationPanel from '../components/TranslationPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import { ScanLightbox, ScanViewer } from '../components/ScanViewer';
 import MarkdownToolbar, { markdownKeys } from '../components/MarkdownToolbar';
+import { useTextUndo } from '../hooks/useTextUndo';
 import PageThumb from '../components/PageThumb';
 import FlagHighlight from '../components/FlagHighlight';
 import { describeCounts, findFlags, flagCounts, FLAG_KINDS, stepFlag } from '../lib/flags';
@@ -87,6 +88,8 @@ export default function ImageTextPage({ data, reload }) {
   // Keep a valid selection as pages arrive or are deleted.
   useEffect(() => { if (!pages.some((p) => p.id === selected)) setSelected(pages[0]?.id ?? null); }, [pages, selected]);
   const page = pages.find((p) => p.id === selected) ?? null;
+  // The page text keeps its own undo (Safari loses the browser's with every preview reload); a page switch starts it again.
+  const pageUndo = useTextUndo(draft, setDraft, pageText, page?.id ?? null);
   const pendingRestore = useRef(null);
   // Which page `draft` belongs to: until the effect below has loaded a page's text, nothing is unsaved.
   const [draftPage, setDraftPage] = useState(null);
@@ -331,10 +334,10 @@ export default function ImageTextPage({ data, reload }) {
                   The export uses the edited full text, not the page texts: changes saved here do not reach the export. Edit the <a className="underline" href={`#fulltext-section-${text.id}`}>full text</a>, or choose “Use the pages again” there.
                 </p>
               ) : null}
-              {canEdit ? <MarkdownToolbar textareaRef={pageText} controls="page-text" onChange={(v) => { setDraft(v); setPageStatus(''); }} /> : null}
+              {canEdit ? <MarkdownToolbar textareaRef={pageText} controls="page-text" onFormat={pageUndo.formatted} onChange={(v) => { setDraft(v); setPageStatus(''); }} /> : null}
               <div className="relative rounded-md bg-white dark:bg-slate-800">
                 <FlagHighlight value={draft} textareaRef={pageText} />
-                <textarea ref={pageText} id="page-text" className="field relative min-h-[18rem] bg-transparent font-mono dark:bg-transparent" value={draft} readOnly={!canEdit} aria-describedby={[text.has_compiled ? 'page-export-note' : '', 'page-flags'].filter(Boolean).join(' ')} onKeyDown={canEdit ? (e) => markdownKeys(e, pageText, setDraft) : undefined} onKeyUp={noteCaret} onMouseUp={noteCaret} onChange={(e) => { setDraft(e.target.value); setPageStatus(''); noteCaret(e); }} />
+                <textarea ref={pageText} id="page-text" className="field relative min-h-[18rem] bg-transparent font-mono dark:bg-transparent" value={draft} readOnly={!canEdit} aria-describedby={[text.has_compiled ? 'page-export-note' : '', 'page-flags'].filter(Boolean).join(' ')} onKeyDown={canEdit ? (e) => { if (!pageUndo.onKeyDown(e)) markdownKeys(e, pageText, setDraft, pageUndo.formatted); } : undefined} onKeyUp={noteCaret} onMouseUp={noteCaret} onChange={(e) => { pageUndo.typed(); setDraft(e.target.value); setPageStatus(''); noteCaret(e); }} />
               </div>
               <div role="group" aria-label="Flags to review" className="flex flex-wrap items-center gap-2 text-sm">
                 <span id="page-flags" className="text-slate-700 dark:text-slate-200">{pageFlags.length ? `${pageFlags.length} ${pageFlags.length === 1 ? 'flag' : 'flags'} on this page (${describeCounts(flagCounts(draft))})` : 'No flags on this page'}{totalFlags ? `; ${totalFlags} in this text.` : '.'}</span>

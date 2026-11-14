@@ -182,7 +182,8 @@ test('the scan zooms and moves (buttons, keys, wheel, drag) and opens full scree
   await page.mouse.up();
   await page.keyboard.press('0');
   await expect(level).toHaveText('100%');
-  await expect.poll(() => img.evaluate((el) => el.style.transform)).toBe('translate(0px, 0px) scale(1)');
+  // WebKit and Firefox write translate(0px) for translate(0px, 0px).
+  await expect.poll(() => img.evaluate((el) => el.style.transform)).toMatch(/^translate\(0px(, 0px)?\) scale\(1\)$/);
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.wheel(0, -200);
   await expect(level).not.toHaveText('100%');
@@ -376,3 +377,53 @@ test('uncertain readings: tinted in the editor and the preview, counted per page
   await expect(nav.getByRole('button', { name: /^1\. p1\.png \(1 flag: 1 illegible\)$/ })).toBeVisible();
   expect((await api(`/texts/${text.id}`)).pages[0].ocr_text).toBe('Cara mamma, siamo [illegible] a Napoli.');
 });
+
+test('the page text and the full text keep their own undo and redo, so Ctrl/Cmd+Z works in every browser (Safari loses its own with each preview reload)', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { text } = await imageText(page, api, ['Cara mamma', 'second page']);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const undoKey = process.platform === 'darwin' ? 'Meta+z' : 'Control+z';
+  const redoKey = process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z';
+  const box = page.getByLabel(/^Text of page 1/);
+  await expect(box).toHaveValue('Cara mamma');
+  await box.press('End');
+  await box.pressSequentially(', ciao');
+  await box.evaluate((el) => { el.focus(); el.setSelectionRange(0, 4); });
+  await page.getByRole('toolbar', { name: 'Format the page text (Markdown)' }).getByRole('button', { name: 'Bold' }).click();
+  await expect(box).toHaveValue('**Cara** mamma, ciao');
+  // The preview has reloaded after every change; undo still walks back: the bold, then the typing.
+  await box.press(undoKey);
+  await expect(box).toHaveValue('Cara mamma, ciao');
+  await box.press(undoKey);
+  await expect(box).toHaveValue('Cara mamma');
+  await box.press(undoKey);
+  await expect(box).toHaveValue('Cara mamma');
+  await box.press(redoKey);
+  await expect(box).toHaveValue('Cara mamma, ciao');
+  await box.press(redoKey);
+  await expect(box).toHaveValue('**Cara** mamma, ciao');
+  await page.getByRole('button', { name: 'Save page' }).click();
+  await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
+  // Another page starts its own history: undo there never brings back page 1's text.
+  await page.getByRole('button', { name: /^2\. p2\.png/ }).click();
+  const box2 = page.getByLabel(/^Text of page 2/);
+  await expect(box2).toHaveValue('second page');
+  await box2.press(undoKey);
+  await expect(box2).toHaveValue('second page');
+
+  // The full text, edited as one text.
+  await page.getByRole('button', { name: 'Full text' }).click();
+  await page.getByRole('button', { name: 'Edit as one text' }).click();
+  const full = page.getByLabel('Full text (Markdown)');
+  const before = await full.inputValue();
+  await full.evaluate((el) => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
+  await full.pressSequentially(' fine');
+  await expect(full).toHaveValue(`${before} fine`);
+  await full.press(undoKey);
+  await expect(full).toHaveValue(before);
+  await full.press(redoKey);
+  await expect(full).toHaveValue(`${before} fine`);
+});
+

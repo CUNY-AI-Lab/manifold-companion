@@ -73,7 +73,8 @@ export function ScanViewer({ src, alt, idBase, onFullScreen, tall = false }) {
         <output className="w-14 text-center tabular-nums" aria-live="polite" aria-label="Zoom level">{percent}%</output>
         <button type="button" className="btn-quiet px-2 py-1" onClick={() => step('in')} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in">+</button>
         <button type="button" className="btn-quiet px-2 py-1" onClick={fit} disabled={zoom === 1}>Fit</button>
-        {onFullScreen ? <button type="button" className="btn-quiet ml-auto px-2 py-1" onClick={onFullScreen}>Full screen</button> : null}
+        {/* Focus the button first: Safari does not focus a clicked button, and closing the viewer returns focus to what had it. */}
+        {onFullScreen ? <button type="button" className="btn-quiet ml-auto px-2 py-1" onClick={(e) => { e.currentTarget.focus(); onFullScreen(); }}>Full screen</button> : null}
       </div>
       <div
         ref={box}
