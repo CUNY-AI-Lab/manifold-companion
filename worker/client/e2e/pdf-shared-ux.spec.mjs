@@ -79,3 +79,26 @@ test('convert the stored PDF again: no re-pick and no re-upload, after the repla
   expect(parsed).toEqual([1, 2]);
   expect(puts).toEqual([]);
 });
+
+test('version history shows what changed: each version against the next one, the newest against the text now', async ({ page, context }) => {
+  await as(context, 'alice');
+  const { api, text } = await pdfText(page, 'Diff');
+  await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<section data-page="1"><p>First page text.</p></section><section data-page="2"><p>Second page, corrected.</p></section>' });
+  await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<section data-page="1"><p>First page text.</p></section><section data-page="2"><p>Second page, corrected.</p><p>A new paragraph.</p></section>' });
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  await page.getByRole('button', { name: 'Version history' }).click();
+  const list = page.getByRole('list', { name: 'Earlier versions, newest first' });
+  await expect(list.getByRole('listitem')).toHaveCount(2);
+  // Newest version: compared with the text as saved now.
+  await list.getByRole('listitem').nth(0).getByRole('button', { name: /^Changes/ }).click();
+  const now = page.getByRole('list', { name: /to the text as saved now$/ });
+  await expect(now).toContainText('Added: <p>A new paragraph.</p>');
+  await expect(now.getByText(/Removed:/)).toHaveCount(0);
+  // The older one: compared with the newer version, a changed paragraph is one removed and one added line.
+  await list.getByRole('listitem').nth(1).getByRole('button', { name: /^Changes/ }).click();
+  const older = page.getByRole('list', { name: /^Changes from the version of .* to the version from / });
+  await expect(older).toContainText('Removed: <p>Second page text.</p>');
+  await expect(older).toContainText('Added: <p>Second page, corrected.</p>');
+  await expect(older).toContainText('unchanged line');
+  expect(await axe(page)).toEqual([]);
+});
