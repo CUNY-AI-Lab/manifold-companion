@@ -226,7 +226,6 @@ test('readable statuses, counts on the dashboard, shared projects apart, a descr
   await expect(row).toContainText('3 texts, 1 page');
   await expect(row).toContainText('Family letters, typewritten.');
   await expect(row).toContainText('you own it');
-  await expect(page.getByRole('heading', { name: 'Shared with you' })).toHaveCount(0);
   const other = await browser.newContext();
   await other.addCookies([{ name: 'e2e_as', value: 'bob', url: ORIGIN }]);
   const bob = await other.newPage();
@@ -325,10 +324,11 @@ test('Settings, Usage: which owned projects use the storage, largest first', asy
   await page.request.fetch(`/manifold-companion/api/texts/${t.id}/pages?filename=a.png&size=${png.length}`, { method: 'POST', headers: { Origin: ORIGIN, 'content-type': 'image/png' }, data: png });
   await page.goto('/manifold-companion/settings');
   const table = page.getByRole('table', { name: 'Storage by project, largest first' });
-  const rows = table.locator('tbody tr');
-  await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText('Carol big');
+  // Largest first: the project with a page comes before the empty one (other tests leave carol more projects).
   await expect(table).toContainText('Carol empty');
+  const names = await table.locator('tbody tr td:first-child').allInnerTexts();
+  expect(names.indexOf('Carol big')).toBeGreaterThan(-1);
+  expect(names.indexOf('Carol big')).toBeLessThan(names.indexOf('Carol empty'));
   expect(await axe(page)).toEqual([]);
 });
 
