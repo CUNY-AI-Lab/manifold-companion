@@ -47,7 +47,9 @@ interface PageSrc {
   filename: string;
   page_number: number | null;
   ocr_text: string | null;
+  ocr_model: string | null;
   image_key: string | null;
+  image_type: string | null;
   image_bytes: number;
 }
 
@@ -107,10 +109,11 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
         }
         statements.push(
           env.DB.prepare(
-            `INSERT INTO pages (id, text_id, filename, page_number, ocr_text, processed_at, image_key, image_bytes)
-             SELECT ?1,?2,?3,?4,?5,?6,?7,?8
+            // The copy keeps what the page is (its image type) and who read it (the model), so "read by" survives.
+            `INSERT INTO pages (id, text_id, filename, page_number, ocr_text, processed_at, image_key, image_bytes, ocr_model, image_type)
+             SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?12,?13
              WHERE EXISTS (SELECT 1 FROM texts WHERE id = ?2) AND (SELECT COUNT(*) FROM pages p JOIN texts t ON t.id = p.text_id WHERE t.project_id = ?9) + ?10 <= ?11`,
-          ).bind(pageId, textId, filename, n++, src.ocr_text, src.ocr_text ? now : null, key, key ? src.image_bytes : 0, project.id, pagesLeft--, cap.maxProjectPages),
+          ).bind(pageId, textId, filename, n++, src.ocr_text, src.ocr_text ? now : null, key, key ? src.image_bytes : 0, project.id, pagesLeft--, cap.maxProjectPages, src.ocr_text ? src.ocr_model : null, key ? src.image_type : null),
         );
       }
     }
@@ -154,7 +157,7 @@ async function copyIntoNewTexts(env: Env, project: ProjectRow, targets: { name: 
 }
 
 export async function splitText(env: Env, project: ProjectRow, textId: string, status: string, splits: { name: string; pages: number[] }[]): Promise<{ id: string; name: string }[]> {
-  const pages = await env.DB.prepare("SELECT id, filename, page_number, ocr_text, image_key, image_bytes FROM pages WHERE text_id = ?1").bind(textId).all<PageSrc>();
+  const pages = await env.DB.prepare("SELECT id, filename, page_number, ocr_text, ocr_model, image_key, image_type, image_bytes FROM pages WHERE text_id = ?1").bind(textId).all<PageSrc>();
   const byNumber = new Map(pages.results.map((p) => [p.page_number, p]));
   const targets = splits.map((s) => ({
     name: s.name,
@@ -170,7 +173,7 @@ export async function splitText(env: Env, project: ProjectRow, textId: string, s
 export async function mergeTexts(env: Env, project: ProjectRow, textIds: string[], name: string): Promise<{ id: string; name: string }> {
   const pages: { src: PageSrc; filename: string }[] = [];
   for (const [i, id] of textIds.entries()) {
-    const rows = await env.DB.prepare("SELECT id, filename, page_number, ocr_text, image_key, image_bytes FROM pages WHERE text_id = ?1 ORDER BY page_number, rowid").bind(id).all<PageSrc>();
+    const rows = await env.DB.prepare("SELECT id, filename, page_number, ocr_text, ocr_model, image_key, image_type, image_bytes FROM pages WHERE text_id = ?1 ORDER BY page_number, rowid").bind(id).all<PageSrc>();
     for (const src of rows.results) pages.push({ src, filename: `t${i + 1}_${src.filename}` });
   }
   const [created] = await copyIntoNewTexts(env, project, [{ name, status: "ocrd", pages }]);
