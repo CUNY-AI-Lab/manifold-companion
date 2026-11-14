@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { unzipSync, strFromU8 } from "fflate";
 import { ALICE, BOB, CAROL, PNG, addMember, api, call, createProject, createText, json, seedPage, upload } from "./helpers";
 import { convertHtmlTexToMathML, escapeYaml, EXPORT_LIMITS, exportHtmlBody } from "../src/export";
+import { sanitizeHtml } from "../src/sanitize/html";
 import fixture from "./fixtures/export-fixture.json";
 import golden from "./fixtures/legacy-export.golden.json";
 
@@ -196,6 +197,36 @@ describe("export behaviour", () => {
     // temml's trust is off: \href renders as red error text, never as a link.
     expect(out).not.toMatch(/href=|<a[ >]|javascript:/);
     expect(out).toContain("<mo>&lt;</mo>");
+  });
+
+  it("TeX conversion: a correct display formula after an inline one stays a display formula", () => {
+    const display = (html: string) => (convertHtmlTexToMathML(html).match(/<math display="block"/g) ?? []).length;
+    const inline = (html: string) => (convertHtmlTexToMathML(html).match(/<math display="inline"/g) ?? []).length;
+    for (const html of [
+      String.raw`<p>Since \(x>0\), we have \[x^2>0\]</p>`,
+      String.raw`<ul><li>\(a\)</li><li>\[b\]</li></ul>`,
+      String.raw`<table><tr><td>\(a\)</td><td>\[b\]</td></tr></table>`,
+      String.raw`<p>\[x\] and then \(y\)</p>`,
+    ]) {
+      expect(display(html), html).toBe(1);
+      expect(inline(html), html).toBe(1);
+      expect(convertHtmlTexToMathML(html), html).not.toMatch(/\\[()[\]]/);
+    }
+  });
+
+  it("TeX conversion: a mismatched pair with nothing else between is still repaired", () => {
+    expect(convertHtmlTexToMathML(String.raw`<p>\[x^2\)</p>`)).toMatch(/^<p><math display="block"/);
+    expect(convertHtmlTexToMathML(String.raw`<p>\(x\]</p>`)).toMatch(/^<p><math display="inline"/);
+    // Never across a tag: the two halves stay as written.
+    expect(convertHtmlTexToMathML(String.raw`<li>\(a</li><li>b\]</li>`)).toBe(String.raw`<li>\(a</li><li>b\]</li>`);
+  });
+
+  it("TeX conversion: tags and attribute values are left alone; a formula with a tag inside is left as written", () => {
+    const img = String.raw`<figure><img src="f.png" alt="Graph of \(y=x^2\)"><figcaption>Graph of \(y=x^2\)</figcaption></figure>`;
+    const out = convertHtmlTexToMathML(img);
+    expect(out.startsWith(String.raw`<figure><img src="f.png" alt="Graph of \(y=x^2\)"><figcaption>Graph of <math`)).toBe(true);
+    expect(sanitizeHtml(out)).toContain(String.raw`alt="Graph of \(y=x^2\)"`);
+    expect(convertHtmlTexToMathML(String.raw`<p>\(a <em>b</em>\)</p>`)).toBe(String.raw`<p>\(a <em>b</em>\)</p>`);
   });
 
   it("YAML values cannot break out of their line", () => {

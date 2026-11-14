@@ -173,22 +173,34 @@ function tex(source: string, displayMode: boolean): string {
   return temml.renderToString(decodeTexEntities(source.trim()), { displayMode });
 }
 
-/** Legacy convertHtmlTexToMathML, ported: fix mismatched delimiters, then display and inline math. */
+/**
+ * Legacy convertHtmlTexToMathML, ported, with two fixes:
+ *   - TeX is converted in text only. Tags, and so attribute values such as an
+ *     image's alt text, are set aside first and put back unchanged; a formula
+ *     with a tag inside it is left as written (legacy handed the tag to temml
+ *     or broke the attribute);
+ *   - a mismatched pair (a model wrote `\[ ... \)` or `\( ... \]`) is repaired
+ *     only when no other delimiter and no tag lie between the two. Legacy
+ *     paired an inline formula's `\(` with the next display formula's `\]` and
+ *     turned a correct `\[ ... \]` into broken inline TeX.
+ */
 export function convertHtmlTexToMathML(input: string): string {
-  let html = input;
-  const blockClose = /<\/(?:p|section|div|article|table)\b/i;
-  html = html.replace(/\\\[([^]*?)\\\)/g, (m, t: string) => (t.length < 500 && !blockClose.test(t) ? `\\[${t}\\]` : m));
-  html = html.replace(/\\\(([^]*?)\\\]/g, (m, t: string) => (t.length < 500 && !blockClose.test(t) ? `\\(${t}\\)` : m));
-  const anyClose = /<\/(?:p|section|div|article|table|header|footer)\b/i;
+  const tags: string[] = [];
+  // Stored HTML is sanitized (no NUL), so NUL-delimited placeholders cannot collide with content.
+  let html = input.replace(/\u0000/g, "").replace(/<[^>]*>/g, (t) => `\u0000${tags.push(t) - 1}\u0001`);
+  // Content between two delimiters: no other delimiter, no tag.
+  const inner = String.raw`((?:(?!\\[()[\]])[^\u0000])*?)`;
+  html = html.replace(new RegExp(String.raw`\\\[${inner}\\\)`, "g"), (m, t: string) => (t.length < 500 ? `\\[${t}\\]` : m));
+  html = html.replace(new RegExp(String.raw`\\\(${inner}\\\]`, "g"), (m, t: string) => (t.length < 500 ? `\\(${t}\\)` : m));
   html = html.replace(/\\\[([\s\S]*?)\\\]/g, (m, t: string) => {
-    if (t.length > 2000 || anyClose.test(t)) return m;
+    if (t.length > 2000 || t.includes("\u0000")) return m;
     try { return tex(t, true); } catch { return m; }
   });
   html = html.replace(/\\\(([\s\S]*?)\\\)/g, (m, t: string) => {
-    if (t.length > 1000 || anyClose.test(t)) return m;
+    if (t.length > 1000 || t.includes("\u0000")) return m;
     try { return tex(t, false).replace(/^<math(?!\s+display=)/, '<math display="inline"'); } catch { return m; }
   });
-  return html;
+  return html.replace(/\u0000(\d+)\u0001/g, (_, n: string) => tags[Number(n)] as string);
 }
 
 const tooLargeText = (textId: string): Error =>
