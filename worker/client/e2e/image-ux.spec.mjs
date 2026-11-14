@@ -146,3 +146,56 @@ test('a PDF text has a summary section too', async ({ page, context }) => {
   await expect(page.getByText('Summary saved.')).toBeVisible();
   expect((await api(`/texts/${text.id}/summary`)).summary).toBe('Chapter one, corrected.');
 });
+
+test('the scan zooms and moves (buttons, keys, wheel, drag) and opens full screen with previous and next page', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { text } = await imageText(page, api, ['first', 'second', 'third']);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const scan = page.getByRole('group', { name: /^Scan of page 1, zoom/ });
+  const level = page.getByLabel('Zoom level').first();
+  await expect(level).toHaveText('100%');
+  await expect(scan).toHaveAccessibleDescription(/arrow keys/);
+  await page.getByRole('button', { name: 'Zoom in' }).first().click();
+  await expect(level).toHaveText('125%');
+  await scan.focus();
+  await page.keyboard.press('+');
+  await expect(level).toHaveText('156%');
+  const img = scan.locator('img');
+  const before = await img.evaluate((el) => el.style.transform);
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(() => img.evaluate((el) => el.style.transform)).not.toBe(before);
+  // Drag moves it too.
+  const b = await scan.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 - 40, b.y + b.height / 2 - 30, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.press('0');
+  await expect(level).toHaveText('100%');
+  await expect.poll(() => img.evaluate((el) => el.style.transform)).toBe('translate(0px, 0px) scale(1)');
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.wheel(0, -200);
+  await expect(level).not.toHaveText('100%');
+  // The zoom keys never reach a text field: typing "+" in the page text types it.
+  await page.getByLabel(/^Text of page 1/).press('End');
+  await page.getByLabel(/^Text of page 1/).type('+');
+  await expect(page.getByLabel(/^Text of page 1/)).toHaveValue('first+');
+  expect(await axe(page, 'scan viewer')).toEqual([]);
+
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  const box = page.getByRole('dialog', { name: /Page 1 of 3/ });
+  await expect(box).toBeVisible();
+  expect(await axe(page, 'lightbox')).toEqual([]);
+  await box.getByRole('button', { name: 'Next page' }).click();
+  await expect(page.getByRole('dialog', { name: /Page 2 of 3/ })).toBeVisible();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('dialog', { name: /Page 3 of 3/ })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Next page' })).toBeDisabled();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('dialog', { name: /Page 2 of 3/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Full screen' })).toBeFocused();
+});

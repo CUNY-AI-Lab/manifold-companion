@@ -9,6 +9,7 @@ import FullTextPanel from '../components/FullTextPanel';
 import SummaryPanel from '../components/SummaryPanel';
 import TranslationPanel from '../components/TranslationPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
+import { ScanLightbox, ScanViewer } from '../components/ScanViewer';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
@@ -74,6 +75,7 @@ export default function ImageTextPage({ data, reload }) {
   const fileInput = useRef(null);
   const pageText = useRef(null);
   const [moved, setMoved] = useState('');
+  const [lightbox, setLightbox] = useState(null); // index of the page shown full screen
   const focusMoved = useMoveFocus([pages]);
   // Keep a valid selection as pages arrive or are deleted.
   useEffect(() => { if (!pages.some((p) => p.id === selected)) setSelected(pages[0]?.id ?? null); }, [pages, selected]);
@@ -210,6 +212,7 @@ export default function ImageTextPage({ data, reload }) {
 
   return (
     <div>
+      {lightbox !== null ? <ScanLightbox pages={pages} startIndex={lightbox} srcOf={(p) => `${API}/texts/${text.id}/pages/${p.id}/image`} onClose={() => setLightbox(null)} /> : null}
       <DropOverlay show={dragging} label={`Drop to add pages to “${text.name}”`} />
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
@@ -253,7 +256,7 @@ export default function ImageTextPage({ data, reload }) {
         </nav>
         {page ? (
           <div className="grid gap-4 lg:grid-cols-2">
-            <img src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} className="max-h-[70vh] w-full rounded-md border border-slate-200 object-contain dark:border-slate-700" />
+            <ScanViewer src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} idBase="page-scan" onFullScreen={() => setLightbox(pageIndex)} />
             <div className="flex flex-col gap-2">
               <label className="label" htmlFor="page-text">Text of page {page.page_number}{page.ocr_model ? `, read by ${page.ocr_model}` : ''}</label>
               {text.has_compiled ? (
