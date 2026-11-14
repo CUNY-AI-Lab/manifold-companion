@@ -204,10 +204,21 @@ taskRoutes.post("/:id/summary", logged("/{id}/summary"), async (c) => {
   const { task, truncatedInput: truncated } = summaryTask(model, source, language);
   const result = await runChat(c.env, principal, c.req.raw, task);
   const summary = parseSummary(result.text);
-  await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3").bind(summary, nowIso(), ctx.text.id).run();
-  await touchProject(c.env.DB, ctx.project.id);
+  const paid = { summary, model: model.id, truncated_input: truncated, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId };
+  // Compare-and-set against the summary read BEFORE the model call (up to 90 s), and only while
+  // the text is still in this project: a hand edit made meanwhile wins, and a text deleted or
+  // moved meanwhile is not reported as summarised.
+  const now = nowIso();
+  const written = await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3 AND project_id = ?4 AND summary IS ?5").bind(summary, now, ctx.text.id, ctx.project.id, ctx.text.summary).run();
+  if (written.meta.changes !== 1) {
+    const still = await c.env.DB.prepare("SELECT 1 AS x FROM texts WHERE id = ?1 AND project_id = ?2").bind(ctx.text.id, ctx.project.id).first();
+    if (!still) throw new AppError({ code: "text_gone", status: 410, message: "This text was deleted or moved to another project while the summary was being written, so the summary was not saved." });
+    // The (already paid for) summary is handed back so the person can compare and choose.
+    throw new AppError({ code: "edit_conflict", status: 409, message: "The summary was edited while the model was writing it. The edit was kept; the model's summary is included so you can compare.", result: paid });
+  }
+  await touchProject(c.env.DB, ctx.project.id, now);
   await reindexText(c.env, ctx.text.id);
-  return c.json({ summary, model: model.id, truncated_input: truncated, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId });
+  return c.json(paid);
 });
 
 // ---- translation (the client drives chunking) -------------------------------
