@@ -19,12 +19,14 @@ export default function SummaryPanel({ text, canEdit, onSaved, busy = false }) {
   useEffect(() => { setDraft(saved); }, [saved]);
   const dirty = draft !== saved;
   const hint = `summary-hint-${text.id}`;
+  // The one summary save. `text` is what GET /texts/:id returned (its revision travels with it).
+  const putSummary = (body) => api.put(`/api/texts/${text.id}/summary`, body);
 
   const save = async () => {
     setError(null);
     setWorking('Saving the summary');
     try {
-      await api.put(`/api/texts/${text.id}/summary`, { summary: draft });
+      await putSummary({ summary: draft });
       setStatus('Summary saved.');
       setPartial(false);
       onSaved?.();

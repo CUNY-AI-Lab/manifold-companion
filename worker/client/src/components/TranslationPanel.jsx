@@ -16,6 +16,7 @@ const LANGS = languageOptions();
 export default function TranslationPanel({ text, canEdit, getSource, busy = false }) {
   const confirm = useConfirm();
   const [saved, setSaved] = useState(null); // null: none stored
+  const [loaded, setLoaded] = useState(null); // what GET /translation returned (its revision included)
   const [draft, setDraft] = useState('');
   const [langs, setLangs] = useState({ source: text.source_language || 'auto-detect', target: text.target_language || 'en' });
   const [working, setWorking] = useState('');
@@ -24,13 +25,16 @@ export default function TranslationPanel({ text, canEdit, getSource, busy = fals
   const [beside, setBeside] = useState(false);
   const [original, setOriginal] = useState(null);
   useEffect(() => {
-    api.get(`/api/texts/${text.id}/translation`).then((r) => { setSaved(r.translation ?? null); setDraft(r.translation ?? ''); }, () => {});
+    api.get(`/api/texts/${text.id}/translation`).then((r) => { setLoaded(r); setSaved(r.translation ?? null); setDraft(r.translation ?? ''); }, () => {});
   }, [text.id]);
   useEffect(() => {
     if (!beside) return;
     getSource().then((s) => setOriginal(s), setError);
   }, [beside]); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = draft !== (saved ?? '');
+  // The one translation save, used by Save and by a model translation. `loaded` is the GET it builds on.
+  const putTranslation = (body) => api.put(`/api/texts/${text.id}/translation`, body);
+  void loaded;
 
   const translate = async () => {
     if ((saved || dirty) && !(await confirm({ title: 'Replace the translation?', message: `Translate the text again with the model? It replaces the current translation${dirty ? ', and your unsaved changes to it are lost' : ''}.`, confirmLabel: 'Translate again' }))) return;
@@ -40,7 +44,7 @@ export default function TranslationPanel({ text, canEdit, getSource, busy = fals
     try { source = await getSource(); } catch (e) { setError(e); return; }
     if (!source) { setError({ message: 'There is no text to translate yet.' }); return; }
     try {
-      const t = await translateText({ textId: text.id, text: source, source: langs.source, target: langs.target, onProgress: ({ done, total }) => setWorking(`Translating part ${Math.min(done + 1, total)} of ${total}`) });
+      const t = await translateText({ textId: text.id, text: source, source: langs.source, target: langs.target, onProgress: ({ done, total }) => setWorking(`Translating part ${Math.min(done + 1, total)} of ${total}`), save: putTranslation });
       setSaved(t);
       setDraft(t);
       if (beside) setOriginal(source);
@@ -51,7 +55,7 @@ export default function TranslationPanel({ text, canEdit, getSource, busy = fals
     setError(null);
     setWorking('Saving the translation');
     try {
-      await api.put(`/api/texts/${text.id}/translation`, { translation: draft, source_language: langs.source, target_language: langs.target });
+      await putTranslation({ translation: draft, source_language: langs.source, target_language: langs.target });
       setSaved(draft);
       setStatus('Translation saved.');
     } catch (e) { setError(e); } finally { setWorking(''); }

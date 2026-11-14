@@ -62,8 +62,8 @@ export function chunkText(text, max = 10000) {
   return chunks;
 }
 
-/** Translate chunk by chunk, then store the assembled translation. */
-export async function translateText({ textId, text, source, target, model, signal, onProgress }) {
+/** Translate chunk by chunk, then store the assembled translation with `save` (the caller's one translation save). */
+export async function translateText({ textId, text, source, target, model, signal, onProgress, save = (body) => api.put(`/api/texts/${textId}/translation`, body) }) {
   const chunks = chunkText(text);
   const out = [];
   for (const [i, chunk] of chunks.entries()) {
@@ -74,7 +74,7 @@ export async function translateText({ textId, text, source, target, model, signa
   }
   onProgress?.({ done: chunks.length, total: chunks.length });
   const translation = out.join('\n\n');
-  await api.put(`/api/texts/${textId}/translation`, { translation, source_language: source, target_language: target });
+  await save({ translation, source_language: source, target_language: target });
   return translation;
 }
 
