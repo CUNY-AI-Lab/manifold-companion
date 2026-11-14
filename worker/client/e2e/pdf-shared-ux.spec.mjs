@@ -243,3 +243,38 @@ test('readable statuses, counts on the dashboard, shared projects apart, a descr
   await expect(page.locator('section', { has: page.getByRole('heading', { name: 'Projects you own' }) }).getByRole('link', { name: 'Letters of 1912' })).toBeVisible();
   expect(await axe(page)).toEqual([]);
 });
+
+test('PDF projects: import PDFs as new texts and upload or replace a text’s PDF from the project page', async ({ page, context }) => {
+  await as(context, 'alice');
+  const api = apiOf(page);
+  await page.goto('/manifold-companion/');
+  const project = (await api('/projects', 'POST', { name: 'Imports', project_type: 'pdf_to_html' })).project;
+  await api(`/projects/${project.id}/texts`, 'POST', { name: 'Empty chapter' });
+  await page.goto(`/manifold-companion/projects/${project.id}`);
+  const empty = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Empty chapter' }) });
+  await expect(empty).toContainText('No source PDF yet');
+  // Upload from the row: the file chooser opens from the visible button.
+  const chooser = page.waitForEvent('filechooser');
+  await empty.getByRole('button', { name: 'Upload PDF for Empty chapter' }).click();
+  await (await chooser).setFiles('e2e/fixtures/two-pages.pdf');
+  await expect(page.getByText('two-pages.pdf stored for “Empty chapter”.')).toBeVisible();
+  await expect(empty).toContainText('Source: two-pages.pdf');
+  // Replacing asks first.
+  const again = page.waitForEvent('filechooser');
+  await empty.getByRole('button', { name: 'Replace PDF for Empty chapter' }).click();
+  await (await again).setFiles('e2e/fixtures/figures.pdf');
+  await expect(page.getByRole('alertdialog')).toContainText('Replace two-pages.pdf of “Empty chapter” with figures.pdf?');
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Replace the PDF' }).click();
+  await expect(empty).toContainText('Source: figures.pdf');
+  // Import: one text per PDF, named after the file, nothing converted.
+  const imp = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import PDFs as new texts' }).click();
+  await (await imp).setFiles('e2e/fixtures/two-pages.pdf');
+  await expect(page.getByText('Imported “two-pages”. Open each text to convert it.')).toBeVisible();
+  const imported = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'two-pages', exact: true }) });
+  await expect(imported).toContainText('Not converted yet');
+  await expect(imported).toContainText('Source: two-pages.pdf');
+  expect(await axe(page)).toEqual([]);
+  await imported.getByRole('link', { name: 'two-pages', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Convert the stored PDF', exact: true })).toBeVisible();
+});

@@ -10,6 +10,7 @@ import * as toc from '../lib/toc';
 import { useConfirm } from '../components/ConfirmDialog';
 import { TEXTS_PER_PAGE, fetchAllTexts, pageCount, pageFromSearch, rangeLabel } from '../lib/paging';
 import { SETTABLE_STATUSES, statusLabel } from '../lib/status';
+import { pdfFileProblem } from '../lib/limits';
 
 /**
  * Actions on the selected texts: set their status, delete them (after a
@@ -289,6 +290,71 @@ function SelectAll({ texts, chosen, setChosen, paged }) {
   );
 }
 
+const isPdfFile = (f) => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+
+/** Store a PDF as a text's source PDF (checked against the limits first). Nothing is converted here. */
+async function storeSourcePdf({ textId, file, replace, session }) {
+  if (!isPdfFile(file)) throw new Error(`${file.name} is not a PDF.`);
+  const problem = session?.limits ? pdfFileProblem({ name: file.name, bytes: file.size, maxPdfBytes: session.limits.max_pdf_bytes, usedBytes: session.storage.used_bytes, quotaBytes: session.storage.quota_bytes }) : null;
+  if (problem) throw new Error(problem);
+  await api.upload(`/api/texts/${textId}/source-pdf`, file, { method: 'PUT', filename: file.name, query: replace ? { replace: '1' } : {} });
+}
+
+/** A PDF text's row: its source PDF by name, and Upload or Replace without opening the text. */
+function SourcePdfCell({ text, canEdit, onStored, onError }) {
+  const { session } = useSession();
+  const confirm = useConfirm();
+  const input = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const pick = async (file) => {
+    if (!file) return;
+    if (text.has_source_pdf && !(await confirm({ title: 'Replace the source PDF?', message: `Replace ${text.source_pdf_name || 'the stored PDF'} of “${text.name}” with ${file.name}? The old PDF is deleted. The converted HTML stays until you convert again.`, confirmLabel: 'Replace the PDF' }))) return;
+    setBusy(true);
+    try { await storeSourcePdf({ textId: text.id, file, replace: text.has_source_pdf, session }); onStored(`${file.name} stored for “${text.name}”. Open the text to convert it.`); } catch (e) { onError(e); } finally { setBusy(false); }
+  };
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+      <span>{text.has_source_pdf ? `Source: ${text.source_pdf_name || 'a PDF'}` : 'No source PDF yet'}</span>
+      {canEdit ? (
+        <>
+          <input ref={input} type="file" accept="application/pdf" className="hidden" tabIndex={-1} aria-hidden="true" onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; pick(f); }} />
+          <button type="button" className="btn-quiet" disabled={busy} onClick={() => input.current?.click()}>{busy ? 'Uploading' : text.has_source_pdf ? 'Replace PDF' : 'Upload PDF'}<span className="sr-only"> for {text.name}</span></button>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/** Import PDFs as new texts, one text per PDF named after the file; each is converted from its page. */
+function ImportPdfs({ projectId, onDone, onError }) {
+  const { session } = useSession();
+  const input = useRef(null);
+  const [busy, setBusy] = useState('');
+  const run = async (files) => {
+    const created = [];
+    try {
+      for (const file of files) {
+        setBusy(`Importing ${file.name}`);
+        if (!isPdfFile(file)) throw new Error(`${file.name} is not a PDF; nothing more was imported.`);
+        const name = file.name.replace(/\.pdf$/i, '').slice(0, 200) || 'Untitled';
+        const { text } = await api.post(`/api/projects/${projectId}/texts`, { name });
+        try { await storeSourcePdf({ textId: text.id, file, replace: false, session }); } catch (e) { await api.del(`/api/texts/${text.id}`).catch(() => {}); throw e; }
+        created.push(name);
+      }
+    } catch (e) { onError(e); } finally {
+      setBusy('');
+      if (created.length) onDone(`Imported ${created.map((n) => `“${n}”`).join(', ')}. Open each text to convert it.`);
+    }
+  };
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <input ref={input} type="file" accept="application/pdf" multiple className="hidden" tabIndex={-1} aria-hidden="true" onChange={(e) => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) run(fs); }} />
+      <button type="button" className="btn-quiet" disabled={!!busy} aria-describedby="import-pdf-hint" onClick={() => input.current?.click()}>{busy || 'Import PDFs as new texts'}</button>
+      <span id="import-pdf-hint" className="text-xs text-slate-600 dark:text-slate-300">One new text per PDF, named after the file. Nothing is converted until you press Convert on the text.</span>
+    </div>
+  );
+}
+
 function Pager({ page, total, onPage }) {
   const count = pageCount(total);
   if (count <= 1) return null;
@@ -371,7 +437,7 @@ export default function ProjectPage() {
             {canEdit && total > 1 ? <MoveButtons label={t.name} index={offset + texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
             {project.project_type === 'pdf_to_html'
-              ? <span className="text-xs text-slate-600 dark:text-slate-300">{t.has_html ? 'Converted' : 'Not converted yet'}</span>
+              ? <span className="inline-flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300"><span>{t.has_html ? 'Converted' : 'Not converted yet'}</span><SourcePdfCell text={t} canEdit={canEdit} onStored={(msg) => { setMoved(msg); load(); refresh(); }} onError={setError} /></span>
               : <span className="text-xs text-slate-600 dark:text-slate-300">{plural(t.page_count, 'page')}, <StatusBadge status={t.status} /></span>}
             {canEdit ? <button className="btn-quiet ml-auto" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this text?', message: `Delete “${t.name}”, its pages, files and versions, for every member? This cannot be undone.`, confirmLabel: 'Delete text', danger: true }))) return; try { await api.del(`/api/texts/${t.id}`); load(); refresh(); } catch (e) { setError(e); } }}>Delete</button> : null}
           </li>
@@ -388,6 +454,7 @@ export default function ProjectPage() {
           <button className="btn-primary" type="submit">Add text</button>
         </form>
       ) : null}
+      {canEdit && project.project_type === 'pdf_to_html' ? <ImportPdfs projectId={id} onDone={(msg) => { setMoved(msg); load(); refresh(); }} onError={setError} /> : null}
       <div className="mt-10 flex gap-2">
         {isOwner ? <button className="btn-danger" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this project?', message: 'Delete this project, all its texts and files, for every member? This cannot be undone. Export first if you want to keep a copy.', confirmLabel: 'Delete project', danger: true }))) return; try { await api.del(`/api/projects/${id}`); refresh(); navigate('/'); } catch (e) { setError(e); } }}>Delete project</button> : (
           <button className="btn-quiet" type="button" onClick={async () => { if (!(await confirm({ title: 'Leave this project?', message: 'You lose access until the owner invites you again.', confirmLabel: 'Leave project', danger: true }))) return; try { const me = (await api.get(`/api/projects/${id}/members`)).members.find((m) => m.me); await api.del(`/api/projects/${id}/members/${me.subject}`); navigate('/'); } catch (e) { setError(e); } }}>Leave project</button>

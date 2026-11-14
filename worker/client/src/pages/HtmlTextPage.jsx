@@ -273,7 +273,7 @@ export default function HtmlTextPage({ data, reload }) {
             <div className="flex flex-wrap items-center gap-2">
               <button className="btn-primary" type="button" disabled={!file} onClick={() => convert(false)}>{(done.current.size && runFrom === 'file') || fileResumes ? 'Continue converting' : 'Convert PDF'}</button>
               {data.text.has_source_pdf ? (
-                <button className="btn-quiet" type="button" aria-describedby={`stored-hint-${text.id}`} onClick={() => convert(true, !!keptRun && !(done.current.size && runFrom === 'stored'))}>{(done.current.size && runFrom === 'stored') || keptRun ? 'Continue converting the stored PDF' : 'Convert the stored PDF again'}</button>
+                <button className="btn-quiet" type="button" aria-describedby={`stored-hint-${text.id}`} onClick={() => convert(true, !!keptRun && !(done.current.size && runFrom === 'stored'))}>{(done.current.size && runFrom === 'stored') || keptRun ? 'Continue converting the stored PDF' : data.text.has_html ? 'Convert the stored PDF again' : 'Convert the stored PDF'}</button>
               ) : null}
               {data.text.has_source_pdf ? <span id={`stored-hint-${text.id}`} className="text-xs text-slate-600 dark:text-slate-300">Uses {data.text.source_pdf_name || 'the stored source PDF'}, already saved with this text; nothing is uploaded again. Each page is a model call on your allowance.</span> : null}
             </div>
