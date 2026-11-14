@@ -20,7 +20,8 @@ import SourcePdfPane, { pageAtOffset } from '../components/SourcePdfPane';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
 import { blobToDataUri, prepareImage } from '../lib/image';
-import { checkList, convertPdf } from '../lib/tasks';
+import { checkList, convertPdf, keptPages, pdfFingerprint } from '../lib/tasks';
+import { relativeTime } from '../components/CommentsPanel';
 import { replaceWarning } from '../lib/versions';
 import { useConfirm } from '../components/ConfirmDialog';
 import useFileDrop, { DropOverlay } from '../hooks/useFileDrop';
@@ -122,7 +123,20 @@ export default function HtmlTextPage({ data, reload }) {
   };
   // Which PDF the pages converted so far came from: a chosen file, or the stored source PDF.
   const [runFrom, setRunFrom] = useState(null);
-  const chooseFile = (f) => { setFile(f); setRunFrom(null); done.current = new Map(); pageWarnings.current = new Map(); };
+  // A stopped conversion kept on the server (pages already paid for), and the fingerprint of the chosen file.
+  const [keptRun, setKeptRun] = useState(null);
+  const [fileSource, setFileSource] = useState(null);
+  const loadKeptRun = () => (canEdit ? api.get(`/api/texts/${text.id}/conversion`).then((r) => setKeptRun(r.run ?? null), () => setKeptRun(null)) : Promise.resolve());
+  useEffect(() => { loadKeptRun(); }, [text.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chooseFile = (f) => {
+    setFile(f); setRunFrom(null); setFileSource(null); done.current = new Map(); pageWarnings.current = new Map();
+    if (f) pdfFingerprint(f).then((fp) => setFileSource({ file: f, fp }), () => {});
+  };
+  const fileResumes = keptRun && fileSource?.file === file && fileSource.fp === keptRun.source;
+  const discardKept = async () => {
+    if (!(await confirm({ title: 'Discard the kept pages?', message: `Discard the ${keptRun.kept} converted page${keptRun.kept === 1 ? '' : 's'} of the stopped conversion? Converting this PDF again will pay for them again.`, confirmLabel: 'Discard', danger: true }))) return;
+    try { await api.del(`/api/texts/${text.id}/conversion`); setKeptRun(null); } catch (e) { setError(e); }
+  };
   // A dropped PDF becomes the file to convert (nothing is sent until "Convert PDF"); dropped images become figures.
   const dragging = useFileDrop({
     enabled: canEdit && !progress,
@@ -141,7 +155,8 @@ export default function HtmlTextPage({ data, reload }) {
     },
   });
 
-  const convert = async (stored = false) => {
+  // `resume`: the person chose to continue the stopped conversion; it must not quietly become a full one.
+  const convert = async (stored = false, resume = false) => {
     if (!stored && !file) return;
     if (runFrom && runFrom !== (stored ? 'stored' : 'file')) { done.current = new Map(); pageWarnings.current = new Map(); }
     if (saved && done.current.size === 0 && !(await confirm({ title: 'Replace the current HTML?', message: replaceWarning('Convert this PDF and replace the current HTML?'), confirmLabel: 'Convert and replace' }))) return;
@@ -153,22 +168,37 @@ export default function HtmlTextPage({ data, reload }) {
         // The stored source, read back from this app: nothing to choose or upload again.
         const blob = await (await api.raw(`/api/texts/${text.id}/source-pdf`, { signal: controller.current.signal })).blob();
         pdfFile = new File([blob], data.text.source_pdf_name || 'source.pdf', { type: 'application/pdf' });
+      }
+      const fp = await pdfFingerprint(pdfFile);
+      const resuming = done.current.size === 0 && keptRun?.source === fp;
+      if (resume && !resuming && done.current.size === 0) {
+        setError({ message: 'The stored PDF is not the one the stopped conversion used, so nothing was converted. Choose that PDF to continue, or convert the stored PDF from the start.' });
+        return;
+      }
+      if (resuming) {
+        const kept = await keptPages(text.id, fp);
+        done.current = kept.done;
+        pageWarnings.current = kept.warnings;
+      } else if (stored || done.current.size) {
+        // the stored PDF, or a run already under way from this file: nothing to upload
       } else if (!data.text.has_source_pdf || (await confirm({ title: 'Replace the stored PDF?', message: 'Replace the stored source PDF with this file? The old PDF is deleted.', confirmLabel: 'Replace the PDF' }))) {
         await api.upload(`/api/texts/${text.id}/source-pdf`, file, { method: 'PUT', filename: file.name, query: { replace: '1' } });
       }
       setRunFrom(stored ? 'stored' : 'file');
-      const r = await convertPdf({ textId: text.id, file: pdfFile, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, warnings: pageWarnings.current, onProgress: setProgress });
+      const r = await convertPdf({ textId: text.id, file: pdfFile, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, warnings: pageWarnings.current, onProgress: setProgress, resumeSource: fp });
       setChecks(checkList(r.warnings));
       setVersionKey((k) => k + 1);
       done.current = new Map();
       pageWarnings.current = new Map();
       setRunFrom(null);
+      setKeptRun(null); // saved as a conversion: the server cleared the kept pages
       setHtml(r.html);
       setSaved(r.html);
       reload();
       refresh();
     } catch (e) {
-      if (e.name !== 'AbortError') setError({ ...e, message: `${e.message} Pages converted so far are kept; start again to continue from page ${done.current.size + 1}.` });
+      if (e.name !== 'AbortError') setError({ ...e, message: `${e.message} Pages converted so far are kept, also if this page is reloaded; start again to continue from page ${done.current.size + 1}.` });
+      loadKeptRun();
     } finally { setProgress(null); }
   };
 
@@ -215,7 +245,7 @@ export default function HtmlTextPage({ data, reload }) {
           <p className="text-sm text-slate-600 dark:text-slate-300">Each page is drawn as an image in your browser and converted one page at a time. Mark pages with mathematics or complex tables to send them to the stronger math model.</p>
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <input type="file" accept="application/pdf" aria-label="PDF file" onChange={(e) => chooseFile(e.target.files[0] ?? null)} />
-            <span role="status" className="text-slate-700 dark:text-slate-200">{file ? `Chosen: ${file.name}` : 'Or drop a PDF anywhere on this page (images dropped become figures).'}</span>
+            <span role="status" className="text-slate-700 dark:text-slate-200">{file ? `Chosen: ${file.name}${fileResumes ? `. This is the PDF of the stopped conversion: its ${keptRun.kept} kept pages are not converted again.` : ''}` : 'Or drop a PDF anywhere on this page (images dropped become figures).'}</span>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label><input type="checkbox" checked={allMath} onChange={(e) => setAllMath(e.target.checked)} /> Every page has math or tables</label>
@@ -226,13 +256,19 @@ export default function HtmlTextPage({ data, reload }) {
             <ModelPicker task="html_math" value={mathModel} onChange={setMathModel} label="Math and tables model" savedDefault={settings?.math_model ?? null} />
           </div>
           {savedRunNote(settings, 'pdf') ? <p className="text-xs text-slate-700 dark:text-slate-200">{savedRunNote(settings, 'pdf')}</p> : null}
+          {keptRun && !progress ? (
+            <div role="status" className="rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-950 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100">
+              A conversion stopped after {keptRun.kept} of {keptRun.total_pages} pages ({relativeTime(keptRun.updated_at)}). Those pages are kept for a week: continue with the same PDF and only the rest is converted.
+              {' '}<button type="button" className="underline" onClick={discardKept}>Discard the kept pages</button>
+            </div>
+          ) : null}
           {progress ? (
             <p className="flex items-center gap-3 text-sm" role="status">{progress.stage === 'assemble' ? 'Assembling the document' : `${progress.stage === 'render' ? 'Drawing' : 'Converting'} page ${progress.page} of ${progress.total}${progress.math ? ' with the math model' : ''}`}<button className="btn-danger" type="button" onClick={() => controller.current?.abort()}>Cancel</button></p>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <button className="btn-primary" type="button" disabled={!file} onClick={() => convert(false)}>{done.current.size && runFrom === 'file' ? 'Continue converting' : 'Convert PDF'}</button>
+              <button className="btn-primary" type="button" disabled={!file} onClick={() => convert(false)}>{(done.current.size && runFrom === 'file') || fileResumes ? 'Continue converting' : 'Convert PDF'}</button>
               {data.text.has_source_pdf ? (
-                <button className="btn-quiet" type="button" aria-describedby={`stored-hint-${text.id}`} onClick={() => convert(true)}>{done.current.size && runFrom === 'stored' ? 'Continue converting the stored PDF' : 'Convert the stored PDF again'}</button>
+                <button className="btn-quiet" type="button" aria-describedby={`stored-hint-${text.id}`} onClick={() => convert(true, !!keptRun && !(done.current.size && runFrom === 'stored'))}>{(done.current.size && runFrom === 'stored') || keptRun ? 'Continue converting the stored PDF' : 'Convert the stored PDF again'}</button>
               ) : null}
               {data.text.has_source_pdf ? <span id={`stored-hint-${text.id}`} className="text-xs text-slate-600 dark:text-slate-300">Uses {data.text.source_pdf_name || 'the stored source PDF'}, already saved with this text; nothing is uploaded again. Each page is a model call on your allowance.</span> : null}
             </div>

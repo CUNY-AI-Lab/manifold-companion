@@ -145,3 +145,39 @@ test('comments: when each was written, the owner can delete anyone’s, replies 
   await expect(comments.getByText('Check page two.')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Comments (0)' })).toBeVisible();
 });
+
+test('a stopped conversion resumes after a reload: kept pages are not paid for again, and a different PDF never resumes', async ({ page, context }) => {
+  await as(context, 'alice');
+  const { createHash } = await import('node:crypto');
+  const fp = `sha256-${createHash('sha256').update(readFileSync('e2e/fixtures/two-pages.pdf')).digest('hex').slice(0, 40)}`;
+  const { api, text } = await pdfText(page, 'Resume');
+  const IMG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+  // Page 1 of a run that then stopped (a reload, a closed tab).
+  expect((await api(`/texts/${text.id}/parse-page`, 'POST', { image: IMG, page_number: 1, total_pages: 2, resume_source: fp })).kept).toBe(true);
+  const parsed = [];
+  page.on('request', (r) => { if (r.url().endsWith('/parse-page')) parsed.push(JSON.parse(r.postData())); });
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  await expect(page.getByText(/A conversion stopped after 1 of 2 pages/)).toBeVisible();
+  expect(await axe(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Continue converting the stored PDF' }).click();
+  await page.getByRole('button', { name: 'Convert and replace' }).click();
+  await expect(page.locator('.mc-editor')).toContainText('Transcribed by the stub model', { timeout: 60_000 });
+  expect(parsed.map((p) => [p.page_number, p.resume_source])).toEqual([[2, fp]]);
+  await expect(page.getByText(/A conversion stopped after/)).toHaveCount(0);
+  expect((await api(`/texts/${text.id}/conversion`)).run).toBeNull();
+  const html = (await api(`/texts/${text.id}/html`)).html_content;
+  expect(html).toMatch(/data-page="1"[\s\S]*data-page="2"/);
+
+  // Kept pages of another PDF: "continue" stops and says why; nothing is converted.
+  await api(`/texts/${text.id}/parse-page`, 'POST', { image: IMG, page_number: 1, total_pages: 2, resume_source: 'sha256-another' });
+  parsed.length = 0;
+  await page.reload();
+  await page.getByRole('button', { name: 'Continue converting the stored PDF' }).click();
+  await page.getByRole('button', { name: 'Convert and replace' }).click();
+  await expect(page.getByRole('alert')).toContainText('The stored PDF is not the one the stopped conversion used');
+  expect(parsed).toEqual([]);
+  await page.getByRole('button', { name: 'Discard the kept pages' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByText(/A conversion stopped after/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Convert the stored PDF again' })).toBeVisible();
+});

@@ -1,6 +1,7 @@
 import { limits, type Env } from "./env";
 import { deleteProject, processCleanup, recountStorage } from "./storage";
 import { addDays, nowIso, UUID_V4_SQL } from "./util";
+import { sweepConversions } from "./conversion";
 
 /** A project must have been warned at least this long before it may be deleted. */
 export const MIN_WARNING_DAYS = 7;
@@ -86,6 +87,9 @@ export async function runRetentionSweep(env: Env, nowMs = Date.now()): Promise<S
       result.failed += 1; // D1 hiccup: nothing was deleted; tomorrow's sweep retries.
     }
   }
+
+  // Conversions left unfinished for a week: their kept pages are dropped (a cache, not content).
+  try { await sweepConversions(env.DB, nowMs); } catch { result.failed += 1; }
 
   const cleanup = await processCleanup(env, nowMs);
   result.cleaned = cleanup.swept;

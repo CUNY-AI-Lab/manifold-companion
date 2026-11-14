@@ -102,6 +102,8 @@ const ROUTES: Route[] = [
   { name: "DELETE /texts/:id/figures/:figureId", min: "editor", ok: 200, run: ({ htextId, figureId }, as) => j(`/texts/${htextId}/figures/${figureId}`, as, "DELETE") },
   { name: "POST /texts/:id/pages/:pageId/ocr", min: "editor", ok: 200, run: ({ textId, pageId }, as) => j(`/texts/${textId}/pages/${pageId}/ocr`, as, "POST", { overwrite: true }) },
   { name: "POST /texts/:id/parse-page", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/parse-page`, as, "POST", { image: JPEG_URI, page_number: 1 }) },
+  { name: "GET /texts/:id/conversion", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/conversion?source=sha256-abc`, as) },
+  { name: "DELETE /texts/:id/conversion", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/conversion`, as, "DELETE") },
   { name: "POST /texts/:id/html/cleanup", min: "editor", ok: 200, run: ({ htextId }, as) => j(`/texts/${htextId}/html/cleanup`, as, "POST", { html: "<section data-page=\"1\"><p>x</p></section>" }) },
   { name: "GET /texts/:id/summary", min: "viewer", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/summary`, as) },
   { name: "PUT /texts/:id/summary", min: "editor", ok: 200, run: ({ textId }, as) => j(`/texts/${textId}/summary`, as, "PUT", { summary: "s" }) },

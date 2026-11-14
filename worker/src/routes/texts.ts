@@ -9,6 +9,7 @@ import { E } from "../errors";
 import { deleteTextObjects, splitText } from "../text-ops";
 import { deleteRowAndRelease } from "../storage";
 import { isUuid, moveId, nowIso } from "../util";
+import { clearConversion } from "../conversion";
 import type { AppEnv } from "../app";
 
 export const textRoutes = new Hono<AppEnv>();
@@ -224,6 +225,8 @@ textRoutes.put("/:id/html", async (c) => {
   if (reason !== "save" && reason !== "conversion") throw E.badRequest("reason must be save or conversion.");
   const { bytes } = await writeContent(c.env, ctx.project, ctx.text, "html", clean, c.get("principal").subject, { extraSets: extra, reason });
   await reindexText(c.env, ctx.text.id, { html: clean });
+  // A saved conversion ends the run: its kept pages are no longer needed.
+  if (reason === "conversion") await clearConversion(c.env.DB, ctx.text.id).run();
   return c.json({ ok: true, html_bytes: bytes, sanitized: clean !== body.html_content });
 });
 
