@@ -301,3 +301,23 @@ test('an unsaved page edit is never replaced without asking: Go to page N from a
   expect((await api(`/texts/${text.id}`)).pages[2].ocr_text).toBeNull();
   void pages;
 });
+
+test('the page list shows a thumbnail of each page; the buttons still name the page', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { text, pages } = await imageText(page, api, ['one', null]);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const nav = page.getByRole('navigation', { name: 'Pages' });
+  const thumbs = nav.locator('img[data-thumb]');
+  await expect(thumbs).toHaveCount(2);
+  for (const t of await thumbs.all()) {
+    await expect(t).toHaveAttribute('src', /^blob:/);
+    await expect(t).toHaveAttribute('alt', '');
+    expect(await t.evaluate((el) => el.naturalWidth > 0 && el.naturalWidth <= 192)).toBe(true);
+  }
+  await expect(nav.locator(`img[data-thumb="${pages[0].id}"]`)).toBeVisible();
+  await expect(nav.getByRole('button', { name: '1. p1.png', exact: true })).toBeVisible();
+  await expect(nav.getByRole('button', { name: '2. p2.png (no text)', exact: true })).toBeVisible();
+  expect(await axe(page, 'page thumbnails')).toEqual([]);
+});

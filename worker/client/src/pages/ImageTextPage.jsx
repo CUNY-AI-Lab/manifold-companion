@@ -11,6 +11,7 @@ import TranslationPanel from '../components/TranslationPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import { ScanLightbox, ScanViewer } from '../components/ScanViewer';
 import MarkdownToolbar, { markdownKeys } from '../components/MarkdownToolbar';
+import PageThumb from '../components/PageThumb';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
@@ -247,12 +248,15 @@ export default function ImageTextPage({ data, reload }) {
         </section>
       ) : null}
 
-      <div className="mt-4 grid gap-4 md:grid-cols-[12rem_1fr]">
+      <div className="mt-4 grid gap-4 md:grid-cols-[14rem_1fr]">
         <nav aria-label="Pages">
           <ol className="space-y-1 text-sm">
             {pages.map((p, i) => (
               <li key={p.id} className="flex items-center gap-1">
-                <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => selectPage(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button>
+                <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium ring-1 ring-cail-blue/40' : ''}`} onClick={() => selectPage(p.id)}>
+                  <PageThumb textId={text.id} page={p} />
+                  <span className="min-w-0 flex-1 truncate">{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</span>
+                </button>
                 {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} /> : null}
               </li>
             ))}

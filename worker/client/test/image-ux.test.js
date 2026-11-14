@@ -95,3 +95,27 @@ describe('Markdown toolbar', () => {
     expect(run('para\n', 5, 5, 'separator').out).toBe('para\n---\n');
   });
 });
+
+import { fitWithin, makeQueue } from '../src/lib/thumbs.js';
+
+describe('page thumbnails', () => {
+  it('fit within the edge without enlarging', () => {
+    expect(fitWithin(2048, 1536, 96)).toEqual({ width: 96, height: 72 });
+    expect(fitWithin(1000, 3000, 96)).toEqual({ width: 32, height: 96 });
+    expect(fitWithin(50, 40, 96)).toEqual({ width: 50, height: 40 });
+  });
+  it('are made a few at a time, in order', async () => {
+    const run = makeQueue(2);
+    let active = 0;
+    let peak = 0;
+    const order = [];
+    const job = (n) => () => new Promise((r) => { active += 1; peak = Math.max(peak, active); setTimeout(() => { active -= 1; order.push(n); r(n); }, 5); });
+    const out = await Promise.all([1, 2, 3, 4, 5].map((n) => run(job(n))));
+    expect(out).toEqual([1, 2, 3, 4, 5]);
+    expect(peak).toBe(2);
+    expect(order.slice(0, 2).sort()).toEqual([1, 2]);
+    // A failing job does not stop the queue.
+    await expect(run(() => Promise.reject(new Error('x')))).rejects.toThrow('x');
+    expect(await run(() => 7)).toBe(7);
+  });
+});
