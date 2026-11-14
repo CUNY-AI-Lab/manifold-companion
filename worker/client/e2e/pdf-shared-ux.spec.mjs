@@ -331,3 +331,18 @@ test('Settings, Usage: which owned projects use the storage, largest first', asy
   await expect(table).toContainText('Carol empty');
   expect(await axe(page)).toEqual([]);
 });
+
+test('search: results grouped by project; a one-letter search says why nothing happened', async ({ page, context }) => {
+  await as(context, 'alice');
+  const { api, text } = await pdfText(page, 'Searchable');
+  await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<p>The zebrafish appears here.</p>' });
+  await page.goto('/manifold-companion/');
+  await page.getByLabel('Search your texts').fill('z');
+  await page.getByLabel('Search your texts').press('Enter');
+  await expect(page.getByText('Type at least 2 characters to search.')).toBeVisible();
+  await page.getByLabel('Search your texts').fill('zebrafish');
+  await page.getByLabel('Search your texts').press('Enter');
+  await expect(page.getByRole('heading', { name: /^Searchable/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Chapter' })).toBeVisible();
+  expect(await axe(page)).toEqual([]);
+});
