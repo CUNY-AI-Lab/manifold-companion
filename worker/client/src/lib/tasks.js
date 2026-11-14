@@ -30,6 +30,22 @@ export async function runOcr({ textId, pages, overwrite = false, model, signal, 
   return outcomes;
 }
 
+/** The page texts joined as the export joins them (src/routes/texts.ts GET /:id/result). */
+export const joinPageTexts = (pages) => pages.filter((p) => p.ocr_text).map((p) => p.ocr_text).join('\n\n---\n\n');
+
+/**
+ * The text an image text's export uses: its edited full text once one is
+ * saved, otherwise the page texts joined. Translation starts from the same
+ * text, so a translation never disagrees with what is exported.
+ */
+export async function exportSource({ textId, hasCompiled, pages, get = (path) => api.get(path) }) {
+  if (hasCompiled) {
+    const { text } = await get(`/api/texts/${textId}/compiled`);
+    if (text) return { text, from: 'fulltext' };
+  }
+  return { text: joinPageTexts(pages), from: 'pages' };
+}
+
 /** Split text into chunks of at most `max` characters on paragraph, then sentence, boundaries. */
 export function chunkText(text, max = 10000) {
   const chunks = [];
@@ -46,8 +62,8 @@ export function chunkText(text, max = 10000) {
   return chunks;
 }
 
-/** Translate chunk by chunk, then store the assembled translation. */
-export async function translateText({ textId, text, source, target, model, signal, onProgress }) {
+/** Translate chunk by chunk, then store the assembled translation with `save` (the caller's one translation save). */
+export async function translateText({ textId, text, source, target, model, signal, onProgress, save = (body) => api.put(`/api/texts/${textId}/translation`, body) }) {
   const chunks = chunkText(text);
   const out = [];
   for (const [i, chunk] of chunks.entries()) {
@@ -58,7 +74,7 @@ export async function translateText({ textId, text, source, target, model, signa
   }
   onProgress?.({ done: chunks.length, total: chunks.length });
   const translation = out.join('\n\n');
-  await api.put(`/api/texts/${textId}/translation`, { translation, source_language: source, target_language: target });
+  await save({ translation, source_language: source, target_language: target });
   return translation;
 }
 

@@ -12,11 +12,13 @@ import { marked } from 'marked';
 import { sanitizeHtml } from '../../../src/sanitize/html.ts';
 import { LEGACY_PREVIEW_CSS } from './legacy-preview-css.js';
 import { decodeEntities, LEGACY_DELIMITERS, renderMath, splitAtDelimiters } from './math.js';
+import { markFlagsInHtml } from './flags.js';
 
 const FRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:";
 // The legacy preview pane's box: white, padded, 16px Georgia (KaTeX scales from it).
 const FRAME_CSS = `html{background:#fff}body{margin:0;padding:1.5rem;font-size:16px;background:#fff;overflow-wrap:break-word}
 img{max-width:100%;height:auto}.katex-display{overflow-x:auto;overflow-y:hidden}
+mark{background:#fde68a;color:#1e293b;border-radius:2px;padding:0 .1em}
 @media (prefers-color-scheme: dark){html,body{background:#1e293b;color:#e2e8f0}.katex{color:inherit}}`;
 
 const SLOT = /(\d+)/g;
@@ -51,11 +53,12 @@ export function markdownToSanitizedHtml(md) {
   return sanitizeHtml(restored.replace(/[]/g, ''));
 }
 
-const markdownBody = (md) => renderMath(markdownToSanitizedHtml(md));
+// Flags ([unclear: …] and the rest, lib/flags.js) are marked in the sanitized HTML's text, and the result is sanitized again.
+const markdownBody = (md, flags = false) => renderMath(flags ? sanitizeHtml(markFlagsInHtml(markdownToSanitizedHtml(md))) : markdownToSanitizedHtml(md));
 
 /** The preview body (sanitized, maths rendered) and how many formulas it holds. */
-export function previewBody({ html, markdown, images = {} }) {
-  const { html: body, count, errors } = markdown !== undefined ? markdownBody(markdown ?? '') : renderMath(sanitizeHtml(html ?? ''));
+export function previewBody({ html, markdown, images = {}, flags = false }) {
+  const { html: body, count, errors } = markdown !== undefined ? markdownBody(markdown ?? '', flags) : renderMath(sanitizeHtml(html ?? ''));
   // Figures: the frame cannot fetch app URLs, so a referenced figure is swapped for its data: URI.
   // Only a strict raster data: URI (no quote, no markup character can occur in it) is ever written into an attribute here.
   const withImages = body.replace(/ src="([^"/]+)"/g, (m, name) => (typeof images[name] === 'string' && RASTER_DATA_URI.test(images[name]) ? ` src="${images[name]}"` : m));

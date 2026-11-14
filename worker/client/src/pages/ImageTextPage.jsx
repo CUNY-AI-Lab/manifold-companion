@@ -6,14 +6,21 @@ import CommentsPanel, { CommentsJumpLink } from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FullTextPanel from '../components/FullTextPanel';
+import SummaryPanel from '../components/SummaryPanel';
+import TranslationPanel from '../components/TranslationPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
+import { ScanLightbox, ScanViewer } from '../components/ScanViewer';
+import MarkdownToolbar, { markdownKeys } from '../components/MarkdownToolbar';
+import PageThumb from '../components/PageThumb';
+import FlagHighlight from '../components/FlagHighlight';
+import { describeCounts, findFlags, flagCounts, FLAG_KINDS, stepFlag } from '../lib/flags';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
 import { checkPdfFits } from '../lib/limits';
 import { plural, statusLabel } from '../lib/status';
-import { runOcr, translateText } from '../lib/tasks';
+import { exportSource, runOcr } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -26,8 +33,6 @@ import { draftDiffers, savedChangedSince } from '../lib/drafts';
 const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 /** What a page upload takes: an image (any the browser may open; HEIC gets its own message) or a PDF. */
 export const takesAsPage = (file) => isPdf(file) || /^image\//i.test(file.type) || /\.(jpe?g|png|webp|gif|bmp|tiff?|hei[cf]|avif)$/i.test(file.name);
-
-const LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'nl', 'pl', 'el', 'tr', 'he', 'uk', 'la'];
 
 function SplitPanel({ text, pages }) {
   const [open, setOpen] = useState(false);
@@ -74,11 +79,10 @@ export default function ImageTextPage({ data, reload }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [conflict, setConflict] = useState(null);
-  const [translation, setTranslation] = useState(null);
-  const [langs, setLangs] = useState({ source: text.source_language || 'auto-detect', target: text.target_language || 'en' });
   const fileInput = useRef(null);
   const pageText = useRef(null);
   const [moved, setMoved] = useState('');
+  const [lightbox, setLightbox] = useState(null); // index of the page shown full screen
   const focusMoved = useMoveFocus([pages]);
   // Keep a valid selection as pages arrive or are deleted.
   useEffect(() => { if (!pages.some((p) => p.id === selected)) setSelected(pages[0]?.id ?? null); }, [pages, selected]);
@@ -111,13 +115,56 @@ export default function ImageTextPage({ data, reload }) {
     if (selected === stored.target.pageId) setDraft(stored.content);
     else { pendingRestore.current = stored; setSelected(stored.target.pageId); }
   };
+  /** Open another page; true once it is selected (false if the person stayed to keep unsaved changes). */
   const selectPage = async (id) => {
-    if (id === selected) return;
-    if (pageDirty && !(await confirm({ title: 'Discard the changes to this page?', message: `Page ${page.page_number} has changes that are not saved. Open another page and discard them?`, confirmLabel: 'Discard and open', cancelLabel: 'Stay on this page', danger: true }))) return;
+    if (id === selected) return true;
+    if (pageDirty && !(await confirm({ title: 'Discard the changes to this page?', message: `Page ${page.page_number} has changes that are not saved. Open another page and discard them?`, confirmLabel: 'Discard and open', cancelLabel: 'Stay on this page', danger: true }))) return false;
     if (pageDirty) pageKeeper.forget();
     setSelected(id);
+    return true;
   };
-  useEffect(() => { api.get(`/api/texts/${text.id}/translation`).then((r) => setTranslation(r.translation), () => {}); }, [text.id]);
+
+  // Review of uncertain readings: step from flag to flag, across pages, selecting each in the page text.
+  const pendingFlag = useRef(null); // { pageId, start, end } to select once that page's text is loaded
+  // Where the person is in the page text: set by their own caret moves and by flag steps; null on a fresh page
+  // (React leaves an untouched textarea's caret at the end), so stepping then starts from the top.
+  const caret = useRef(null);
+  useEffect(() => { caret.current = null; }, [page?.id]);
+  const noteCaret = (e) => { caret.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd }; };
+  const [flagNote, setFlagNote] = useState('');
+  const showFlag = (f) => {
+    const el = pageText.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(f.start, f.end);
+    caret.current = { start: f.start, end: f.end };
+    // Scroll the selection into view: blur and focus again makes the browser scroll to the caret.
+    el.blur(); el.focus();
+  };
+  useEffect(() => {
+    const want = pendingFlag.current;
+    if (!want || want.pageId !== draftPage) return;
+    pendingFlag.current = null;
+    showFlag(want);
+  }, [draftPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  const flagPages = pages.map((p) => ({ id: p.id, text: p.id === page?.id ? draft : p.ocr_text ?? '' }));
+  const totalFlags = flagPages.reduce((n, p) => n + findFlags(p.text).length, 0);
+  const pageFlags = findFlags(draft);
+  const goFlag = async (dir) => {
+    // From the caret: a selected flag steps past itself; a caret steps to the flag at or after it (next)
+    // or ending at or before it (previous). No caret yet: from the top (next) or the end (previous).
+    const at = caret.current;
+    const offset = !at ? (dir > 0 ? -1 : Number.MAX_SAFE_INTEGER) : dir > 0 ? (at.start === at.end ? at.start - 1 : at.start) : at.start;
+    const hit = stepFlag(flagPages, { pageIndex: Math.max(0, pageIndex), offset }, dir);
+    if (!hit) { setFlagNote(dir > 0 ? 'No more flags after this one.' : 'No flags before this one.'); return; }
+    const target = pages[hit.pageIndex];
+    const onPage = findFlags(flagPages[hit.pageIndex].text);
+    const where = onPage.findIndex((f) => f.start === hit.flag.start) + 1;
+    const note = `Page ${target.page_number}, flag ${where} of ${onPage.length}: ${FLAG_KINDS[hit.flag.kind].label}${hit.flag.body ? ` “${hit.flag.body}”` : ''}.`;
+    if (target.id === page?.id) { showFlag(hit.flag); setFlagNote(note); return; }
+    pendingFlag.current = { pageId: target.id, start: hit.flag.start, end: hit.flag.end };
+    if (await selectPage(target.id)) setFlagNote(note); else pendingFlag.current = null;
+  };
 
   const upload = async (files) => {
     setError(null);
@@ -155,7 +202,12 @@ export default function ImageTextPage({ data, reload }) {
   const startOcr = async (overwrite) => {
     const targets = overwrite ? pages : pages.filter((p) => !p.ocr_text);
     if (targets.length === 0) return;
-    if (overwrite && targets.some((p) => p.ocr_text) && !(await confirm({ title: 'Read every page again?', message: replaceWarning('Read every page again with the model? This replaces the text of every page.').replace('The current text', 'The current text of each page'), confirmLabel: 'Read every page again' }))) return;
+    // An edit in progress on a page the run replaces is lost: say so before anything is read.
+    const editLost = pageDirty && targets.some((p) => p.id === page.id);
+    const lostNote = editLost ? `\n\nPage ${page.page_number} has changes that are not saved; they are lost too. Save the page first to keep them.` : '';
+    if (overwrite && targets.some((p) => p.ocr_text)) {
+      if (!(await confirm({ title: 'Read every page again?', message: replaceWarning('Read every page again with the model? This replaces the text of every page.').replace('The current text', 'The current text of each page') + lostNote, confirmLabel: 'Read every page again', danger: editLost }))) return;
+    } else if (editLost && !(await confirm({ title: 'Discard the changes to this page?', message: `Reading the pages without text also reads page ${page.page_number}, which has changes that are not saved; the model's text replaces them. Save the page first to keep them.`, confirmLabel: 'Discard and read', cancelLabel: 'Keep editing', danger: true }))) return;
     const controller = new AbortController();
     setRun({ done: 0, total: targets.length, current: targets[0].filename, failures: [], controller });
     setError(null);
@@ -180,6 +232,8 @@ export default function ImageTextPage({ data, reload }) {
     } catch (e) { setError(e); }
   };
 
+  const [pageStatus, setPageStatus] = useState('');
+  useEffect(() => { setPageStatus(''); }, [page?.id]);
   // Page id -> [rev a save was based on, rev it produced]: a second save before the reload lands is based on our own save.
   const savedRevs = useRef({});
   const savePage = async () => {
@@ -188,6 +242,7 @@ export default function ImageTextPage({ data, reload }) {
       const base = own && own[0] === page.rev ? own[1] : page.rev;
       const r = await saveFromBase({ send: (base_rev) => api.post(`/api/texts/${text.id}/pages/${page.id}`, { text: draft, base_rev }), base, confirm, what: `page ${page.page_number}` });
       savedRevs.current[page.id] = [page.rev, r.rev];
+      setPageStatus(text.has_compiled ? `Page ${page.page_number} saved. The export still uses the edited full text, so this change is not in the export.` : `Page ${page.page_number} saved.`);
       reload();
       return true;
     } catch (e) { setError(e); return false; }
@@ -219,6 +274,7 @@ export default function ImageTextPage({ data, reload }) {
 
   return (
     <div>
+      {lightbox !== null ? <ScanLightbox pages={pages} startIndex={lightbox} srcOf={(p) => `${API}/texts/${text.id}/pages/${p.id}/image`} onClose={() => setLightbox(null)} /> : null}
       <DropOverlay show={dragging} label={`Drop to add pages to “${text.name}”`} />
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
@@ -247,12 +303,16 @@ export default function ImageTextPage({ data, reload }) {
         </section>
       ) : null}
 
-      <div className="mt-4 grid gap-4 md:grid-cols-[12rem_1fr]">
+      <div className="mt-4 grid gap-4 md:grid-cols-[14rem_1fr]">
         <nav aria-label="Pages">
           <ol className="space-y-1 text-sm">
             {pages.map((p, i) => (
               <li key={p.id} className="flex items-center gap-1">
-                <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => selectPage(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button>
+                <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium ring-1 ring-cail-blue/40' : ''}`} onClick={() => selectPage(p.id)}>
+                  <PageThumb textId={text.id} page={p} />
+                  <span className="min-w-0 flex-1 truncate">{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</span>
+                  {(() => { const c = flagCounts(p.ocr_text); return c.total ? <span className={`shrink-0 rounded px-1 text-xs ${c.doubts ? 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100' : 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100'}`} title={describeCounts(c)}><span aria-hidden="true">⚑ {c.total}</span><span className="sr-only">({c.total} {c.total === 1 ? 'flag' : 'flags'}: {describeCounts(c)})</span></span> : null; })()}
+                </button>
                 {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} positions /> : null}
               </li>
             ))}
@@ -262,53 +322,51 @@ export default function ImageTextPage({ data, reload }) {
         </nav>
         {page ? (
           <div className="grid gap-4 lg:grid-cols-2">
-            <img src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} className="max-h-[70vh] w-full rounded-md border border-slate-200 object-contain dark:border-slate-700" />
+            <ScanViewer src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} idBase="page-scan" onFullScreen={() => setLightbox(pageIndex)} />
             <div className="flex flex-col gap-2">
               <label className="label" htmlFor="page-text">Text of page {page.page_number}{page.ocr_model ? `, read by ${page.ocr_model}` : ''}</label>
               <CommentsJumpLink textId={text.id} />
-              <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => setDraft(e.target.value)} />
+              {text.has_compiled ? (
+                <p id="page-export-note" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+                  The export uses the edited full text, not the page texts: changes saved here do not reach the export. Edit the <a className="underline" href={`#fulltext-section-${text.id}`}>full text</a>, or choose “Use the pages again” there.
+                </p>
+              ) : null}
+              {canEdit ? <MarkdownToolbar textareaRef={pageText} controls="page-text" onChange={(v) => { setDraft(v); setPageStatus(''); }} /> : null}
+              <div className="relative rounded-md bg-white dark:bg-slate-800">
+                <FlagHighlight value={draft} textareaRef={pageText} />
+                <textarea ref={pageText} id="page-text" className="field relative min-h-[18rem] bg-transparent font-mono dark:bg-transparent" value={draft} readOnly={!canEdit} aria-describedby={[text.has_compiled ? 'page-export-note' : '', 'page-flags'].filter(Boolean).join(' ')} onKeyDown={canEdit ? (e) => markdownKeys(e, pageText, setDraft) : undefined} onKeyUp={noteCaret} onMouseUp={noteCaret} onChange={(e) => { setDraft(e.target.value); setPageStatus(''); noteCaret(e); }} />
+              </div>
+              <div role="group" aria-label="Flags to review" className="flex flex-wrap items-center gap-2 text-sm">
+                <span id="page-flags" className="text-slate-700 dark:text-slate-200">{pageFlags.length ? `${pageFlags.length} ${pageFlags.length === 1 ? 'flag' : 'flags'} on this page (${describeCounts(flagCounts(draft))})` : 'No flags on this page'}{totalFlags ? `; ${totalFlags} in this text.` : '.'}</span>
+                <button type="button" className="btn-quiet px-2 py-1" disabled={totalFlags === 0} onClick={() => goFlag(-1)}>Previous flag</button>
+                <button type="button" className="btn-quiet px-2 py-1" disabled={totalFlags === 0} onClick={() => goFlag(1)}>Next flag</button>
+                <span role="status" className="text-slate-600 dark:text-slate-300">{flagNote}</span>
+              </div>
               {conflict ? <details className="text-sm"><summary>Model text that was not saved (the page was edited meanwhile)</summary><pre className="whitespace-pre-wrap">{conflict}</pre><button type="button" className="btn-quiet mt-1" onClick={() => setDraft(conflict)}>Use the model text</button></details> : null}
               {canEdit ? (
                 <div className="flex flex-wrap gap-2">
-                  <button className="btn-primary" type="button" onClick={savePage} disabled={draft === (page.ocr_text ?? '')}>Save page</button>
+                  <button className="btn-primary" type="button" onClick={savePage} disabled={draft === (page.ocr_text ?? '')} aria-describedby={text.has_compiled ? 'page-export-note' : undefined}>Save page</button>
                   <button className="btn-quiet" type="button" onClick={ocrOne} disabled={!!busy || !!run}>Read this page again</button>
+                  <span role="status" className="self-center text-sm text-slate-600 dark:text-slate-300">{pageStatus}</span>
                   <button className="btn-danger" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this page?', message: `Delete page ${page.page_number} (${page.filename}), its image and its saved versions? This cannot be undone.`, confirmLabel: 'Delete page', danger: true }))) return; await api.del(`/api/texts/${text.id}/pages/${page.id}`); reload(); refresh(); }}>Delete page</button>
                 </div>
               ) : null}
-              <SandboxedPreview markdown={draft} title={`Preview of page ${page.page_number}`} className="min-h-[14rem]" />
+              <SandboxedPreview markdown={draft} flags title={`Preview of page ${page.page_number}`} className="min-h-[14rem]" />
               <VersionHistory key={page.id} textId={text.id} type="page" pageId={page.id} canRestore={canEdit} refreshKey={page.ocr_text} dirty={draft !== (page.ocr_text ?? '')} onRestored={reload} />
             </div>
           </div>
         ) : <p className="text-sm text-slate-500 dark:text-slate-400">No pages yet.{canEdit ? ' Upload photos, scans or a PDF; PDFs are turned into page images in your browser.' : ''}</p>}
       </div>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div>
-          <h2 className="text-lg">Summary</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm">{text.summary || 'No summary yet.'}</p>
-          {canEdit ? <button className="btn-quiet mt-2" type="button" disabled={!!busy} onClick={async () => { setBusy('Writing a summary'); try { await api.post(`/api/texts/${text.id}/summary`, {}); reload(); } catch (e) { setError(e); } finally { setBusy(null); } }}>Write a summary</button> : null}
-        </div>
-        <div>
-          <h2 className="text-lg">Translation</h2>
-          {canEdit ? (
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-              <label>From <select className="field inline-block w-auto" value={langs.source} onChange={(e) => setLangs({ ...langs, source: e.target.value })}><option value="auto-detect">detect</option>{LANGS.map((l) => <option key={l}>{l}</option>)}</select></label>
-              <label>to <select className="field inline-block w-auto" value={langs.target} onChange={(e) => setLangs({ ...langs, target: e.target.value })}>{LANGS.map((l) => <option key={l}>{l}</option>)}</select></label>
-              <button className="btn-quiet" type="button" disabled={!!busy} onClick={async () => {
-                const source = pages.filter((p) => p.ocr_text).map((p) => p.ocr_text).join('\n\n---\n\n');
-                if (!source) return;
-                try { setTranslation(await translateText({ textId: text.id, text: source, source: langs.source, target: langs.target, onProgress: ({ done, total }) => setBusy(`Translating part ${Math.min(done + 1, total)} of ${total}`) })); } catch (e) { setError(e); } finally { setBusy(null); }
-              }}>Translate</button>
-            </div>
-          ) : null}
-          {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
-        </div>
+      <section className="mt-8 grid gap-6 lg:grid-cols-2" aria-label="Summary and translation">
+        <SummaryPanel text={text} canEdit={canEdit} onSaved={reload} busy={!!run} />
+        <TranslationPanel text={text} canEdit={canEdit} busy={!!run} getSource={async () => (await exportSource({ textId: text.id, hasCompiled: text.has_compiled, pages })).text} />
       </section>
-      <FullTextPanel textId={text.id} canEdit={canEdit} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} onDraftChange={setFullDraft} restoreDraft={fullRestore} onRestoreTaken={() => setFullRestore(null)} />
+      <FullTextPanel textId={text.id} canEdit={canEdit} onCompiledChange={reload} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} onDraftChange={setFullDraft} restoreDraft={fullRestore} onRestoreTaken={() => setFullRestore(null)} />
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
       <TextSettingsPanel textId={text.id} kind="image" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
-      <CommentsPanel textId={text.id} canWrite={canEdit} source={page ? { text: draft, pageId: page.id, textareaRef: pageText } : null} pages={pages} onGoToPage={setSelected} />
+      <CommentsPanel textId={text.id} canWrite={canEdit} source={page ? { text: draft, pageId: page.id, textareaRef: pageText } : null} pages={pages} onGoToPage={selectPage} />
     </div>
   );
 }

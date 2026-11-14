@@ -8,6 +8,7 @@ import CommentsPanel, { CommentsJumpLink } from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FigurePanel from '../components/FigurePanel';
+import SummaryPanel from '../components/SummaryPanel';
 import RichEditor from '../components/RichEditor';
 import { browserStorage } from '../lib/storage';
 
@@ -345,6 +346,7 @@ export default function HtmlTextPage({ data, reload }) {
         </div>
       </div>
       <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={dirty} onRestored={() => { loadHtml(); refresh(); }} />
+      <div className="mt-8"><SummaryPanel text={text} canEdit={canEdit} onSaved={reload} busy={!!progress} /></div>
       <TextSettingsPanel textId={text.id} kind="pdf" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
       <CommentsPanel textId={text.id} canWrite={canEdit} source={html === null ? null : { text: html, pageId: null, textareaRef: source, selectable: !richShown }} onNeedSource={() => setView('source')} />

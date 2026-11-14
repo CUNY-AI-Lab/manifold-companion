@@ -32,6 +32,8 @@ export function setBlock(kind) {
 export const cmd = {
   bold: toggleMark(M.strong),
   italic: toggleMark(M.em),
+  underline: toggleMark(M.u),
+  strike: toggleMark(M.s),
   code: toggleMark(M.code),
   sup: toggleMark(M.sup),
   sub: toggleMark(M.sub),
@@ -109,7 +111,7 @@ export function plugins({ onEditMath, onLink }) {
   return [
     history(),
     keymap({
-      'Mod-b': cmd.bold, 'Mod-i': cmd.italic, 'Mod-`': cmd.code,
+      'Mod-b': cmd.bold, 'Mod-i': cmd.italic, 'Mod-u': cmd.underline, 'Mod-`': cmd.code,
       'Mod-z': undo, 'Mod-Shift-z': redo, 'Mod-y': redo,
       'Mod-[': cmd.outdent, 'Mod-]': cmd.indent,
       'Mod-k': () => { onLink(); return true; },
