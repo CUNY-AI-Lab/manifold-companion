@@ -59,3 +59,23 @@ test('the source PDF sits beside the text: pages, zoom, follow the cursor, the e
   await page.getByRole('button', { name: 'Source PDF', exact: true }).click();
   await expect(page.getByRole('region', { name: /^Page 1 of the source PDF/ })).toBeVisible();
 });
+
+test('convert the stored PDF again: no re-pick and no re-upload, after the replace warning', async ({ page, context }) => {
+  await as(context, 'alice');
+  const { text } = await pdfText(page, 'Reprocess');
+  const puts = [];
+  const parsed = [];
+  page.on('request', (r) => {
+    if (r.method() === 'PUT' && r.url().includes('/source-pdf')) puts.push(r.url());
+    if (r.url().endsWith('/parse-page')) parsed.push(JSON.parse(r.postData()).page_number);
+  });
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const again = page.getByRole('button', { name: 'Convert the stored PDF again' });
+  await expect(again).toBeEnabled();
+  await expect(page.getByText(/Uses two-pages\.pdf, already saved with this text/)).toBeVisible();
+  await again.click();
+  await page.getByRole('button', { name: 'Convert and replace' }).click();
+  await expect(page.locator('.mc-editor')).toContainText('Transcribed by the stub model', { timeout: 60_000 });
+  expect(parsed).toEqual([1, 2]);
+  expect(puts).toEqual([]);
+});

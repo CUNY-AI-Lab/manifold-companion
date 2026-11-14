@@ -120,7 +120,9 @@ export default function HtmlTextPage({ data, reload }) {
     const { blob, width, height } = await prepareImage(f);
     await api.upload(`/api/texts/${text.id}/figures`, blob, { filename: f.name.replace(/\.[^.]+$/, '') + '.jpg', query: { width: String(width), height: String(height) } });
   };
-  const chooseFile = (f) => { setFile(f); done.current = new Map(); pageWarnings.current = new Map(); };
+  // Which PDF the pages converted so far came from: a chosen file, or the stored source PDF.
+  const [runFrom, setRunFrom] = useState(null);
+  const chooseFile = (f) => { setFile(f); setRunFrom(null); done.current = new Map(); pageWarnings.current = new Map(); };
   // A dropped PDF becomes the file to convert (nothing is sent until "Convert PDF"); dropped images become figures.
   const dragging = useFileDrop({
     enabled: canEdit && !progress,
@@ -139,20 +141,28 @@ export default function HtmlTextPage({ data, reload }) {
     },
   });
 
-  const convert = async () => {
-    if (!file) return;
+  const convert = async (stored = false) => {
+    if (!stored && !file) return;
+    if (runFrom && runFrom !== (stored ? 'stored' : 'file')) { done.current = new Map(); pageWarnings.current = new Map(); }
     if (saved && done.current.size === 0 && !(await confirm({ title: 'Replace the current HTML?', message: replaceWarning('Convert this PDF and replace the current HTML?'), confirmLabel: 'Convert and replace' }))) return;
     controller.current = new AbortController();
     setError(null);
     try {
-      if (!data.text.has_source_pdf || (await confirm({ title: 'Replace the stored PDF?', message: 'Replace the stored source PDF with this file? The old PDF is deleted.', confirmLabel: 'Replace the PDF' }))) {
+      let pdfFile = file;
+      if (stored) {
+        // The stored source, read back from this app: nothing to choose or upload again.
+        const blob = await (await api.raw(`/api/texts/${text.id}/source-pdf`, { signal: controller.current.signal })).blob();
+        pdfFile = new File([blob], data.text.source_pdf_name || 'source.pdf', { type: 'application/pdf' });
+      } else if (!data.text.has_source_pdf || (await confirm({ title: 'Replace the stored PDF?', message: 'Replace the stored source PDF with this file? The old PDF is deleted.', confirmLabel: 'Replace the PDF' }))) {
         await api.upload(`/api/texts/${text.id}/source-pdf`, file, { method: 'PUT', filename: file.name, query: { replace: '1' } });
       }
-      const r = await convertPdf({ textId: text.id, file, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, warnings: pageWarnings.current, onProgress: setProgress });
+      setRunFrom(stored ? 'stored' : 'file');
+      const r = await convertPdf({ textId: text.id, file: pdfFile, mathPages: parsePages(mathSpec), allMath, model, mathModel, signal: controller.current.signal, done: done.current, warnings: pageWarnings.current, onProgress: setProgress });
       setChecks(checkList(r.warnings));
       setVersionKey((k) => k + 1);
       done.current = new Map();
       pageWarnings.current = new Map();
+      setRunFrom(null);
       setHtml(r.html);
       setSaved(r.html);
       reload();
@@ -218,7 +228,15 @@ export default function HtmlTextPage({ data, reload }) {
           {savedRunNote(settings, 'pdf') ? <p className="text-xs text-slate-700 dark:text-slate-200">{savedRunNote(settings, 'pdf')}</p> : null}
           {progress ? (
             <p className="flex items-center gap-3 text-sm" role="status">{progress.stage === 'assemble' ? 'Assembling the document' : `${progress.stage === 'render' ? 'Drawing' : 'Converting'} page ${progress.page} of ${progress.total}${progress.math ? ' with the math model' : ''}`}<button className="btn-danger" type="button" onClick={() => controller.current?.abort()}>Cancel</button></p>
-          ) : <button className="btn-primary" type="button" disabled={!file} onClick={convert}>{done.current.size ? 'Continue converting' : 'Convert PDF'}</button>}
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="btn-primary" type="button" disabled={!file} onClick={() => convert(false)}>{done.current.size && runFrom === 'file' ? 'Continue converting' : 'Convert PDF'}</button>
+              {data.text.has_source_pdf ? (
+                <button className="btn-quiet" type="button" aria-describedby={`stored-hint-${text.id}`} onClick={() => convert(true)}>{done.current.size && runFrom === 'stored' ? 'Continue converting the stored PDF' : 'Convert the stored PDF again'}</button>
+              ) : null}
+              {data.text.has_source_pdf ? <span id={`stored-hint-${text.id}`} className="text-xs text-slate-600 dark:text-slate-300">Uses {data.text.source_pdf_name || 'the stored source PDF'}, already saved with this text; nothing is uploaded again. Each page is a model call on your allowance.</span> : null}
+            </div>
+          )}
           <QuotaLine />
         </section>
       ) : null}
