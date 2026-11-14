@@ -14,7 +14,7 @@ import { useShortcut } from '../hooks/useShortcuts';
  * uses this full text and page edits no longer change the export, until
  * "Use the pages again" (the full text stays in its version history).
  */
-export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange, restoreDraft = null, onRestoreTaken }) {
+export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange, restoreDraft = null, onRestoreTaken, onCompiledChange }) {
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(undefined); // undefined: loading; null: none saved
@@ -52,6 +52,7 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
       savedRef.current = draft;
       setVersionKey((k) => k + 1);
       setStatus('Full text saved. The export uses it.');
+      onCompiledChange?.();
     } catch (e) { setError(e); }
   };
   const region = useRef(null);
@@ -65,12 +66,13 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
       setVersionKey((k) => k + 1);
       await load({ keepEdit: false });
       setStatus('The export uses the page texts again.');
+      onCompiledChange?.();
     } catch (e) { setError(e); }
   };
 
   const editing = draft !== null;
   return (
-    <section aria-labelledby={`fulltext-${textId}`} className="mt-6 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+    <section id={`fulltext-section-${textId}`} aria-labelledby={`fulltext-${textId}`} className="mt-6 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
       <h2 id={`fulltext-${textId}`} className="m-0 text-base">
         <button type="button" className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <span>Full text{saved ? ' (edited, used by the export)' : ''}</span><span aria-hidden="true">{open ? '−' : '+'}</span>
@@ -105,7 +107,7 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
                   <span role="status" className="text-slate-600 dark:text-slate-300">{status}</span>
                 </div>
               ) : null}
-              <VersionHistory textId={textId} type="compiled" canRestore={canEdit} refreshKey={versionKey} dirty={dirty} heading="Version history of the full text" onRestored={() => { setVersionKey((k) => k + 1); load({ keepEdit: false }).catch(setError); }} />
+              <VersionHistory textId={textId} type="compiled" canRestore={canEdit} refreshKey={versionKey} dirty={dirty} heading="Version history of the full text" onRestored={() => { setVersionKey((k) => k + 1); load({ keepEdit: false }).catch(setError); onCompiledChange?.(); }} />
             </>
           )}
         </div>

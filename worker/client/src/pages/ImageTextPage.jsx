@@ -11,7 +11,7 @@ import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
-import { runOcr, translateText } from '../lib/tasks';
+import { exportSource, runOcr, translateText } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -176,9 +176,12 @@ export default function ImageTextPage({ data, reload }) {
     } catch (e) { setError(e); }
   };
 
+  const [pageStatus, setPageStatus] = useState('');
+  useEffect(() => { setPageStatus(''); }, [page?.id]);
   const savePage = async () => {
     try {
       await api.post(`/api/texts/${text.id}/pages/${page.id}`, { text: draft });
+      setPageStatus(text.has_compiled ? `Page ${page.page_number} saved. The export still uses the edited full text, so this change is not in the export.` : `Page ${page.page_number} saved.`);
       reload();
       return true;
     } catch (e) { setError(e); return false; }
@@ -256,12 +259,18 @@ export default function ImageTextPage({ data, reload }) {
             <img src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} className="max-h-[70vh] w-full rounded-md border border-slate-200 object-contain dark:border-slate-700" />
             <div className="flex flex-col gap-2">
               <label className="label" htmlFor="page-text">Text of page {page.page_number}{page.ocr_model ? `, read by ${page.ocr_model}` : ''}</label>
-              <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => setDraft(e.target.value)} />
+              {text.has_compiled ? (
+                <p id="page-export-note" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+                  The export uses the edited full text, not the page texts: changes saved here do not reach the export. Edit the <a className="underline" href={`#fulltext-section-${text.id}`}>full text</a>, or choose “Use the pages again” there.
+                </p>
+              ) : null}
+              <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} aria-describedby={text.has_compiled ? 'page-export-note' : undefined} onChange={(e) => { setDraft(e.target.value); setPageStatus(''); }} />
               {conflict ? <details className="text-sm"><summary>Model text that was not saved (the page was edited meanwhile)</summary><pre className="whitespace-pre-wrap">{conflict}</pre><button type="button" className="btn-quiet mt-1" onClick={() => setDraft(conflict)}>Use the model text</button></details> : null}
               {canEdit ? (
                 <div className="flex flex-wrap gap-2">
-                  <button className="btn-primary" type="button" onClick={savePage} disabled={draft === (page.ocr_text ?? '')}>Save page</button>
+                  <button className="btn-primary" type="button" onClick={savePage} disabled={draft === (page.ocr_text ?? '')} aria-describedby={text.has_compiled ? 'page-export-note' : undefined}>Save page</button>
                   <button className="btn-quiet" type="button" onClick={ocrOne} disabled={!!busy || !!run}>Read this page again</button>
+                  <span role="status" className="self-center text-sm text-slate-600 dark:text-slate-300">{pageStatus}</span>
                   <button className="btn-danger" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this page?', message: `Delete page ${page.page_number} (${page.filename}), its image and its saved versions? This cannot be undone.`, confirmLabel: 'Delete page', danger: true }))) return; await api.del(`/api/texts/${text.id}/pages/${page.id}`); reload(); refresh(); }}>Delete page</button>
                 </div>
               ) : null}
@@ -285,7 +294,8 @@ export default function ImageTextPage({ data, reload }) {
               <label>From <select className="field inline-block w-auto" value={langs.source} onChange={(e) => setLangs({ ...langs, source: e.target.value })}><option value="auto-detect">detect</option>{LANGS.map((l) => <option key={l}>{l}</option>)}</select></label>
               <label>to <select className="field inline-block w-auto" value={langs.target} onChange={(e) => setLangs({ ...langs, target: e.target.value })}>{LANGS.map((l) => <option key={l}>{l}</option>)}</select></label>
               <button className="btn-quiet" type="button" disabled={!!busy} onClick={async () => {
-                const source = pages.filter((p) => p.ocr_text).map((p) => p.ocr_text).join('\n\n---\n\n');
+                let source;
+                try { source = (await exportSource({ textId: text.id, hasCompiled: text.has_compiled, pages })).text; } catch (e) { setError(e); return; }
                 if (!source) return;
                 try { setTranslation(await translateText({ textId: text.id, text: source, source: langs.source, target: langs.target, onProgress: ({ done, total }) => setBusy(`Translating part ${Math.min(done + 1, total)} of ${total}`) })); } catch (e) { setError(e); } finally { setBusy(null); }
               }}>Translate</button>
@@ -294,7 +304,7 @@ export default function ImageTextPage({ data, reload }) {
           {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
         </div>
       </section>
-      <FullTextPanel textId={text.id} canEdit={canEdit} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} onDraftChange={setFullDraft} restoreDraft={fullRestore} onRestoreTaken={() => setFullRestore(null)} />
+      <FullTextPanel textId={text.id} canEdit={canEdit} onCompiledChange={reload} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} onDraftChange={setFullDraft} restoreDraft={fullRestore} onRestoreTaken={() => setFullRestore(null)} />
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
       <TextSettingsPanel textId={text.id} kind="image" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
