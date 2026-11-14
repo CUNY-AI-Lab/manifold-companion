@@ -396,6 +396,20 @@ describe("split and merge", () => {
     expect((await json(res)).error.code).toBe("page_limit_reached");
   });
 
+  it("split and merge keep each copied page's image type and the model that read it", async () => {
+    const pid = await createProject(ALICE), tid = await createText(ALICE, pid, "Book");
+    const png = await seedPage(tid, { filename: "1.png", ocr: "one", imageBytes: 10, pageNumber: 1 });
+    await seedPage(tid, { filename: "2.jpg", ocr: "two", imageBytes: 10, pageNumber: 2 });
+    await env.DB.prepare("UPDATE pages SET image_type = 'image/png', ocr_model = 'model-a' WHERE id = ?1").bind(png).run();
+    const { texts } = await json(await put(`/texts/${tid}/split`, { splits: [{ name: "Part 1", pages: [1] }, { name: "Part 2", pages: [2] }] }, ALICE, "POST"));
+    const copied = await env.DB.prepare("SELECT image_type, ocr_model FROM pages WHERE text_id = ?1").bind(texts[0].id).first<{ image_type: string; ocr_model: string }>();
+    expect(copied).toEqual({ image_type: "image/png", ocr_model: "model-a" });
+    expect((await json(await call(api(`/texts/${texts[0].id}`)))).pages[0].ocr_model).toBe("model-a");
+    const res = await put(`/projects/${pid}/texts/merge`, { textIds: [texts[0].id, texts[1].id], name: "Both" }, ALICE, "POST");
+    const merged = await env.DB.prepare("SELECT filename, image_type, ocr_model FROM pages WHERE text_id = ?1 ORDER BY page_number").bind((await json(res)).text.id).all();
+    expect(merged.results).toEqual([{ filename: "t1_1.png", image_type: "image/png", ocr_model: "model-a" }, { filename: "t2_2.jpg", image_type: null, ocr_model: null }]);
+  });
+
   it("merge combines pages in the given order with collision-free names", async () => {
     const pid = await createProject(ALICE);
     const a = await createText(ALICE, pid, "A"), b = await createText(ALICE, pid, "B");

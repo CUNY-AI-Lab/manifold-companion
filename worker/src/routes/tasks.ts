@@ -14,6 +14,7 @@ import { formulaRepairTask, MAX_TRANSLATE_CHUNK_CHARS, ocrTask, pageHtmlTask, pa
 import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
 import { isUuid, nowIso } from "../util";
 import type { AppEnv } from "../app";
+import { baseRev, contentRev, requireBase, textRev } from "../revisions";
 import { logger, terminalFor } from "../logging";
 import type { MiddlewareHandler } from "hono";
 
@@ -179,7 +180,7 @@ async function sourceText(env: AppEnv["Bindings"], ctx: { text: TextRow; project
 
 taskRoutes.get("/:id/summary", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
-  return c.json({ summary: ctx.text.summary });
+  return c.json({ summary: ctx.text.summary, rev: await textRev(ctx.text.summary) });
 });
 
 taskRoutes.put("/:id/summary", async (c) => {
@@ -187,10 +188,13 @@ taskRoutes.put("/:id/summary", async (c) => {
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
   if (typeof body.summary !== "string") throw E.badRequest("summary must be a string.");
   if (byteLength(body.summary) > CAPS.summaryBytes) throw E.tooLarge(`summary is larger than ${CAPS.summaryBytes} bytes.`);
-  await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3").bind(body.summary, nowIso(), ctx.text.id).run();
+  // The summary is not versioned: an edit from a stale copy is refused (base_rev), and the write is a compare-and-set.
+  await requireBase(baseRev(body), await textRev(ctx.text.summary), async () => ({ saved_at: ctx.text.updated_at, saved_by: null }));
+  const written = await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3 AND summary IS ?4").bind(body.summary, nowIso(), ctx.text.id, ctx.text.summary).run();
+  if (written.meta.changes !== 1) throw E.conflict("This text was changed by someone else. Reload and try again.", "edit_conflict");
   await touchProject(c.env.DB, ctx.project.id);
   await reindexText(c.env, ctx.text.id);
-  return c.json({ summary: body.summary });
+  return c.json({ summary: body.summary, rev: await textRev(body.summary) });
 });
 
 taskRoutes.post("/:id/summary", logged("/{id}/summary"), async (c) => {
@@ -204,10 +208,21 @@ taskRoutes.post("/:id/summary", logged("/{id}/summary"), async (c) => {
   const { task, truncatedInput: truncated } = summaryTask(model, source, language);
   const result = await runChat(c.env, principal, c.req.raw, task);
   const summary = parseSummary(result.text);
-  await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3").bind(summary, nowIso(), ctx.text.id).run();
-  await touchProject(c.env.DB, ctx.project.id);
+  const paid = { summary, model: model.id, truncated_input: truncated, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId };
+  // Compare-and-set against the summary read BEFORE the model call (up to 90 s), and only while
+  // the text is still in this project: a hand edit made meanwhile wins, and a text deleted or
+  // moved meanwhile is not reported as summarised.
+  const now = nowIso();
+  const written = await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3 AND project_id = ?4 AND summary IS ?5").bind(summary, now, ctx.text.id, ctx.project.id, ctx.text.summary).run();
+  if (written.meta.changes !== 1) {
+    const still = await c.env.DB.prepare("SELECT 1 AS x FROM texts WHERE id = ?1 AND project_id = ?2").bind(ctx.text.id, ctx.project.id).first();
+    if (!still) throw new AppError({ code: "text_gone", status: 410, message: "This text was deleted or moved to another project while the summary was being written, so the summary was not saved." });
+    // The (already paid for) summary is handed back so the person can compare and choose.
+    throw new AppError({ code: "edit_conflict", status: 409, message: "The summary was edited while the model was writing it. The edit was kept; the model's summary is included so you can compare.", result: paid });
+  }
+  await touchProject(c.env.DB, ctx.project.id, now);
   await reindexText(c.env, ctx.text.id);
-  return c.json({ summary, model: model.id, truncated_input: truncated, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId });
+  return c.json(paid);
 });
 
 // ---- translation (the client drives chunking) -------------------------------
@@ -227,7 +242,7 @@ taskRoutes.post("/:id/translate-chunk", logged("/{id}/translate-chunk"), async (
 
 taskRoutes.get("/:id/translation", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
-  return c.json({ translation: await getContent(c.env, ctx.text.translation_key), source_language: ctx.text.source_language, target_language: ctx.text.target_language });
+  return c.json({ translation: await getContent(c.env, ctx.text.translation_key), source_language: ctx.text.source_language, target_language: ctx.text.target_language, rev: contentRev(ctx.text.translation_key) });
 });
 
 taskRoutes.put("/:id/translation", async (c) => {
@@ -235,8 +250,10 @@ taskRoutes.put("/:id/translation", async (c) => {
   const body = await readJsonObject(c.req.raw, CAPS.documentBodyBytes);
   if (typeof body.translation !== "string") throw E.badRequest("translation must be a string.");
   if (byteLength(body.translation) > CAPS.translationBytes) throw E.tooLarge(`The translation is larger than ${CAPS.translationBytes} bytes.`);
-  await writeContent(c.env, ctx.project, ctx.text, "translation", body.translation, c.get("principal").subject);
-  return c.json({ ok: true });
+  // The translation is not versioned, so a save from a stale copy would lose the other edit outright: refused when base_rev is sent.
+  await requireBase(baseRev(body), contentRev(ctx.text.translation_key), async () => ({ saved_at: ctx.text.updated_at, saved_by: null }));
+  const { rev } = await writeContent(c.env, ctx.project, ctx.text, "translation", body.translation, c.get("principal").subject);
+  return c.json({ ok: true, rev });
 });
 
 // ---- formula repair --------------------------------------------------------

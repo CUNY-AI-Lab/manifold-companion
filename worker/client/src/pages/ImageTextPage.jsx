@@ -18,6 +18,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import useFileDrop, { DropOverlay, sortDropped } from '../hooks/useFileDrop';
 import { DraftBanner, useDraftKeeper, useLeaveGuard, useStoredDraft } from '../hooks/useUnsaved';
 import { useShortcut } from '../hooks/useShortcuts';
+import { saveFromBase } from '../lib/stale-save';
 import { draftDiffers, savedChangedSince } from '../lib/drafts';
 
 const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
@@ -176,9 +177,14 @@ export default function ImageTextPage({ data, reload }) {
     } catch (e) { setError(e); }
   };
 
+  // Page id -> [rev a save was based on, rev it produced]: a second save before the reload lands is based on our own save.
+  const savedRevs = useRef({});
   const savePage = async () => {
     try {
-      await api.post(`/api/texts/${text.id}/pages/${page.id}`, { text: draft });
+      const own = savedRevs.current[page.id];
+      const base = own && own[0] === page.rev ? own[1] : page.rev;
+      const r = await saveFromBase({ send: (base_rev) => api.post(`/api/texts/${text.id}/pages/${page.id}`, { text: draft, base_rev }), base, confirm, what: `page ${page.page_number}` });
+      savedRevs.current[page.id] = [page.rev, r.rev];
       reload();
       return true;
     } catch (e) { setError(e); return false; }

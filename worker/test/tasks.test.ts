@@ -358,6 +358,43 @@ describe("summary, translation chunk, formula repair", () => {
     expect(sent.messages[1].content).toContain("Once upon a time.");
   });
 
+  it("a summary edited while the model was writing is kept; the paid summary comes back with the 409", async () => {
+    let tidRef = "";
+    const e = await gatewayEnv({
+      chat: async () => {
+        await call(api(`/texts/${tidRef}/summary`), { method: "PUT", body: { summary: "Written by hand" }, env: e });
+        return { text: "Model summary." };
+      },
+    });
+    const pid = await createProject(ALICE);
+    const tid = await createText(ALICE, pid);
+    tidRef = tid;
+    await env.DB.prepare("INSERT INTO pages (id, text_id, filename, page_number, ocr_text) VALUES (?1, ?2, 'p.jpg', 1, 'Some page text')").bind(crypto.randomUUID(), tid).run();
+    const res = await call(api(`/texts/${tid}/summary`), { method: "POST", body: {}, env: e });
+    expect(res.status).toBe(409);
+    const body = await json(res);
+    expect(body.error.code).toBe("edit_conflict");
+    expect(body.result).toMatchObject({ summary: "Model summary.", truncated_input: false });
+    expect((await json(await call(api(`/texts/${tid}/summary`), { env: e }))).summary).toBe("Written by hand");
+  });
+
+  it("a text deleted while its summary was being written is not reported as summarised", async () => {
+    let tidRef = "";
+    const e = await gatewayEnv({
+      chat: async () => {
+        await call(api(`/texts/${tidRef}`), { method: "DELETE", env: e });
+        return { text: "Model summary." };
+      },
+    });
+    const pid = await createProject(ALICE);
+    const tid = await createText(ALICE, pid);
+    tidRef = tid;
+    await env.DB.prepare("INSERT INTO pages (id, text_id, filename, page_number, ocr_text) VALUES (?1, ?2, 'p.jpg', 1, 'Some page text')").bind(crypto.randomUUID(), tid).run();
+    const res = await call(api(`/texts/${tid}/summary`), { method: "POST", body: {}, env: e });
+    expect(res.status).toBe(410);
+    expect((await json(res)).error.code).toBe("text_gone");
+  });
+
   it("summary with no text yet is refused before any call", async () => {
     const e = await gatewayEnv();
     const { tid } = await imagePage(ALICE, e);

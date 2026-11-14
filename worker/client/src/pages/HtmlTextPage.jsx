@@ -24,6 +24,7 @@ import useFileDrop, { DropOverlay } from '../hooks/useFileDrop';
 import { DraftBanner, useDraftKeeper, useLeaveGuard, useStoredDraft } from '../hooks/useUnsaved';
 import { useShortcut } from '../hooks/useShortcuts';
 import { draftDiffers, savedChangedSince } from '../lib/drafts';
+import { saveFromBase } from '../lib/stale-save';
 
 /** "1, 3-5" -> Set {1,3,4,5} */
 export function parsePages(spec) {
@@ -83,7 +84,8 @@ export default function HtmlTextPage({ data, reload }) {
   useEffect(() => { if (dirty) setOffer(false); }, [dirty]);
   const showDraft = offer && html !== null && stored?.target.kind === 'html' && draftDiffers(stored, saved);
 
-  const loadHtml = () => api.get(`/api/texts/${text.id}/html`).then((r) => { setHtml(r.html_content); setSaved(r.html_content); }, setError);
+  const htmlRev = useRef(undefined); // the rev of the HTML as loaded, converted or saved here (stale-save check)
+  const loadHtml = () => api.get(`/api/texts/${text.id}/html`).then((r) => { htmlRev.current = r.rev; setHtml(r.html_content); setSaved(r.html_content); }, setError);
   const loadFigures = async () => {
     const { figures: list } = await api.get(`/api/texts/${text.id}/figures`);
     setFigures(list);
@@ -131,6 +133,7 @@ export default function HtmlTextPage({ data, reload }) {
       setVersionKey((k) => k + 1);
       done.current = new Map();
       pageWarnings.current = new Map();
+      htmlRev.current = r.rev;
       setHtml(r.html);
       setSaved(r.html);
       reload();
@@ -143,7 +146,8 @@ export default function HtmlTextPage({ data, reload }) {
   const save = async () => {
     setFigureNote('');
     try {
-      const r = await api.put(`/api/texts/${text.id}/html`, { html_content: html });
+      const r = await saveFromBase({ send: (base_rev) => api.put(`/api/texts/${text.id}/html`, { html_content: html, base_rev }), base: htmlRev.current, confirm, what: 'the HTML' });
+      htmlRev.current = r.rev;
       if (r.sanitized) await loadHtml();
       else setSaved(html);
       setVersionKey((k) => k + 1);

@@ -9,6 +9,7 @@ import { E } from "../errors";
 import { deleteTextObjects, splitText } from "../text-ops";
 import { deleteRowAndRelease } from "../storage";
 import { isUuid, moveId, nowIso } from "../util";
+import { baseRev, contentRev, lastSave, requireBase, textRev } from "../revisions";
 import type { AppEnv } from "../app";
 
 export const textRoutes = new Hono<AppEnv>();
@@ -41,7 +42,8 @@ interface PageRow { id: string; text_id: string; filename: string; page_number: 
 
 async function loadPages(db: D1Database, textId: string) {
   const rows = await db.prepare("SELECT id, text_id, filename, page_number, ocr_text, ocr_model, processed_at, image_key, image_bytes FROM pages WHERE text_id = ?1 ORDER BY page_number, rowid").bind(textId).all<PageRow>();
-  return rows.results.map(({ image_key, ...p }) => ({ ...p, has_image: image_key !== null }));
+  // rev: what a page save sends back as base_rev (src/revisions.ts).
+  return Promise.all(rows.results.map(async ({ image_key, ...p }) => ({ ...p, has_image: image_key !== null, rev: await textRev(p.ocr_text) })));
 }
 
 async function loadPage(db: D1Database, textId: string, pageId: string): Promise<PageRow> {
@@ -55,7 +57,7 @@ async function loadPage(db: D1Database, textId: string, pageId: string): Promise
 
 textRoutes.get("/:id", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
-  return c.json({ text: publicText(ctx.text), pages: await loadPages(c.env.DB, ctx.text.id), project_type: ctx.project.project_type, role: ctx.role });
+  return c.json({ text: { ...publicText(ctx.text), summary_rev: await textRev(ctx.text.summary) }, pages: await loadPages(c.env.DB, ctx.text.id), project_type: ctx.project.project_type, role: ctx.role });
 });
 
 textRoutes.put("/:id", async (c) => {
@@ -68,10 +70,14 @@ textRoutes.put("/:id", async (c) => {
     if (name === "") throw E.badRequest("name cannot be empty.");
     sets.push("name = ?"); values.push(name);
   }
+  const guards: string[] = [];
+  const guardValues: unknown[] = [];
   if (body.summary !== undefined) {
     if (body.summary !== null && typeof body.summary !== "string") throw E.badRequest("summary must be a string or null.");
     if (typeof body.summary === "string" && byteLength(body.summary) > CAPS.summaryBytes) throw E.tooLarge(`summary is larger than ${CAPS.summaryBytes} bytes.`);
+    await requireBase(baseRev(body), await textRev(ctx.text.summary), async () => ({ saved_at: ctx.text.updated_at, saved_by: null }));
     sets.push("summary = ?"); values.push(body.summary);
+    guards.push("summary IS ?"); guardValues.push(ctx.text.summary);
   }
   for (const key of ["source_language", "target_language"] as const) {
     if (body[key] !== undefined) {
@@ -86,11 +92,13 @@ textRoutes.put("/:id", async (c) => {
   }
   if (sets.length === 0) throw E.badRequest("Nothing to update.");
   const now = nowIso();
-  await c.env.DB.prepare(`UPDATE texts SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`).bind(...values, now, ctx.text.id).run();
+  // RETURNING, not meta.changes: a rename fires the FTS trigger, whose writes are counted in changes.
+  const written = await c.env.DB.prepare(`UPDATE texts SET ${sets.join(", ")}, updated_at = ? WHERE id = ?${guards.map((g) => ` AND ${g}`).join("")} RETURNING id`).bind(...values, now, ctx.text.id, ...guardValues).all();
+  if (written.results.length !== 1) throw E.conflict("This text was changed by someone else. Reload and try again.", "edit_conflict");
   await touchProject(c.env.DB, ctx.project.id, now);
   if (name !== undefined || body.summary !== undefined) await reindexText(c.env, ctx.text.id);
-  const fresh = await c.env.DB.prepare("SELECT * FROM texts WHERE id = ?1").bind(ctx.text.id).first<TextRow>();
-  return c.json({ text: publicText(fresh as TextRow) });
+  const fresh = (await c.env.DB.prepare("SELECT * FROM texts WHERE id = ?1").bind(ctx.text.id).first<TextRow>()) as TextRow;
+  return c.json({ text: { ...publicText(fresh), summary_rev: await textRev(fresh.summary) } });
 });
 
 textRoutes.delete("/:id", async (c) => {
@@ -144,8 +152,9 @@ textRoutes.post("/:id/pages/:pageId", async (c) => {
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
   if (typeof body.text !== "string") throw E.badRequest("Text content is required.");
   const page = await loadPage(c.env.DB, ctx.text.id, c.req.param("pageId") as string);
+  await requireBase(baseRev(body), await textRev(page.ocr_text), () => lastSave(c.env.DB, ctx.text.id, "page", page.processed_at, page.filename));
   await writePageText(c.env, ctx.project, ctx.text.id, page, body.text, c.get("principal").subject);
-  return c.json({ ok: true });
+  return c.json({ ok: true, rev: await textRev(body.text) });
 });
 
 textRoutes.delete("/:id/pages/:pageId", async (c) => {
@@ -169,7 +178,7 @@ textRoutes.get("/:id/result", async (c) => {
 
 textRoutes.get("/:id/compiled", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
-  return c.json({ text: await getContent(c.env, ctx.text.compiled_key), updated_at: ctx.text.updated_at });
+  return c.json({ text: await getContent(c.env, ctx.text.compiled_key), updated_at: ctx.text.updated_at, rev: contentRev(ctx.text.compiled_key) });
 });
 
 textRoutes.post("/:id/save", async (c) => {
@@ -177,9 +186,10 @@ textRoutes.post("/:id/save", async (c) => {
   const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
   if (typeof body.text !== "string") throw E.badRequest("Text content is required.");
   if (byteLength(body.text) > CAPS.compiledBytes) throw E.tooLarge(`Text is larger than ${CAPS.compiledBytes} bytes.`);
-  await writeContent(c.env, ctx.project, ctx.text, "compiled", body.text, c.get("principal").subject);
+  await requireBase(baseRev(body), contentRev(ctx.text.compiled_key), () => lastSave(c.env.DB, ctx.text.id, "compiled", ctx.text.updated_at));
+  const { rev } = await writeContent(c.env, ctx.project, ctx.text, "compiled", body.text, c.get("principal").subject);
   await reindexText(c.env, ctx.text.id);
-  return c.json({ ok: true });
+  return c.json({ ok: true, rev });
 });
 
 // Back to the pages: the export uses the page texts again; the full text is kept as a version.
@@ -200,6 +210,7 @@ textRoutes.get("/:id/html", async (c) => {
     pdf_meta: ctx.text.pdf_meta,
     formula_repair_status: ctx.text.formula_repair_status,
     updated_at: ctx.text.updated_at,
+    rev: contentRev(ctx.text.html_key),
   });
 });
 
@@ -209,6 +220,7 @@ textRoutes.put("/:id/html", async (c) => {
   const body = await readJsonObject(c.req.raw, CAPS.documentBodyBytes);
   if (body.html_content === undefined) throw E.badRequest("HTML content is required.");
   const clean = prepareHtml(body.html_content);
+  await requireBase(baseRev(body), contentRev(ctx.text.html_key), () => lastSave(c.env.DB, ctx.text.id, "html", ctx.text.updated_at));
   const extra: { sql: string; value: unknown }[] = [];
   if (body.pdf_meta !== undefined) {
     const meta = JSON.stringify(body.pdf_meta);
@@ -222,9 +234,9 @@ textRoutes.put("/:id/html", async (c) => {
   // The reason is a label on the version of the content being replaced (the client says whether this is a conversion).
   const reason = body.reason === undefined ? "save" : body.reason;
   if (reason !== "save" && reason !== "conversion") throw E.badRequest("reason must be save or conversion.");
-  const { bytes } = await writeContent(c.env, ctx.project, ctx.text, "html", clean, c.get("principal").subject, { extraSets: extra, reason });
+  const { bytes, rev } = await writeContent(c.env, ctx.project, ctx.text, "html", clean, c.get("principal").subject, { extraSets: extra, reason });
   await reindexText(c.env, ctx.text.id, { html: clean });
-  return c.json({ ok: true, html_bytes: bytes, sanitized: clean !== body.html_content });
+  return c.json({ ok: true, html_bytes: bytes, sanitized: clean !== body.html_content, rev });
 });
 
 // ---- metadata & settings ---------------------------------------------------

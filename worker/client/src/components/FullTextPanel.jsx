@@ -6,6 +6,7 @@ import VersionHistory from './VersionHistory';
 import { ErrorNote } from './ui';
 import { useDraftKeeper } from '../hooks/useUnsaved';
 import { useShortcut } from '../hooks/useShortcuts';
+import { saveFromBase } from '../lib/stale-save';
 
 /**
  * The whole text of an image text in one editor (the legacy compiled text).
@@ -24,11 +25,13 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
   const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
   const savedRef = useRef(undefined);
+  const revRef = useRef(undefined); // the rev of the full text as loaded or last saved here (stale-save check)
   // A reload (pages changed, a restore) keeps an unsaved edit; otherwise the editor shows what is saved.
   const load = async ({ keepEdit = true } = {}) => {
     const [c, r] = await Promise.all([api.get(`/api/texts/${textId}/compiled`), api.get(`/api/texts/${textId}/result`)]);
     const before = savedRef.current;
     savedRef.current = c.text;
+    revRef.current = c.rev;
     setSaved(c.text);
     setJoined(r.text);
     setDraft((d) => (keepEdit && d !== null && d !== (before ?? null) ? d : c.text));
@@ -47,7 +50,8 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
   const save = async () => {
     setError(null);
     try {
-      await api.post(`/api/texts/${textId}/save`, { text: draft });
+      const r = await saveFromBase({ send: (base_rev) => api.post(`/api/texts/${textId}/save`, { text: draft, base_rev }), base: revRef.current, confirm, what: 'the full text' });
+      revRef.current = r.rev;
       setSaved(draft);
       savedRef.current = draft;
       setVersionKey((k) => k + 1);
