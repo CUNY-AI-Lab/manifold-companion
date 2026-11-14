@@ -10,6 +10,7 @@ import SummaryPanel from '../components/SummaryPanel';
 import TranslationPanel from '../components/TranslationPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import { ScanLightbox, ScanViewer } from '../components/ScanViewer';
+import MarkdownToolbar, { markdownKeys } from '../components/MarkdownToolbar';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
@@ -264,7 +265,8 @@ export default function ImageTextPage({ data, reload }) {
                   The export uses the edited full text, not the page texts: changes saved here do not reach the export. Edit the <a className="underline" href={`#fulltext-section-${text.id}`}>full text</a>, or choose “Use the pages again” there.
                 </p>
               ) : null}
-              <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} aria-describedby={text.has_compiled ? 'page-export-note' : undefined} onChange={(e) => { setDraft(e.target.value); setPageStatus(''); }} />
+              {canEdit ? <MarkdownToolbar textareaRef={pageText} controls="page-text" onChange={(v) => { setDraft(v); setPageStatus(''); }} /> : null}
+              <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} aria-describedby={text.has_compiled ? 'page-export-note' : undefined} onKeyDown={canEdit ? (e) => markdownKeys(e, pageText, setDraft) : undefined} onChange={(e) => { setDraft(e.target.value); setPageStatus(''); }} />
               {conflict ? <details className="text-sm"><summary>Model text that was not saved (the page was edited meanwhile)</summary><pre className="whitespace-pre-wrap">{conflict}</pre><button type="button" className="btn-quiet mt-1" onClick={() => setDraft(conflict)}>Use the model text</button></details> : null}
               {canEdit ? (
                 <div className="flex flex-wrap gap-2">

@@ -207,3 +207,56 @@ test('the scan zooms and moves (buttons, keys, wheel, drag) and opens full scree
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Full screen' })).toBeFocused();
 });
+
+test('the page editor has a Markdown toolbar (and Ctrl/Cmd+B, I); the visual editor has underline and strikethrough', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { text } = await imageText(page, api, ['Cara mamma\nsiamo arrivati']);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const box = page.getByLabel(/^Text of page 1/);
+  const bar = page.getByRole('toolbar', { name: 'Format the page text (Markdown)' });
+  await expect(bar).toBeVisible();
+  const select = (from, to) => box.evaluate((el, [a, b]) => { el.focus(); el.setSelectionRange(a, b); }, [from, to]);
+  await select(0, 4);
+  await bar.getByRole('button', { name: 'Bold' }).click();
+  await expect(box).toHaveValue('**Cara** mamma\nsiamo arrivati');
+  // The browser's own undo takes it back.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect(box).toHaveValue('Cara mamma\nsiamo arrivati');
+  await select(5, 10);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+i' : 'Control+i');
+  await expect(box).toHaveValue('Cara *mamma*\nsiamo arrivati');
+  await select(0, 0);
+  await bar.getByRole('button', { name: 'Heading 2' }).click();
+  await expect(box).toHaveValue('## Cara *mamma*\nsiamo arrivati');
+  await select(17, 17);
+  await bar.getByRole('button', { name: 'Quotation' }).click();
+  await expect(box).toHaveValue('## Cara *mamma*\n> siamo arrivati');
+  // One tab stop; arrows move along the toolbar.
+  await bar.getByRole('button', { name: 'Bold' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(bar.getByRole('button', { name: 'Italic' })).toBeFocused();
+  expect(await axe(page, 'markdown toolbar')).toEqual([]);
+  await page.getByRole('button', { name: 'Save page' }).click();
+  expect((await api(`/texts/${text.id}`)).pages[0].ocr_text).toBe('## Cara *mamma*\n> siamo arrivati');
+
+  // Visual editor: underline and strikethrough.
+  const project = (await api('/projects', 'POST', { name: 'Book', project_type: 'pdf_to_html' })).project;
+  const pdf = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Chapter' })).text;
+  await api(`/texts/${pdf.id}/html`, 'PUT', { html_content: '<p>alpha beta</p>' });
+  await page.goto(`/manifold-companion/texts/${pdf.id}`);
+  const editor = page.locator('.mc-editor');
+  await editor.getByText('alpha beta').click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+ArrowLeft' : 'Shift+Home');
+  await page.getByRole('toolbar', { name: 'Formatting' }).getByRole('button', { name: 'Underline' }).click();
+  await expect(editor.locator('u')).toHaveCount(1);
+  await page.getByRole('toolbar', { name: 'Formatting' }).getByRole('button', { name: 'Strikethrough' }).click();
+  await expect(editor.locator('s')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Save HTML' }).click();
+  await expect(page.getByRole('button', { name: 'Save HTML' })).toBeDisabled();
+  const saved = (await api(`/texts/${pdf.id}/html`)).html_content;
+  expect(saved).toMatch(/<u>/);
+  expect(saved).toMatch(/<s>/);
+});

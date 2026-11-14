@@ -60,3 +60,38 @@ describe('languages', () => {
     expect(languageName('xx')).toBe('xx');
   });
 });
+
+import { applyEdit, formatMarkdown } from '../src/lib/markdown-format.js';
+
+describe('Markdown toolbar', () => {
+  const run = (value, start, end, action) => { const e = formatMarkdown(value, start, end, action); return { out: applyEdit(value, e), sel: value === undefined ? null : [e.selStart, e.selEnd] }; };
+  it('bold and italic wrap the selection, leave a trailing space outside, and unwrap again', () => {
+    expect(run('Cara mamma', 0, 4, 'bold')).toEqual({ out: '**Cara** mamma', sel: [2, 6] });
+    expect(run('Cara mamma', 0, 5, 'bold').out).toBe('**Cara** mamma');
+    expect(run('**Cara** mamma', 2, 6, 'bold').out).toBe('Cara mamma');
+    expect(run('**Cara** mamma', 0, 8, 'bold').out).toBe('Cara mamma');
+    expect(run('Cara mamma', 5, 10, 'italic').out).toBe('Cara *mamma*');
+    expect(run('Cara *mamma*', 6, 11, 'italic').out).toBe('Cara mamma');
+    // Italic inside bold is added, not mistaken for bold's markers.
+    expect(run('**Cara**', 2, 6, 'italic').out).toBe('***Cara***');
+  });
+  it('with nothing selected, the markers go in with the cursor between them', () => {
+    const e = formatMarkdown('ab', 1, 1, 'bold');
+    expect(applyEdit('ab', e)).toBe('a****b');
+    expect([e.selStart, e.selEnd]).toEqual([3, 3]);
+  });
+  it('headings set, change or remove the level of every selected line', () => {
+    expect(run('Title\nbody', 2, 2, 'h1').out).toBe('# Title\nbody');
+    expect(run('# Title\nbody', 2, 2, 'h2').out).toBe('## Title\nbody');
+    expect(run('## Title\nbody', 3, 3, 'h2').out).toBe('Title\nbody');
+    expect(run('one\ntwo\nthree', 0, 7, 'h3').out).toBe('### one\n### two\nthree');
+  });
+  it('quote prefixes every selected line, or removes the prefix when all have it', () => {
+    expect(run('one\ntwo', 0, 7, 'quote').out).toBe('> one\n> two');
+    expect(run('> one\n> two', 0, 11, 'quote').out).toBe('one\ntwo');
+  });
+  it('a separator goes on its own line after the current one', () => {
+    expect(run('para one\npara two', 3, 3, 'separator').out).toBe('para one\n\n---\n\npara two');
+    expect(run('para\n', 5, 5, 'separator').out).toBe('para\n---\n');
+  });
+});

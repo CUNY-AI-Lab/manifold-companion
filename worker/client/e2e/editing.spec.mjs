@@ -299,7 +299,7 @@ test('keyboard shortcuts: a visible list, ? and /, N and P outside fields, Mod+S
   await page.keyboard.press('?');
   const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('table', { name: 'Keyboard shortcuts' }).getByRole('row')).toHaveCount(14);
+  await expect(dialog.getByRole('table', { name: 'Keyboard shortcuts' }).getByRole('row')).toHaveCount(15);
   expect(await axe(page, 'shortcuts dialog')).toEqual([]);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);

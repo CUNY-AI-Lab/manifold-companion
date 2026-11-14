@@ -55,7 +55,7 @@ function imageView(figuresByName, textId) {
 }
 
 /** A toolbar button: the symbol is what is seen; the name (and its keys) is what assistive technology reads and the tooltip shows. */
-function Btn({ label, active, onRun, keys, children, disabled }) {
+export function Btn({ label, active, onRun, keys, children, disabled }) {
   return (
     <button type="button" className={`mc-tool ${active ? 'mc-tool-on' : ''}`} title={keys ? `${label} (${keys})` : label} aria-pressed={active === undefined ? undefined : !!active} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={onRun} tabIndex={-1}>
       <span aria-hidden="true">{children ?? label}</span><span className="sr-only">{label}</span>
@@ -64,7 +64,7 @@ function Btn({ label, active, onRun, keys, children, disabled }) {
 }
 
 /** A toolbar with one tab stop: arrows move between its controls (the ARIA toolbar pattern). */
-function Toolbar({ children, label }) {
+export function Toolbar({ children, label, controls }) {
   const ref = useRef(null);
   useEffect(() => {
     const items = [...ref.current.querySelectorAll('button, select')];
@@ -81,7 +81,7 @@ function Toolbar({ children, label }) {
     items[next].tabIndex = 0;
     items[next].focus();
   };
-  return <div ref={ref} role="toolbar" aria-label={label} aria-orientation="horizontal" className="mc-toolbar" onKeyDown={onKeyDown}>{children}</div>;
+  return <div ref={ref} role="toolbar" aria-label={label} aria-controls={controls} aria-orientation="horizontal" className="mc-toolbar" onKeyDown={onKeyDown}>{children}</div>;
 }
 
 function useModal(onClose) {
@@ -227,6 +227,8 @@ export default function RichEditor({ value, onChange, onFallback, figures, textI
           </select>
           <Btn label="Bold" keys="Ctrl/⌘ B" active={state && markActive(state, schema.marks.strong)} onRun={run(cmd.bold)}><b>B</b></Btn>
           <Btn label="Italic" keys="Ctrl/⌘ I" active={state && markActive(state, schema.marks.em)} onRun={run(cmd.italic)}><i>I</i></Btn>
+          <Btn label="Underline" keys="Ctrl/⌘ U" active={state && markActive(state, schema.marks.u)} onRun={run(cmd.underline)}><u>U</u></Btn>
+          <Btn label="Strikethrough" active={state && markActive(state, schema.marks.s)} onRun={run(cmd.strike)}><s>S</s></Btn>
           <Btn label="Superscript" active={state && markActive(state, schema.marks.sup)} onRun={run(cmd.sup)}>x²</Btn>
           <Btn label="Subscript" active={state && markActive(state, schema.marks.sub)} onRun={run(cmd.sub)}>x₂</Btn>
           <Btn label="Code" keys="Ctrl/⌘ `" active={state && markActive(state, schema.marks.code)} onRun={run(cmd.code)}>{'</>'}</Btn>
