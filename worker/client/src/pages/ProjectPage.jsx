@@ -396,11 +396,11 @@ export default function ProjectPage() {
   const offset = (page - 1) * TEXTS_PER_PAGE;
   const goToPage = (n) => { setChosen([]); navigate(n === 1 ? '?' : `?page=${n}`); };
   // `index` is the text's position in the whole project (the list shows one page of it).
-  const moveText = async (index, dir) => {
+  const moveText = async (index, dir, position) => {
     const t = texts[index - offset];
     setError(null);
     try {
-      const r = await api.post(`/api/projects/${id}/texts/${t.id}/move`, { to: index + 1 + (dir === 'up' ? -1 : 1) });
+      const r = await api.post(`/api/projects/${id}/texts/${t.id}/move`, { to: dir === 'to' ? position : index + 1 + (dir === 'up' ? -1 : 1) });
       setMoved(`${t.name} moved to position ${r.position} of ${r.total}.`);
       focusMoved({ idBase: `move-text-${t.id}`, dir });
       await load();
@@ -434,7 +434,7 @@ export default function ProjectPage() {
         {texts.map((t) => (
           <li key={t.id} className="flex flex-wrap items-center gap-3 p-4">
             {canEdit ? <input type="checkbox" aria-label={`Select ${t.name}`} checked={chosen.includes(t.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, t.id] : chosen.filter((x) => x !== t.id))} /> : null}
-            {canEdit && total > 1 ? <MoveButtons label={t.name} index={offset + texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
+            {canEdit && total > 1 ? <MoveButtons label={t.name} index={offset + texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} positions /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
             {project.project_type === 'pdf_to_html'
               ? <span className="inline-flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300"><span>{t.has_html ? 'Converted' : 'Not converted yet'}</span><SourcePdfCell text={t} canEdit={canEdit} onStored={(msg) => { setMoved(msg); load(); refresh(); }} onError={setError} /></span>

@@ -278,3 +278,38 @@ test('PDF projects: import PDFs as new texts and upload or replace a text’s PD
   await imported.getByRole('link', { name: 'two-pages', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Convert the stored PDF', exact: true })).toBeVisible();
 });
+
+test('move a page or a text straight to a position, from the keyboard', async ({ page, context }) => {
+  await as(context, 'alice');
+  const api = apiOf(page);
+  await page.goto('/manifold-companion/');
+  const project = (await api('/projects', 'POST', { name: 'Positions' })).project;
+  const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Letters' })).text;
+  const png = readFileSync('e2e/fixtures/page.png');
+  for (const n of [1, 2, 3, 4]) {
+    const r = await page.request.fetch(`/manifold-companion/api/texts/${text.id}/pages?filename=p${n}.png&size=${png.length}`, { method: 'POST', headers: { Origin: ORIGIN, 'content-type': 'image/png' }, data: png });
+    expect(r.ok()).toBe(true);
+  }
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const pages = page.getByRole('navigation', { name: 'Pages' });
+  const names = async () => (await api(`/texts/${text.id}`)).pages.map((p) => p.filename);
+  const before = await names();
+  const last = before[3];
+  await pages.getByRole('button', { name: new RegExp(`^Move page 4 \\(${last.replace('.', '\\.')}\\) to a position$`) }).click();
+  await page.getByLabel(/^New position of page 4/).fill('1');
+  await page.keyboard.press('Enter');
+  await expect(page.getByText(`${last} moved to position 1 of 4.`)).toBeAttached();
+  await expect.poll(names).toEqual([last, ...before.slice(0, 3)]);
+  expect(await axe(page)).toEqual([]);
+
+  for (const n of ['Second', 'Third']) await api(`/projects/${project.id}/texts`, 'POST', { name: n });
+  await page.goto(`/manifold-companion/projects/${project.id}`);
+  await page.getByRole('button', { name: 'Move Third to a position' }).click();
+  const pos = page.getByLabel('New position of Third, 1 to 3');
+  await pos.fill('3');
+  await expect(page.getByRole('button', { name: 'Move', exact: true })).toBeDisabled(); // already there
+  await pos.fill('1');
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(page.getByText('Third moved to position 1 of 3.')).toBeVisible();
+  await expect(page.locator('a.doc-title')).toHaveText(['Third', 'Letters', 'Second']);
+});

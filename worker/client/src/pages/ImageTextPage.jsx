@@ -168,11 +168,11 @@ export default function ImageTextPage({ data, reload }) {
     reload();
   };
 
-  const movePage = async (index, dir) => {
+  const movePage = async (index, dir, position) => {
     const p = pages[index];
     setError(null);
     try {
-      const r = await api.post(`/api/texts/${text.id}/pages/${p.id}/move`, { to: index + 1 + (dir === 'up' ? -1 : 1) });
+      const r = await api.post(`/api/texts/${text.id}/pages/${p.id}/move`, { to: dir === 'to' ? position : index + 1 + (dir === 'up' ? -1 : 1) });
       setMoved(`${p.filename} moved to position ${r.position} of ${r.total}.`);
       focusMoved({ idBase: `move-page-${p.id}`, dir });
       reload();
@@ -247,7 +247,7 @@ export default function ImageTextPage({ data, reload }) {
             {pages.map((p, i) => (
               <li key={p.id} className="flex items-center gap-1">
                 <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => selectPage(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button>
-                {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} /> : null}
+                {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} positions /> : null}
               </li>
             ))}
           </ol>
