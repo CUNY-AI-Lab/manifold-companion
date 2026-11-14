@@ -163,9 +163,12 @@ export interface WriteOptions {
  * version snapshot for html and compiled (so "snapshot current before
  * overwrite" is by construction, no copy needed). The pointer swap, the version
  * row and the version-ness are one D1 batch guarded by a compare-and-set on the
- * old pointer: a concurrent writer gets `409 edit_conflict` and nothing is lost.
+ * old pointer: of two writes that read the same pointer, the second gets
+ * `409 edit_conflict`. That only covers writes racing within one request's
+ * read-to-write window; a save from a copy loaded earlier is refused only when
+ * the client sends the `base_rev` it loaded (src/revisions.ts).
  */
-export async function writeContent(env: Env, project: ProjectRow, text: TextRow, kind: ContentKind, content: string, authorSubject: string, opts: WriteOptions = {}): Promise<{ bytes: number }> {
+export async function writeContent(env: Env, project: ProjectRow, text: TextRow, kind: ContentKind, content: string, authorSubject: string, opts: WriteOptions = {}): Promise<{ bytes: number; rev: string }> {
   const cols = KIND_COLS[kind];
   const bytes = byteLength(content);
   const oldKey = text[cols.key] as string | null;
@@ -211,7 +214,7 @@ export async function writeContent(env: Env, project: ProjectRow, text: TextRow,
   if (!versioned && oldKey) await env.FILES.delete(oldKey).catch(() => undefined);
   if (versioned) await pruneVersions(env, project, text.id, kind as "html" | "compiled");
   await touchProject(env.DB, project.id, now);
-  return { bytes };
+  return { bytes, rev: revision };
 }
 
 /**
