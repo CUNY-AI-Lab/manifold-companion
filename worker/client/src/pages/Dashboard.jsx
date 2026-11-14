@@ -15,12 +15,37 @@ export function RetentionBanner({ project }) {
   );
 }
 
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** One list of projects: name, kind and role, counts, the description's start, and the retention warning. */
+function ProjectList({ projects, title }) {
+  if (projects.length === 0) return null;
+  const list = (
+    <ul className="rowlist rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      {projects.map((p) => (
+        <li key={p.id} className="p-4">
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <Link to={`/projects/${p.id}`} className="doc-title text-lg">{p.name}</Link>
+            <span className="text-xs text-slate-600 dark:text-slate-300">{p.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}, {p.role === 'owner' ? 'you own it' : `you are a ${p.role}`}</span>
+            {p.text_count !== undefined ? <span className="text-xs text-slate-600 dark:text-slate-300">{plural(p.text_count, 'text')}{p.project_type === 'pdf_to_html' ? '' : `, ${plural(p.page_count, 'page')}`}</span> : null}
+          </div>
+          {p.description ? <p className="mt-1 line-clamp-2 max-w-prose text-sm text-slate-700 dark:text-slate-200">{p.description}</p> : null}
+          {p.retention.warning ? <div className="mt-2"><RetentionBanner project={p} /></div> : null}
+        </li>
+      ))}
+    </ul>
+  );
+  if (!title) return list;
+  const id = `projects-${title.replace(/\W+/g, '-').toLowerCase()}`;
+  return <section aria-labelledby={id} className="mb-4"><h2 id={id} className="mb-2 text-base">{title}</h2>{list}</section>;
+}
+
 export default function Dashboard() {
   const { session } = useSession();
   const navigate = useNavigate();
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ name: '', project_type: 'image_to_markdown', default_language: 'en' });
+  const [form, setForm] = useState({ name: '', description: '', project_type: 'image_to_markdown', default_language: 'en' });
 
   const [offers, setOffers] = useState([]);
   useEffect(() => { api.get('/api/projects').then((r) => setProjects(r.projects), setError); }, []);
@@ -29,7 +54,7 @@ export default function Dashboard() {
   const create = async (e) => {
     e.preventDefault();
     try {
-      const { project } = await api.post('/api/projects', form);
+      const { project } = await api.post('/api/projects', { ...form, description: form.description.trim() === '' ? undefined : form.description.trim() });
       navigate(`/projects/${project.id}`);
     } catch (err) { setError(err); }
   };
@@ -62,17 +87,10 @@ export default function Dashboard() {
           <p><Link to="/help">More help</Link></p>
         </section>
       ) : (
-        <ul className="rowlist rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-          {projects.map((p) => (
-            <li key={p.id} className="p-4">
-              <div className="flex flex-wrap items-baseline gap-x-3">
-                <Link to={`/projects/${p.id}`} className="doc-title text-lg">{p.name}</Link>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{p.project_type === 'pdf_to_html' ? 'PDF to HTML' : 'Image to Markdown'}, {p.role}</span>
-              </div>
-              {p.retention.warning ? <div className="mt-2"><RetentionBanner project={p} /></div> : null}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ProjectList projects={projects.filter((p) => p.role === 'owner')} title={projects.some((p) => p.role !== 'owner') ? 'Projects you own' : null} />
+          {projects.some((p) => p.role !== 'owner') ? <ProjectList projects={projects.filter((p) => p.role !== 'owner')} title="Shared with you" /> : null}
+        </>
       )}
       <form onSubmit={create} className="mt-6 grid gap-3 rounded-md border border-slate-200 bg-white p-4 sm:grid-cols-4 dark:border-slate-700 dark:bg-slate-800">
         <h2 className="text-base sm:col-span-4">New project</h2>
@@ -84,6 +102,7 @@ export default function Dashboard() {
           </select>
         </label>
         <label><span className="label">Language code</span><input className="field" value={form.default_language} onChange={(e) => setForm({ ...form, default_language: e.target.value })} /></label>
+        <label className="sm:col-span-4"><span className="label">Description (optional)</span><textarea className="field" rows={2} maxLength={2000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
         <div className="sm:col-span-4"><button className="btn-primary" type="submit">Create project</button></div>
       </form>
       <section className="mt-6 space-y-2 text-sm">

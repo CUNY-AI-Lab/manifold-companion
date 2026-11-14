@@ -11,6 +11,7 @@ import { figureKey, pageImageKey, sourcePdfRevisionKey } from "../r2-keys";
 import { commitReservation, deleteRowAndRelease, releaseStatement } from "../storage";
 import { cleanFilename, declaredSize, imageKind, receive, sniffImage, sniffPdf } from "../uploads";
 import { isUuid, newId, nowIso } from "../util";
+import { clearConversion } from "../conversion";
 import type { AppEnv } from "../app";
 
 export const uploadRoutes = new Hono<AppEnv>();
@@ -108,6 +109,8 @@ uploadRoutes.put("/:id/source-pdf", async (c) => {
     await got.release();
     throw error;
   }
+  // Pages kept from the old PDF must never resume into the new one (the fingerprint differs too; this frees the rows).
+  await clearConversion(c.env.DB, text.id).run().catch(() => undefined);
   if (text.source_pdf_key) await c.env.FILES.delete(text.source_pdf_key).catch(() => undefined);
   await touchProject(c.env.DB, project.id);
   return c.json({ ok: true, source_pdf_name: filename, bytes: size }, 201);

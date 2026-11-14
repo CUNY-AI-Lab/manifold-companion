@@ -100,11 +100,32 @@ export function QuotaLine() {
  * so they work from the keyboard; `idBase` gives them stable ids so focus can
  * be put back on the moved item after the list re-renders.
  */
-export function MoveButtons({ label, index, total, onMove, idBase, disabled = false }) {
+/**
+ * Up and down, one step a click. With `positions`, also "Move to position N"
+ * for long moves: onMove(index, 'to', n) with n counted from 1.
+ */
+export function MoveButtons({ label, index, total, onMove, idBase, disabled = false, positions = false }) {
+  const [asking, setAsking] = useState(false);
+  const [to, setTo] = useState('');
+  const n = Number(to);
+  const valid = Number.isInteger(n) && n >= 1 && n <= total && n !== index + 1;
   return (
-    <span className="inline-flex gap-1">
+    <span className="inline-flex flex-wrap items-center gap-1">
       <button id={`${idBase}-up`} type="button" className="btn-icon" aria-label={`Move ${label} up`} title="Move up" disabled={disabled || index === 0} onClick={() => onMove(index, 'up')}><span aria-hidden="true">↑</span></button>
       <button id={`${idBase}-down`} type="button" className="btn-icon" aria-label={`Move ${label} down`} title="Move down" disabled={disabled || index === total - 1} onClick={() => onMove(index, 'down')}><span aria-hidden="true">↓</span></button>
+      {positions && total > 2 ? (
+        <>
+          <button id={`${idBase}-to`} type="button" className="btn-icon" aria-label={`Move ${label} to a position`} aria-expanded={asking} title="Move to a position" disabled={disabled} onClick={() => { setAsking((a) => !a); setTo(''); }}><span aria-hidden="true">⇅</span></button>
+          {asking ? (
+            <form className="inline-flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); if (!valid) return; setAsking(false); onMove(index, 'to', n); }}>
+              <label className="sr-only" htmlFor={`${idBase}-position`}>New position of {label}, 1 to {total}</label>
+              <input id={`${idBase}-position`} className="field w-16 py-0.5" type="number" min="1" max={total} placeholder={String(index + 1)} value={to} onChange={(e) => setTo(e.target.value)} autoFocus />
+              <span className="text-xs">of {total}</span>
+              <button type="submit" className="btn-quiet py-0.5" disabled={!valid}>Move</button>
+            </form>
+          ) : null}
+        </>
+      ) : null}
     </span>
   );
 }

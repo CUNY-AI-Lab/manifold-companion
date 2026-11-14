@@ -13,6 +13,7 @@ import { cleanupDocumentHtml, toDataUri } from "../model-output";
 import { formulaRepairTask, MAX_TRANSLATE_CHUNK_CHARS, ocrTask, pageHtmlTask, parseFormulaRepair, parseOcr, parsePageHtml, parseSummary, parseTranslation, summaryTask, translateTask } from "../task-specs";
 import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
 import { isUuid, nowIso } from "../util";
+import { clearConversion, conversionRun, convertedPages, keepConvertedPage, validSource } from "../conversion";
 import type { AppEnv } from "../app";
 import { baseRev, contentRev, requireBase, textRev } from "../revisions";
 import { logger, terminalFor } from "../logging";
@@ -113,6 +114,22 @@ taskRoutes.post("/:id/pages/:pageId/ocr", logged("/{id}/pages/{pageId}/ocr"), as
 
 const IMAGE_DATA_URI = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
 
+// The pages kept of a conversion in progress from this PDF (see conversion.ts); editors convert, so editors resume.
+taskRoutes.get("/:id/conversion", async (c) => {
+  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
+  if (ctx.project.project_type !== "pdf_to_html") throw E.badRequest("Page conversion belongs to pdf_to_html projects.", "wrong_project_type");
+  const source = c.req.query("source");
+  if (source === undefined) return c.json({ run: await conversionRun(c.env.DB, ctx.text.id) });
+  if (!validSource(source)) throw E.badRequest("source must name the PDF of the run.", "source_invalid");
+  return c.json({ run: await conversionRun(c.env.DB, ctx.text.id), pages: await convertedPages(c.env.DB, ctx.text.id, source) });
+});
+
+taskRoutes.delete("/:id/conversion", async (c) => {
+  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
+  const r = await clearConversion(c.env.DB, ctx.text.id).run();
+  return c.json({ ok: true, cleared: r.meta.changes ?? 0 });
+});
+
 taskRoutes.post("/:id/parse-page", logged("/{id}/parse-page"), async (c) => {
   const principal = c.get("principal");
   const ctx = await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
@@ -145,8 +162,13 @@ taskRoutes.post("/:id/parse-page", logged("/{id}/parse-page"), async (c) => {
   const model = math ? resolveRunModel("html_math", catalog, c.env, modelChoice(body), settings.math_model) : resolveRunModel("html_page", catalog, c.env, modelChoice(body), settings.model);
   const result = await runChat(c.env, principal, c.req.raw, pageHtmlTask(model, { imageDataUri: body.image as string, pageNumber, totalPages, hint, math, thinking: math && thinksOnMath(model, policyFrom(c.env)), figures }, settings));
   const { html, shortOutput, warnings } = parsePageHtml(result.text, pageNumber, hint);
+  // The page is kept for a resume only when the browser names the PDF it came from (and the run fits the caps).
+  let kept = false;
+  if (validSource(body.resume_source) && totalPages !== null) {
+    kept = await keepConvertedPage(c.env.DB, ctx.text.id, { source: body.resume_source, pageNumber, totalPages, math, html, warnings, model: model.id }, limits(c.env).maxProjectPages).catch(() => false);
+  }
   return c.json({
-    html, model: model.id, math,
+    html, model: model.id, math, kept,
     // One attempt only: a suspiciously short result is reported so the person can retry, not retried here.
     short_output: shortOutput,
     // Things to check by eye (figure values read off a graph, list numbering restarted); reported, not retried.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { API, api } from '../api/client';
 import { useSession } from '../api/session.jsx';
-import CommentsPanel from '../components/CommentsPanel';
+import CommentsPanel, { CommentsJumpLink } from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FullTextPanel from '../components/FullTextPanel';
@@ -11,6 +11,8 @@ import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
+import { checkPdfFits } from '../lib/limits';
+import { plural, statusLabel } from '../lib/status';
 import { runOcr, translateText } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
@@ -59,7 +61,7 @@ function SplitPanel({ text, pages }) {
 }
 
 export default function ImageTextPage({ data, reload }) {
-  const { refresh } = useSession();
+  const { refresh, session } = useSession();
   const confirm = useConfirm();
   const { text, pages, role } = data;
   const canEdit = role !== 'viewer';
@@ -123,6 +125,7 @@ export default function ImageTextPage({ data, reload }) {
       try {
         if (isPdf(file)) {
           const pdf = await openPdf(file);
+          await checkPdfFits({ session, projectId: text.project_id, name: file.name, pdfPages: pdf.numPages });
           for (let n = 1; n <= pdf.numPages; n += 1) {
             setBusy(`Rasterising ${file.name}, page ${n} of ${pdf.numPages}`);
             const { blob } = await renderPage(pdf, n);
@@ -166,11 +169,11 @@ export default function ImageTextPage({ data, reload }) {
     reload();
   };
 
-  const movePage = async (index, dir) => {
+  const movePage = async (index, dir, position) => {
     const p = pages[index];
     setError(null);
     try {
-      const r = await api.post(`/api/texts/${text.id}/pages/${p.id}/move`, { to: index + 1 + (dir === 'up' ? -1 : 1) });
+      const r = await api.post(`/api/texts/${text.id}/pages/${p.id}/move`, { to: dir === 'to' ? position : index + 1 + (dir === 'up' ? -1 : 1) });
       setMoved(`${p.filename} moved to position ${r.position} of ${r.total}.`);
       focusMoved({ idBase: `move-page-${p.id}`, dir });
       reload();
@@ -219,7 +222,7 @@ export default function ImageTextPage({ data, reload }) {
       <DropOverlay show={dragging} label={`Drop to add pages to “${text.name}”`} />
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{pages.length} pages, {text.status}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{plural(pages.length, 'page')}, {statusLabel(text.status)}</p>
       {showDraft ? <DraftBanner what={stored.target.kind === 'fulltext' ? 'the full text' : `page ${storedPage.page_number} (${storedPage.filename})`} at={stored.at} savedChanged={stored.target.kind === 'page' && savedChangedSince(stored, storedPage.ocr_text)} onRestore={restoreStored} onDiscard={() => { discard(); setOffer(false); }} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       {busy ? <p role="status" className="text-sm text-cail-azure dark:text-cail-link-dark">{busy}</p> : null}
@@ -250,7 +253,7 @@ export default function ImageTextPage({ data, reload }) {
             {pages.map((p, i) => (
               <li key={p.id} className="flex items-center gap-1">
                 <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium' : ''}`} onClick={() => selectPage(p.id)}>{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</button>
-                {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} /> : null}
+                {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} positions /> : null}
               </li>
             ))}
           </ol>
@@ -262,6 +265,7 @@ export default function ImageTextPage({ data, reload }) {
             <img src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} className="max-h-[70vh] w-full rounded-md border border-slate-200 object-contain dark:border-slate-700" />
             <div className="flex flex-col gap-2">
               <label className="label" htmlFor="page-text">Text of page {page.page_number}{page.ocr_model ? `, read by ${page.ocr_model}` : ''}</label>
+              <CommentsJumpLink textId={text.id} />
               <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => setDraft(e.target.value)} />
               {conflict ? <details className="text-sm"><summary>Model text that was not saved (the page was edited meanwhile)</summary><pre className="whitespace-pre-wrap">{conflict}</pre><button type="button" className="btn-quiet mt-1" onClick={() => setDraft(conflict)}>Use the model text</button></details> : null}
               {canEdit ? (

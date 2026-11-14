@@ -84,6 +84,8 @@ test('figures from the PDF: an embedded picture taken as it is, a vector graph c
   // The figures were uploaded through the figure route: the owner's storage counts them.
   expect((await api('/session')).storage.used_bytes - before).toBeGreaterThanOrEqual(figures.reduce((n, f) => n + f.bytes, 0));
   // The preview shows them (inlined as data: URIs inside the sandboxed frame).
+  // The text has a source PDF, so the PDF is beside the text; the export preview is the other side.
+  await page.getByRole('button', { name: 'As exported' }).click();
   await expect(page.locator('iframe[title="Preview of the HTML"]')).toHaveAttribute('srcdoc', /<img src="data:image\/png;base64,[^"]+" alt="1\. a photograph"/);
   expect(violations).toEqual([]);
 });

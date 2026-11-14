@@ -46,6 +46,19 @@ describe("annotations follow the legacy roles", () => {
     expect((await call(api(`/texts/${tid}/annotations/${id}`), { method: "PUT", as: BOB, body: { body: "edited" } })).status).toBe(200);
     const { id: aliceNote } = await comment(tid, ALICE);
     expect((await call(api(`/texts/${tid}/annotations/${aliceNote}`), { method: "DELETE", as: BOB })).status).toBe(403);
+    // The list says who may delete what, so the page offers Delete only where it works: the author, or the owner on anyone's.
+    const asOwner = (await json(await call(api(`/texts/${tid}/annotations`), { as: ALICE }))).annotations;
+    const asEditor = (await json(await call(api(`/texts/${tid}/annotations`), { as: BOB }))).annotations;
+    expect(Object.fromEntries(asOwner.map((x: any) => [x.id, x.can_delete]))).toEqual({ [id]: true, [aliceNote]: true });
+    expect(Object.fromEntries(asEditor.map((x: any) => [x.id, x.can_delete]))).toEqual({ [id]: true, [aliceNote]: false });
+    const replyAsOwner = (await json(await call(api(`/texts/${tid}/annotations/${id}`), { as: ALICE }))).replies[0];
+    expect(replyAsOwner).toMatchObject({ mine: true, can_delete: true });
+    expect((await json(await call(api(`/texts/${tid}/annotations/${id}`), { as: BOB }))).replies[0]).toMatchObject({ mine: false, can_delete: false });
+    // A reply is deleted on its own; the comment stays.
+    expect((await call(api(`/texts/${tid}/annotations/${replyAsOwner.id}`), { method: "DELETE", as: BOB })).status).toBe(403);
+    expect((await call(api(`/texts/${tid}/annotations/${replyAsOwner.id}`), { method: "DELETE", as: ALICE })).status).toBe(200);
+    expect((await json(await call(api(`/texts/${tid}/annotations/${id}`), { as: ALICE }))).replies).toEqual([]);
+    await post(`/texts/${tid}/annotations/${id}/replies`, { body: "reply again" }, BOB);
     expect((await call(api(`/texts/${tid}/annotations/${id}`), { method: "DELETE", as: ALICE })).status).toBe(200);
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM annotations WHERE text_id = ? AND id != ?").bind(tid, aliceNote).first<any>()).n).toBe(0);
   });

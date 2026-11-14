@@ -62,12 +62,24 @@ export async function translateText({ textId, text, source, target, model, signa
   return translation;
 }
 
+/** A fingerprint of a PDF's bytes: the resume store keeps converted pages under it, so pages of one PDF never resume into another. */
+export async function pdfFingerprint(file, digest = globalThis.crypto?.subtle) {
+  const bytes = new Uint8Array(await digest.digest('SHA-256', await file.arrayBuffer()));
+  return `sha256-${Array.from(bytes.slice(0, 20), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Pages kept from an earlier, stopped run of this PDF, as the `done` and `warnings` maps convertPdf continues from. */
+export async function keptPages(textId, source) {
+  const { pages } = await api.get(`/api/texts/${textId}/conversion?source=${encodeURIComponent(source)}`);
+  return { done: new Map(pages.map((p) => [p.page_number, p.html])), warnings: new Map(pages.filter((p) => p.warnings.length).map((p) => [p.page_number, p.warnings])) };
+}
+
 /**
  * PDF to HTML: each page rendered with pdf.js and sent as an image, one page
  * per request, math/table pages to the separate math model. Pages already
  * converted are kept if the run stops, so a person can resume.
  */
-export async function convertPdf({ textId, file, mathPages = new Set(), allMath = false, model, mathModel, signal, onProgress, done = new Map(), warnings = new Map() }) {
+export async function convertPdf({ textId, file, mathPages = new Set(), allMath = false, model, mathModel, signal, onProgress, done = new Map(), warnings = new Map(), resumeSource }) {
   const pdf = await openPdf(file);
   const total = pdf.numPages;
   for (let n = 1; n <= total; n += 1) {
@@ -79,7 +91,7 @@ export async function convertPdf({ textId, file, mathPages = new Set(), allMath 
     const image = await blobToDataUri(blob);
     const text_hint = await pageTextHint(pdf, n);
     onProgress?.({ stage: 'convert', page: n, total, math });
-    const r = await api.post(`/api/texts/${textId}/parse-page`, { image, page_number: n, total_pages: total, text_hint, math, ...(math ? (mathModel ? { model: mathModel } : {}) : model ? { model } : {}) }, { signal });
+    const r = await api.post(`/api/texts/${textId}/parse-page`, { image, page_number: n, total_pages: total, text_hint, math, ...(resumeSource ? { resume_source: resumeSource } : {}), ...(math ? (mathModel ? { model: mathModel } : {}) : model ? { model } : {}) }, { signal });
     done.set(n, r.html);
     if (r.warnings?.length) warnings.set(n, r.warnings);
   }

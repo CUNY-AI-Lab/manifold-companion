@@ -70,13 +70,15 @@ export default function Header() {
   const { openShortcuts } = useShortcutSettings();
   const navigate = useNavigate();
   const [q, setQ] = useState('');
+  const [short, setShort] = useState(false);
   return (
     <header className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
         <Link to="/" className="font-semibold text-cail-navy no-underline dark:text-slate-100">Manifold Companion</Link>
-        <form role="search" className="ml-auto" onSubmit={(e) => { e.preventDefault(); if (q.trim().length >= 2) navigate(`/search?q=${encodeURIComponent(q.trim())}`); }}>
+        <form role="search" className="ml-auto" onSubmit={(e) => { e.preventDefault(); const t = q.trim(); setShort(t.length < 2); if (t.length >= 2) navigate(`/search?q=${encodeURIComponent(t)}`); }}>
           <label className="sr-only" htmlFor="site-search">Search your texts</label>
-          <input id="site-search" className="field w-56" placeholder="Search your texts" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input id="site-search" className="field w-56" placeholder="Search your texts" value={q} aria-describedby={short ? 'site-search-hint' : undefined} aria-invalid={short || undefined} onChange={(e) => { setQ(e.target.value); setShort(false); }} />
+          {short ? <p id="site-search-hint" role="status" className="mt-1 text-xs text-slate-700 dark:text-slate-200">Type at least 2 characters to search.</p> : null}
         </form>
         <nav className="flex items-center gap-4">
           <NavLink to="/help" className="text-sm text-slate-700 hover:text-cail-link dark:hover:text-cail-link-dark dark:text-slate-200">Help</NavLink>

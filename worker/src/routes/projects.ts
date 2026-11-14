@@ -41,12 +41,15 @@ projectRoutes.get("/", async (c) => {
   const lim = limits(c.env);
   const now = nowIso();
   const rows = await c.env.DB.prepare(
-    `SELECT p.*, m.role AS member_role FROM project_members m JOIN projects p ON p.id = m.project_id
+    `SELECT p.*, m.role AS member_role,
+       (SELECT COUNT(*) FROM texts t WHERE t.project_id = p.id) AS text_count,
+       (SELECT COUNT(*) FROM pages pg JOIN texts t ON t.id = pg.text_id WHERE t.project_id = p.id) AS page_count
+     FROM project_members m JOIN projects p ON p.id = m.project_id
      WHERE m.subject = ?1 ORDER BY p.updated_at DESC LIMIT 200`,
   )
     .bind(subject)
-    .all<ProjectRow & { member_role: Role }>();
-  return c.json({ projects: rows.results.map(({ member_role, ...p }) => projectBody(p, member_role, lim, now)) });
+    .all<ProjectRow & { member_role: Role; text_count: number; page_count: number }>();
+  return c.json({ projects: rows.results.map(({ member_role, text_count, page_count, ...p }) => ({ ...projectBody(p, member_role, lim, now), text_count, page_count })) });
 });
 
 projectRoutes.post("/", async (c) => {
@@ -80,11 +83,13 @@ projectRoutes.get("/:id", async (c) => {
   const { subject } = c.get("principal");
   const { project, role } = await requireRole(c.env.DB, subject, c.req.param("id"), "viewer");
   const counts = await c.env.DB.prepare(
-    "SELECT (SELECT COUNT(*) FROM texts WHERE project_id = ?1) AS texts, (SELECT COUNT(*) FROM project_members WHERE project_id = ?1) AS members",
+    `SELECT (SELECT COUNT(*) FROM texts WHERE project_id = ?1) AS texts, (SELECT COUNT(*) FROM project_members WHERE project_id = ?1) AS members,
+       (SELECT COUNT(*) FROM pages pg JOIN texts t ON t.id = pg.text_id WHERE t.project_id = ?1) AS pages`,
   )
     .bind(project.id)
-    .first<{ texts: number; members: number }>();
-  return c.json({ project: { ...projectBody(project, role, limits(c.env), nowIso()), text_count: counts?.texts ?? 0, member_count: counts?.members ?? 0 } });
+    .first<{ texts: number; members: number; pages: number }>();
+  // page_count against max_project_pages lets the page say a PDF will not fit before it is rasterised.
+  return c.json({ project: { ...projectBody(project, role, limits(c.env), nowIso()), text_count: counts?.texts ?? 0, member_count: counts?.members ?? 0, page_count: counts?.pages ?? 0 } });
 });
 
 projectRoutes.put("/:id", async (c) => {

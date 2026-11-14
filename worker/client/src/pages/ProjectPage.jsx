@@ -9,6 +9,8 @@ import { RetentionBanner } from './Dashboard';
 import * as toc from '../lib/toc';
 import { useConfirm } from '../components/ConfirmDialog';
 import { TEXTS_PER_PAGE, fetchAllTexts, pageCount, pageFromSearch, rangeLabel } from '../lib/paging';
+import { SETTABLE_STATUSES, statusLabel } from '../lib/status';
+import { pdfFileProblem } from '../lib/limits';
 
 /**
  * Actions on the selected texts: set their status, delete them (after a
@@ -26,9 +28,9 @@ function BulkBar({ project, texts, onDone, onError, onClear }) {
     <section aria-labelledby="bulk-title" className="sticky bottom-2 z-30 mt-3 flex flex-wrap items-end gap-3 rounded-md border border-slate-300 bg-white p-3 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800">
       <h2 id="bulk-title" className="w-full text-sm">{n} text{n === 1 ? '' : 's'} selected</h2>
       <label><span className="label">Status</span>
-        <select className="field w-auto" value={status} onChange={(e) => setStatus(e.target.value)}><option value="pending">pending</option><option value="ocrd">read (OCR done)</option><option value="reviewed">reviewed</option></select>
+        <select className="field w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>{SETTABLE_STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}</select>
       </label>
-      <button type="button" className="btn-quiet" onClick={() => run(async () => { const r = await api.post(`/api/projects/${project.id}/texts/bulk-status`, { textIds: ids, status }); return `${r.updated} text${r.updated === 1 ? '' : 's'} set to ${status}.`; })}>Set status</button>
+      <button type="button" className="btn-quiet" onClick={() => run(async () => { const r = await api.post(`/api/projects/${project.id}/texts/bulk-status`, { textIds: ids, status }); return `${r.updated} text${r.updated === 1 ? '' : 's'} set to “${statusLabel(status)}”.`; })}>Set status</button>
       {project.project_type === 'image_to_markdown' && n >= 2 ? (
         <>
           <label><span className="label">Name of the merged text</span><input className="field" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} /></label>
@@ -43,6 +45,12 @@ function BulkBar({ project, texts, onDone, onError, onClear }) {
       <button type="button" className="btn-quiet" onClick={onClear}>Clear selection</button>
     </section>
   );
+}
+
+/** A text's status as a word with a colour (the word carries the meaning, the colour only helps scanning). */
+export function StatusBadge({ status }) {
+  const tone = { reviewed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100', ocrd: 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100', processing: 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100' }[status] ?? 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100';
+  return <span className={`rounded px-1.5 py-0.5 ${tone}`}>{statusLabel(status)}</span>;
 }
 
 const formatMb = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
@@ -268,6 +276,85 @@ function ExportForm({ project, texts, onClose }) {
   );
 }
 
+/** Select or clear every text listed on this page (indeterminate when some are). */
+function SelectAll({ texts, chosen, setChosen, paged }) {
+  const box = useRef(null);
+  const ids = texts.map((t) => t.id);
+  const n = ids.filter((x) => chosen.includes(x)).length;
+  useEffect(() => { if (box.current) box.current.indeterminate = n > 0 && n < ids.length; }, [n, ids.length]);
+  return (
+    <label className="mt-6 inline-flex items-center gap-2 text-sm">
+      <input ref={box} type="checkbox" checked={n === ids.length} onChange={(e) => setChosen(e.target.checked ? ids : [])} />
+      Select all {paged ? `${ids.length} texts on this page` : `${ids.length} texts`}
+    </label>
+  );
+}
+
+const isPdfFile = (f) => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+
+/** Store a PDF as a text's source PDF (checked against the limits first). Nothing is converted here. */
+async function storeSourcePdf({ textId, file, replace, session }) {
+  if (!isPdfFile(file)) throw new Error(`${file.name} is not a PDF.`);
+  const problem = session?.limits ? pdfFileProblem({ name: file.name, bytes: file.size, maxPdfBytes: session.limits.max_pdf_bytes, usedBytes: session.storage.used_bytes, quotaBytes: session.storage.quota_bytes }) : null;
+  if (problem) throw new Error(problem);
+  await api.upload(`/api/texts/${textId}/source-pdf`, file, { method: 'PUT', filename: file.name, query: replace ? { replace: '1' } : {} });
+}
+
+/** A PDF text's row: its source PDF by name, and Upload or Replace without opening the text. */
+function SourcePdfCell({ text, canEdit, onStored, onError }) {
+  const { session } = useSession();
+  const confirm = useConfirm();
+  const input = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const pick = async (file) => {
+    if (!file) return;
+    if (text.has_source_pdf && !(await confirm({ title: 'Replace the source PDF?', message: `Replace ${text.source_pdf_name || 'the stored PDF'} of “${text.name}” with ${file.name}? The old PDF is deleted. The converted HTML stays until you convert again.`, confirmLabel: 'Replace the PDF' }))) return;
+    setBusy(true);
+    try { await storeSourcePdf({ textId: text.id, file, replace: text.has_source_pdf, session }); onStored(`${file.name} stored for “${text.name}”. Open the text to convert it.`); } catch (e) { onError(e); } finally { setBusy(false); }
+  };
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+      <span>{text.has_source_pdf ? `Source: ${text.source_pdf_name || 'a PDF'}` : 'No source PDF yet'}</span>
+      {canEdit ? (
+        <>
+          <input ref={input} type="file" accept="application/pdf" className="hidden" tabIndex={-1} aria-hidden="true" onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; pick(f); }} />
+          <button type="button" className="btn-quiet" disabled={busy} onClick={() => input.current?.click()}>{busy ? 'Uploading' : text.has_source_pdf ? 'Replace PDF' : 'Upload PDF'}<span className="sr-only"> for {text.name}</span></button>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/** Import PDFs as new texts, one text per PDF named after the file; each is converted from its page. */
+function ImportPdfs({ projectId, onDone, onError }) {
+  const { session } = useSession();
+  const input = useRef(null);
+  const [busy, setBusy] = useState('');
+  const run = async (files) => {
+    const created = [];
+    try {
+      for (const file of files) {
+        setBusy(`Importing ${file.name}`);
+        if (!isPdfFile(file)) throw new Error(`${file.name} is not a PDF; nothing more was imported.`);
+        const name = file.name.replace(/\.pdf$/i, '').slice(0, 200) || 'Untitled';
+        const { text } = await api.post(`/api/projects/${projectId}/texts`, { name });
+        try { await storeSourcePdf({ textId: text.id, file, replace: false, session }); } catch (e) { await api.del(`/api/texts/${text.id}`).catch(() => {}); throw e; }
+        created.push(name);
+      }
+    } catch (e) { onError(e); } finally {
+      setBusy('');
+      if (created.length) onDone(`Imported ${created.map((n) => `“${n}”`).join(', ')}. Open each text to convert it.`);
+    }
+  };
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <input ref={input} type="file" accept="application/pdf" multiple className="hidden" tabIndex={-1} aria-hidden="true" onChange={(e) => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) run(fs); }} />
+      <button type="button" className="btn-quiet" disabled={!!busy} aria-describedby="import-pdf-hint" onClick={() => input.current?.click()}>{busy || 'Import PDFs as new texts'}</button>
+      <span id="import-pdf-hint" className="text-xs text-slate-600 dark:text-slate-300">One new text per PDF, named after the file. Nothing is converted until you press Convert on the text.</span>
+    </div>
+  );
+}
+
 function Pager({ page, total, onPage }) {
   const count = pageCount(total);
   if (count <= 1) return null;
@@ -309,11 +396,11 @@ export default function ProjectPage() {
   const offset = (page - 1) * TEXTS_PER_PAGE;
   const goToPage = (n) => { setChosen([]); navigate(n === 1 ? '?' : `?page=${n}`); };
   // `index` is the text's position in the whole project (the list shows one page of it).
-  const moveText = async (index, dir) => {
+  const moveText = async (index, dir, position) => {
     const t = texts[index - offset];
     setError(null);
     try {
-      const r = await api.post(`/api/projects/${id}/texts/${t.id}/move`, { to: index + 1 + (dir === 'up' ? -1 : 1) });
+      const r = await api.post(`/api/projects/${id}/texts/${t.id}/move`, { to: dir === 'to' ? position : index + 1 + (dir === 'up' ? -1 : 1) });
       setMoved(`${t.name} moved to position ${r.position} of ${r.total}.`);
       focusMoved({ idBase: `move-text-${t.id}`, dir });
       await load();
@@ -341,14 +428,17 @@ export default function ProjectPage() {
       {isOwner ? <ProjectDetails project={project} onSaved={load} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       {total > TEXTS_PER_PAGE ? <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">{rangeLabel(page, total)}</p> : null}
+      {canEdit && texts.length > 1 ? <SelectAll texts={texts} chosen={chosen} setChosen={setChosen} paged={total > TEXTS_PER_PAGE} /> : null}
       <ul className="rowlist mt-2 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         {texts.length === 0 ? <li className="p-4 text-sm text-slate-500 dark:text-slate-400">{canEdit ? 'No texts yet. Add one below, then upload its pages.' : 'No texts yet.'}</li> : null}
         {texts.map((t) => (
           <li key={t.id} className="flex flex-wrap items-center gap-3 p-4">
             {canEdit ? <input type="checkbox" aria-label={`Select ${t.name}`} checked={chosen.includes(t.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, t.id] : chosen.filter((x) => x !== t.id))} /> : null}
-            {canEdit && total > 1 ? <MoveButtons label={t.name} index={offset + texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
+            {canEdit && total > 1 ? <MoveButtons label={t.name} index={offset + texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} positions /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
-            <span className="text-xs text-slate-500 dark:text-slate-400">{project.project_type === 'pdf_to_html' ? (t.has_html ? 'converted' : 'not converted yet') : `${t.page_count} pages, ${t.status}`}</span>
+            {project.project_type === 'pdf_to_html'
+              ? <span className="inline-flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300"><span>{t.has_html ? 'Converted' : 'Not converted yet'}</span><SourcePdfCell text={t} canEdit={canEdit} onStored={(msg) => { setMoved(msg); load(); refresh(); }} onError={setError} /></span>
+              : <span className="text-xs text-slate-600 dark:text-slate-300">{plural(t.page_count, 'page')}, <StatusBadge status={t.status} /></span>}
             {canEdit ? <button className="btn-quiet ml-auto" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this text?', message: `Delete “${t.name}”, its pages, files and versions, for every member? This cannot be undone.`, confirmLabel: 'Delete text', danger: true }))) return; try { await api.del(`/api/texts/${t.id}`); load(); refresh(); } catch (e) { setError(e); } }}>Delete</button> : null}
           </li>
         ))}
@@ -364,6 +454,7 @@ export default function ProjectPage() {
           <button className="btn-primary" type="submit">Add text</button>
         </form>
       ) : null}
+      {canEdit && project.project_type === 'pdf_to_html' ? <ImportPdfs projectId={id} onDone={(msg) => { setMoved(msg); load(); refresh(); }} onError={setError} /> : null}
       <div className="mt-10 flex gap-2">
         {isOwner ? <button className="btn-danger" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this project?', message: 'Delete this project, all its texts and files, for every member? This cannot be undone. Export first if you want to keep a copy.', confirmLabel: 'Delete project', danger: true }))) return; try { await api.del(`/api/projects/${id}`); refresh(); navigate('/'); } catch (e) { setError(e); } }}>Delete project</button> : (
           <button className="btn-quiet" type="button" onClick={async () => { if (!(await confirm({ title: 'Leave this project?', message: 'You lose access until the owner invites you again.', confirmLabel: 'Leave project', danger: true }))) return; try { const me = (await api.get(`/api/projects/${id}/members`)).members.find((m) => m.me); await api.del(`/api/projects/${id}/members/${me.subject}`); navigate('/'); } catch (e) { setError(e); } }}>Leave project</button>
