@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { API, api } from '../api/client';
 import { useSession } from '../api/session.jsx';
-import CommentsPanel from '../components/CommentsPanel';
+import CommentsPanel, { CommentsJumpLink } from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FullTextPanel from '../components/FullTextPanel';
@@ -256,6 +256,7 @@ export default function ImageTextPage({ data, reload }) {
             <img src={`${API}/texts/${text.id}/pages/${page.id}/image`} alt={`Scan of page ${page.page_number}`} className="max-h-[70vh] w-full rounded-md border border-slate-200 object-contain dark:border-slate-700" />
             <div className="flex flex-col gap-2">
               <label className="label" htmlFor="page-text">Text of page {page.page_number}{page.ocr_model ? `, read by ${page.ocr_model}` : ''}</label>
+              <CommentsJumpLink textId={text.id} />
               <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => setDraft(e.target.value)} />
               {conflict ? <details className="text-sm"><summary>Model text that was not saved (the page was edited meanwhile)</summary><pre className="whitespace-pre-wrap">{conflict}</pre><button type="button" className="btn-quiet mt-1" onClick={() => setDraft(conflict)}>Use the model text</button></details> : null}
               {canEdit ? (

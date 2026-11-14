@@ -4,7 +4,7 @@ import { sanitizeHtml } from '../../../src/sanitize/html.ts';
 import { API, api } from '../api/client';
 import { brokenFormulas as brokenTex } from '../lib/math';
 import { useSession } from '../api/session.jsx';
-import CommentsPanel from '../components/CommentsPanel';
+import CommentsPanel, { CommentsJumpLink } from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FigurePanel from '../components/FigurePanel';
@@ -246,7 +246,7 @@ export default function HtmlTextPage({ data, reload }) {
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="editor-title" className="text-base">The text</h2>
+            <span className="flex items-baseline gap-3"><h2 id="editor-title" className="text-base">The text</h2><CommentsJumpLink textId={text.id} /></span>
             <div role="group" aria-label="Editor view" className="inline-flex rounded-md border border-slate-300 dark:border-slate-600">
               <button type="button" className={`px-3 py-1 text-sm ${richShown ? 'bg-cail-navy text-white dark:bg-slate-200 dark:text-slate-900' : ''}`} aria-pressed={richShown} onClick={() => setView('rich')}>Visual editor</button>
               <button type="button" className={`px-3 py-1 text-sm ${!richShown ? 'bg-cail-navy text-white dark:bg-slate-200 dark:text-slate-900' : ''}`} aria-pressed={!richShown} onClick={() => setView('source')}>HTML source</button>

@@ -44,12 +44,13 @@ interface AnnotationRow {
 
 const SELECT = `SELECT a.*, p.display_name AS author_name FROM annotations a LEFT JOIN profiles p ON p.subject = a.author_subject`;
 
-function present(a: AnnotationRow, me: string) {
+/** `role` is the caller's role on the project: the author or the owner may delete (the route enforces it; this only says so). */
+function present(a: AnnotationRow, me: string, role?: string) {
   let anchor: unknown = null;
   let mentions: unknown = [];
   try { anchor = a.anchor_data === null ? null : JSON.parse(a.anchor_data); } catch { anchor = null; }
   try { mentions = JSON.parse(a.mentions); } catch { mentions = []; }
-  return { ...a, anchor_data: anchor, mentions, resolved: a.resolved === 1, mine: a.author_subject === me };
+  return { ...a, anchor_data: anchor, mentions, resolved: a.resolved === 1, mine: a.author_subject === me, can_delete: a.author_subject === me || role === "owner" };
 }
 
 function bodyOf(raw: unknown): string {
@@ -156,7 +157,7 @@ annotationRoutes.get("/:id/annotations", async (c) => {
      ORDER BY a.created_at, a.rowid LIMIT 500`,
   ).bind(ctx.text.id).all<AnnotationRow>();
   const members = await membersOf(c.env.DB, ctx.project.id);
-  return c.json({ annotations: rows.results.map((a) => present(a, me)), mentioned_users: Object.fromEntries([...members].map(([s, n]) => [s, { display_name: n }])) });
+  return c.json({ annotations: rows.results.map((a) => present(a, me, ctx.role)), mentioned_users: Object.fromEntries([...members].map(([s, n]) => [s, { display_name: n }])) });
 });
 
 annotationRoutes.post("/:id/annotations", async (c) => {
@@ -182,7 +183,7 @@ annotationRoutes.post("/:id/annotations", async (c) => {
   const mentions = await mentionsOf(c.env.DB, ctx.project.id, body.mentions);
   const id = await create(c, ctx, { anchorType: parent?.anchor_type ?? body.anchor_type, anchorData: parent ? parent.anchor_data : anchorData, body: text, parentId, mentions });
   await afterWrite(c.env.DB, me, ctx.project.id, ctx.text.id, ctx.text.name, text, mentions, parentId);
-  return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, id), me) }, 201);
+  return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, id), me, ctx.role) }, 201);
 });
 
 async function afterWrite(db: D1Database, me: string, projectId: string, textId: string, textName: string, text: string, mentions: string[], parentId: string | null) {
@@ -200,7 +201,7 @@ annotationRoutes.get("/:id/annotations/:annotId", async (c) => {
   const ctx = await requireTextRole(c.env.DB, me, idOf(c), "viewer");
   const a = await loadAnnotation(c.env.DB, ctx.text.id, c.req.param("annotId"));
   const replies = await c.env.DB.prepare(`${SELECT} WHERE a.parent_id = ?1 AND a.text_id = ?2 ORDER BY a.created_at, a.rowid LIMIT 500`).bind(a.id, ctx.text.id).all<AnnotationRow>();
-  return c.json({ annotation: present(a, me), replies: replies.results.map((r) => present(r, me)) });
+  return c.json({ annotation: present(a, me, ctx.role), replies: replies.results.map((r) => present(r, me, ctx.role)) });
 });
 
 annotationRoutes.put("/:id/annotations/:annotId", async (c) => {
@@ -211,7 +212,7 @@ annotationRoutes.put("/:id/annotations/:annotId", async (c) => {
   const body = await readJsonObject(c.req.raw, 64 * 1024);
   const text = bodyOf(body.body);
   await c.env.DB.prepare("UPDATE annotations SET body = ?1, updated_at = ?2 WHERE id = ?3 AND author_subject = ?4").bind(text, nowIso(), a.id, me).run();
-  return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, a.id), me) });
+  return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, a.id), me, ctx.role) });
 });
 
 for (const [action, resolved] of [["resolve", 1], ["unresolve", 0]] as const) {
@@ -220,7 +221,7 @@ for (const [action, resolved] of [["resolve", 1], ["unresolve", 0]] as const) {
     const ctx = await requireTextRole(c.env.DB, me, idOf(c), "editor");
     const a = await loadAnnotation(c.env.DB, ctx.text.id, c.req.param("annotId"));
     await c.env.DB.prepare("UPDATE annotations SET resolved = ?1, resolved_by = ?2, resolved_at = ?3, updated_at = ?4 WHERE id = ?5").bind(resolved, resolved ? me : null, resolved ? nowIso() : null, nowIso(), a.id).run();
-    return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, a.id), me) });
+    return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, a.id), me, ctx.role) });
   });
 }
 
@@ -243,5 +244,5 @@ annotationRoutes.post("/:id/annotations/:annotId/replies", async (c) => {
   const rootId = parent.parent_id ?? parent.id;
   const id = await create(c, ctx, { anchorType: parent.anchor_type, anchorData: parent.anchor_data, body: text, parentId: rootId, mentions });
   await afterWrite(c.env.DB, me, ctx.project.id, ctx.text.id, ctx.text.name, text, mentions, rootId);
-  return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, id), me) }, 201);
+  return c.json({ annotation: present(await loadAnnotation(c.env.DB, ctx.text.id, id), me, ctx.role) }, 201);
 });

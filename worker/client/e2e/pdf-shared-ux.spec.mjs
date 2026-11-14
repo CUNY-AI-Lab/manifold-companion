@@ -102,3 +102,46 @@ test('version history shows what changed: each version against the next one, the
   await expect(older).toContainText('unchanged line');
   expect(await axe(page)).toEqual([]);
 });
+
+test('comments: when each was written, the owner can delete anyone’s, replies can be deleted, a jump link near the editor', async ({ page, context, browser }) => {
+  await as(context, 'alice');
+  const { api, project, text } = await pdfText(page, 'Comments');
+  const inv = (await api(`/projects/${project.id}/invites`, 'POST', { role: 'editor' })).invite;
+  const other = await browser.newContext();
+  await other.addCookies([{ name: 'e2e_as', value: 'bob', url: ORIGIN }]);
+  const bob = await other.newPage();
+  await bob.goto(`/manifold-companion/invite#t=${inv.token}`);
+  await expect(bob).toHaveURL(/\/projects\//);
+  const bobApi = apiOf(bob);
+  const note = (await bobApi(`/texts/${text.id}/annotations`, 'POST', { anchor_type: 'global', body: 'Check page two.' })).annotation;
+  await bobApi(`/texts/${text.id}/annotations/${note.id}/replies`, 'POST', { body: 'Bob replies too.' });
+  await api(`/texts/${text.id}/annotations/${note.id}/replies`, 'POST', { body: 'Alice replies.' });
+
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const jump = page.getByRole('link', { name: 'Comments (1)' });
+  await expect(jump).toBeVisible();
+  await expect(jump).toHaveAttribute('href', '#comments-title');
+  const comments = page.locator('section[aria-labelledby="comments-title"]');
+  await expect(comments.locator('time').first()).toHaveText('just now');
+  await comments.getByRole('button', { name: 'Replies (2)' }).click();
+  // The owner may delete Bob's reply; the confirmation names whose it is.
+  await comments.getByRole('button', { name: /^Delete the reply by/ }).first().click();
+  await expect(page.getByRole('alertdialog')).toContainText('Delete this reply by');
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(comments.getByText('Bob replies too.')).toHaveCount(0);
+  await expect(comments.getByText('Alice replies.')).toBeVisible();
+  expect(await axe(page)).toEqual([]);
+  // Bob, an editor, can delete his own comment but not Alice's reply.
+  await bob.goto(`/manifold-companion/texts/${text.id}`);
+  const bobComments = bob.locator('section[aria-labelledby="comments-title"]');
+  await bobComments.getByRole('button', { name: 'Replies (1)' }).click();
+  await expect(bobComments.getByText('Alice replies.')).toBeVisible();
+  await expect(bobComments.getByRole('button', { name: /^Delete the reply by/ })).toHaveCount(0);
+  await other.close();
+  // The owner deletes Bob's comment; the jump link count follows.
+  await comments.getByRole('button', { name: /^Delete the comment by/ }).click();
+  await expect(page.getByRole('alertdialog')).toContainText('its reply');
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(comments.getByText('Check page two.')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Comments (0)' })).toBeVisible();
+});
