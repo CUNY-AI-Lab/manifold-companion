@@ -6,12 +6,14 @@ import CommentsPanel from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
 import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
 import FullTextPanel from '../components/FullTextPanel';
+import SummaryPanel from '../components/SummaryPanel';
+import TranslationPanel from '../components/TranslationPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
-import { exportSource, runOcr, translateText } from '../lib/tasks';
+import { exportSource, runOcr } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -23,8 +25,6 @@ import { draftDiffers, savedChangedSince } from '../lib/drafts';
 const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 /** What a page upload takes: an image (any the browser may open; HEIC gets its own message) or a PDF. */
 export const takesAsPage = (file) => isPdf(file) || /^image\//i.test(file.type) || /\.(jpe?g|png|webp|gif|bmp|tiff?|hei[cf]|avif)$/i.test(file.name);
-
-const LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'nl', 'pl', 'el', 'tr', 'he', 'uk', 'la'];
 
 function SplitPanel({ text, pages }) {
   const [open, setOpen] = useState(false);
@@ -71,8 +71,6 @@ export default function ImageTextPage({ data, reload }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [conflict, setConflict] = useState(null);
-  const [translation, setTranslation] = useState(null);
-  const [langs, setLangs] = useState({ source: text.source_language || 'auto-detect', target: text.target_language || 'en' });
   const fileInput = useRef(null);
   const pageText = useRef(null);
   const [moved, setMoved] = useState('');
@@ -114,7 +112,6 @@ export default function ImageTextPage({ data, reload }) {
     if (pageDirty) pageKeeper.forget();
     setSelected(id);
   };
-  useEffect(() => { api.get(`/api/texts/${text.id}/translation`).then((r) => setTranslation(r.translation), () => {}); }, [text.id]);
 
   const upload = async (files) => {
     setError(null);
@@ -281,28 +278,9 @@ export default function ImageTextPage({ data, reload }) {
         ) : <p className="text-sm text-slate-500 dark:text-slate-400">No pages yet.{canEdit ? ' Upload photos, scans or a PDF; PDFs are turned into page images in your browser.' : ''}</p>}
       </div>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div>
-          <h2 className="text-lg">Summary</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm">{text.summary || 'No summary yet.'}</p>
-          {canEdit ? <button className="btn-quiet mt-2" type="button" disabled={!!busy} onClick={async () => { setBusy('Writing a summary'); try { await api.post(`/api/texts/${text.id}/summary`, {}); reload(); } catch (e) { setError(e); } finally { setBusy(null); } }}>Write a summary</button> : null}
-        </div>
-        <div>
-          <h2 className="text-lg">Translation</h2>
-          {canEdit ? (
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-              <label>From <select className="field inline-block w-auto" value={langs.source} onChange={(e) => setLangs({ ...langs, source: e.target.value })}><option value="auto-detect">detect</option>{LANGS.map((l) => <option key={l}>{l}</option>)}</select></label>
-              <label>to <select className="field inline-block w-auto" value={langs.target} onChange={(e) => setLangs({ ...langs, target: e.target.value })}>{LANGS.map((l) => <option key={l}>{l}</option>)}</select></label>
-              <button className="btn-quiet" type="button" disabled={!!busy} onClick={async () => {
-                let source;
-                try { source = (await exportSource({ textId: text.id, hasCompiled: text.has_compiled, pages })).text; } catch (e) { setError(e); return; }
-                if (!source) return;
-                try { setTranslation(await translateText({ textId: text.id, text: source, source: langs.source, target: langs.target, onProgress: ({ done, total }) => setBusy(`Translating part ${Math.min(done + 1, total)} of ${total}`) })); } catch (e) { setError(e); } finally { setBusy(null); }
-              }}>Translate</button>
-            </div>
-          ) : null}
-          {translation ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-doc text-sm">{translation}</pre> : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No translation yet.</p>}
-        </div>
+      <section className="mt-8 grid gap-6 lg:grid-cols-2" aria-label="Summary and translation">
+        <SummaryPanel text={text} canEdit={canEdit} onSaved={reload} busy={!!run} />
+        <TranslationPanel text={text} canEdit={canEdit} busy={!!run} getSource={async () => (await exportSource({ textId: text.id, hasCompiled: text.has_compiled, pages })).text} />
       </section>
       <FullTextPanel textId={text.id} canEdit={canEdit} onCompiledChange={reload} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} onDraftChange={setFullDraft} restoreDraft={fullRestore} onRestoreTaken={() => setFullRestore(null)} />
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
