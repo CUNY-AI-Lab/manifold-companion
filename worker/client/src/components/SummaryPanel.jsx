@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { useConfirm } from './ConfirmDialog';
 import { ErrorNote } from './ui';
@@ -10,13 +10,21 @@ import { ErrorNote } from './ui';
  */
 export default function SummaryPanel({ text, canEdit, onSaved, busy = false }) {
   const confirm = useConfirm();
-  const saved = text.summary ?? '';
+  const [saved, setSaved] = useState(text.summary ?? '');
   const [draft, setDraft] = useState(saved);
   const [working, setWorking] = useState('');
   const [status, setStatus] = useState('');
   const [partial, setPartial] = useState(false);
   const [error, setError] = useState(null);
-  useEffect(() => { setDraft(saved); }, [saved]);
+  // A newer summary from the server (a reload) replaces the editor's text only when nothing is being edited.
+  const baseline = useRef(saved);
+  useEffect(() => {
+    const next = text.summary ?? '';
+    setDraft((d) => (d === baseline.current ? next : d));
+    baseline.current = next;
+    setSaved(next);
+  }, [text.summary]);
+  const adopt = (value) => { baseline.current = value; setSaved(value); setDraft(value); };
   const dirty = draft !== saved;
   const hint = `summary-hint-${text.id}`;
   // The one summary save. `text` is what GET /texts/:id returned (its revision travels with it).
@@ -27,6 +35,7 @@ export default function SummaryPanel({ text, canEdit, onSaved, busy = false }) {
     setWorking('Saving the summary');
     try {
       await putSummary({ summary: draft });
+      adopt(draft);
       setStatus('Summary saved.');
       setPartial(false);
       onSaved?.();
@@ -39,7 +48,7 @@ export default function SummaryPanel({ text, canEdit, onSaved, busy = false }) {
     setWorking('Writing a summary');
     try {
       const r = await api.post(`/api/texts/${text.id}/summary`, {});
-      setDraft(r.summary ?? '');
+      adopt(r.summary ?? '');
       setPartial(!!r.truncated_input);
       setStatus('Summary written by the model. Read it, correct it here and save.');
       onSaved?.();
