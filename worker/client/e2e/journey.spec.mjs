@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { unzipSync, strFromU8 } from 'fflate';
 
-const ORIGIN = 'http://127.0.0.1:8790';
+const ORIGIN = `http://127.0.0.1:${process.env.E2E_PORT ?? 8790}`;
 const as = (context, who) => context.addCookies([{ name: 'e2e_as', value: who, url: ORIGIN }]);
 /**
  * KaTeX really drew with its own fonts inside the sandboxed frame: the
@@ -95,7 +95,7 @@ test('create project, upload, OCR, edit, invite, export', async ({ page, context
   await page.getByLabel('Role').selectOption('editor');
   await page.getByRole('button', { name: 'Create invite link' }).click();
   const inviteUrl = await page.getByLabel('Invite link').inputValue();
-  expect(inviteUrl).toMatch(/^http:\/\/127\.0\.0\.1:8790\/manifold-companion\/invite#t=[A-Za-z0-9_-]{43}$/);
+  expect(inviteUrl).toMatch(new RegExp(`^${ORIGIN.replace(/\./g, '\\.')}/manifold-companion/invite#t=[A-Za-z0-9_-]{43}$`));
   await page.getByRole('button', { name: 'Close' }).click();
 
   // Bob, in his own browser session, redeems the link.

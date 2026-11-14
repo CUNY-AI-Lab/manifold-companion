@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { strFromU8, unzipSync } from 'fflate';
 
-const ORIGIN = 'http://127.0.0.1:8790';
+const ORIGIN = `http://127.0.0.1:${process.env.E2E_PORT ?? 8790}`;
 const as = (context, who) => context.addCookies([{ name: 'e2e_as', value: who, url: ORIGIN }]);
 const headers = { Origin: ORIGIN, 'content-type': 'application/json' };
 

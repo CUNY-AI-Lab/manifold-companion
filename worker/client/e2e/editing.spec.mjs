@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { strFromU8, unzipSync } from 'fflate';
 
-const ORIGIN = 'http://127.0.0.1:8790';
+const ORIGIN = `http://127.0.0.1:${process.env.E2E_PORT ?? 8790}`;
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'];
 const as = (context, who) => context.addCookies([{ name: 'e2e_as', value: who, url: ORIGIN }]);
 const apiOf = (page) => async (path, method = 'GET', data) => {

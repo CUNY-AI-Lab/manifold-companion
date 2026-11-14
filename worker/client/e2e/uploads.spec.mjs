@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { request as httpRequest } from 'node:http';
 import { readFileSync } from 'node:fs';
 
-const ORIGIN = 'http://127.0.0.1:8790';
+const ORIGIN = `http://127.0.0.1:${process.env.E2E_PORT ?? 8790}`;
 const as = (context, who) => context.addCookies([{ name: 'e2e_as', value: who, url: ORIGIN }]);
 
 /** POST a body that sends `sent` bytes and then stops (the connection stays open), and resolve with the response. */
