@@ -29,19 +29,24 @@
 //     the deflate window, far below 128 MB;
 //   - CPU (default 30 s): deflated text is capped at EXPORT_LIMITS.textBytes
 //     (64 MiB, ~3-6 s of JS deflate) and stored figures at
-//     EXPORT_LIMITS.binaryBytes (256 MiB, CRC only); both are checked from D1
-//     sizes BEFORE the first byte is sent, so an export that would not fit is a
-//     clean 413, never a broken download;
+//     EXPORT_LIMITS.binaryBytes (256 MiB, CRC only); both are checked BEFORE the
+//     first byte is sent, so an export that would not fit is a clean 413, never
+//     a broken download. HTML texts are measured after TeX->MathML (MathML is
+//     several times the TeX it replaces, ~4.5x on a formula-dense page), by
+//     converting each one in planning (~0.25 s per MB);
+//   - one HTML body after conversion is at most EXPORT_LIMITS.documentChars,
+//     the sanitizer's input limit: a longer one is refused (413
+//     export_text_too_large), never truncated by the sanitizer;
 //   - TOC: at most 1000 nodes, depth 10, 2000 ZIP entries.
 import { ZipDeflate, ZipPassThrough, Zip } from "fflate";
 import temml from "temml";
-import { E } from "./errors";
+import { AppError, E } from "./errors";
 import type { Env } from "./env";
 import type { ProjectRow } from "./authz";
-import { sanitizeHtml } from "./sanitize/html";
+import { MAX_SANITIZE_INPUT_CHARS, sanitizeHtml } from "./sanitize/html";
 import { isUuid } from "./util";
 
-export const EXPORT_LIMITS = { nodes: 1000, depth: 10, entries: 2000, textBytes: 64 * 1024 * 1024, binaryBytes: 256 * 1024 * 1024, labelChars: 300, metaChars: 2000 } as const;
+export const EXPORT_LIMITS = { nodes: 1000, depth: 10, entries: 2000, textBytes: 64 * 1024 * 1024, binaryBytes: 256 * 1024 * 1024, documentChars: MAX_SANITIZE_INPUT_CHARS, labelChars: 300, metaChars: 2000 } as const;
 
 export interface TocNode {
   type: "section" | "text";
@@ -186,6 +191,20 @@ export function convertHtmlTexToMathML(input: string): string {
   return html;
 }
 
+const tooLargeText = (textId: string): Error =>
+  new AppError({ code: "export_text_too_large", status: 413, message: "A text in this export is too large once its formulas are converted to MathML. Split it into smaller texts and export again.", result: { text_id: textId } });
+
+/**
+ * One HTML text's exported body: TeX converted to MathML, then sanitized. A
+ * converted body longer than the sanitizer's input limit is refused, because
+ * sanitizeHtml would otherwise cut it off and the ZIP would silently lose its end.
+ */
+export function exportHtmlBody(html: string, textId: string): string {
+  const converted = convertHtmlTexToMathML(html);
+  if (converted.length > EXPORT_LIMITS.documentChars) throw tooLargeText(textId);
+  return sanitizeHtml(converted);
+}
+
 export function htmlDocument(body: string, title: string, lang: string): string {
   return `<!DOCTYPE html>
 <html lang="${escapeAttr(lang)}">
@@ -258,12 +277,15 @@ export async function planExport(env: Env, project: ProjectRow, toc: TocNode[], 
   // Same message for a text of another project as for a missing one: nothing is disclosed.
   for (const id of wanted) if (!texts.has(id)) throw E.badRequest("Every text in the table of contents must belong to this project.", "toc_text_unknown");
 
+  const tooLarge = () => E.tooLarge("This export is too large to build in one download. Export fewer texts at a time.", "export_too_large");
   let textBytes = 0;
   let binaryBytes = 0;
   const isHtml = project.project_type === "pdf_to_html";
+  const htmlTexts: TextInfo[] = [];
   for (const t of texts.values()) {
     if (isHtml && t.html_key) {
-      textBytes += t.html_bytes * 2; // MathML expansion allowance
+      htmlTexts.push(t);
+      textBytes += t.html_bytes; // stored size first: refuses an obviously too large export without reading it
       binaryBytes += t.figure_bytes; // upper bound: every figure of the text
     } else {
       textBytes += t.compiled_key ? t.compiled_bytes : t.page_text_bytes;
@@ -271,8 +293,15 @@ export async function planExport(env: Env, project: ProjectRow, toc: TocNode[], 
   }
   const nodes = countNodes(toc);
   const imageEntries = isHtml ? [...figures.values()].reduce((n, m) => n + m.size, 0) : 0;
-  if (nodes + imageEntries + 1 > EXPORT_LIMITS.entries || textBytes > EXPORT_LIMITS.textBytes || binaryBytes > EXPORT_LIMITS.binaryBytes) {
-    throw E.tooLarge("This export is too large to build in one download. Export fewer texts at a time.", "export_too_large");
+  if (nodes + imageEntries + 1 > EXPORT_LIMITS.entries || textBytes > EXPORT_LIMITS.textBytes || binaryBytes > EXPORT_LIMITS.binaryBytes) throw tooLarge();
+  // Then the real size of each HTML text as exported (after MathML expansion), one at a time.
+  for (const t of htmlTexts) {
+    const obj = await env.FILES.get(t.html_key as string);
+    if (!obj) continue; // a missing object exports as Markdown from the page texts, as streamExport does
+    const converted = convertHtmlTexToMathML(await obj.text());
+    if (converted.length > EXPORT_LIMITS.documentChars) throw tooLargeText(t.id);
+    textBytes += new TextEncoder().encode(converted).byteLength - t.html_bytes;
+    if (textBytes > EXPORT_LIMITS.textBytes) throw tooLarge();
   }
   return { project, meta, toc, texts, figures };
 }
@@ -354,7 +383,7 @@ export function streamExport(env: Env, plan: ExportPlan, mtime = new Date()): Re
       const html = project.project_type === "pdf_to_html" ? await read(text.html_key) : null;
       if (html) {
         const name = `text-${num}-${slugify(node.label || text.name)}.html`;
-        let body = sanitizeHtml(convertHtmlTexToMathML(html));
+        let body = exportHtmlBody(html, text.id);
         const own = plan.figures.get(text.id) ?? new Map<string, { key: string; bytes: number }>();
         const referenced = [...new Set([...body.matchAll(/ src="([^"/]+)"/g)].map((m) => m[1] as string))].filter((f) => own.has(f));
         if (referenced.length > 0) {

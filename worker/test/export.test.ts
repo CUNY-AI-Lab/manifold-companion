@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { unzipSync, strFromU8 } from "fflate";
 import { ALICE, BOB, CAROL, PNG, addMember, api, call, createProject, createText, json, seedPage, upload } from "./helpers";
-import { convertHtmlTexToMathML, escapeYaml, EXPORT_LIMITS } from "../src/export";
+import { convertHtmlTexToMathML, escapeYaml, EXPORT_LIMITS, exportHtmlBody } from "../src/export";
 import fixture from "./fixtures/export-fixture.json";
 import golden from "./fixtures/legacy-export.golden.json";
 
@@ -145,10 +145,31 @@ describe("export behaviour", () => {
     const pid = await createProject(ALICE, "Big", { project_type: "pdf_to_html" });
     const tid = await createText(ALICE, pid);
     await call(api(`/texts/${tid}/html`), { method: "PUT", body: { html_content: "<p>x</p>" } });
-    await env.DB.prepare("UPDATE texts SET html_bytes = ?1 WHERE id = ?2").bind(EXPORT_LIMITS.textBytes, tid).run();
+    await env.DB.prepare("UPDATE texts SET html_bytes = ?1 WHERE id = ?2").bind(EXPORT_LIMITS.textBytes + 1, tid).run();
     const res = await call(api(`/projects/${pid}/export`), { method: "POST", body: { toc: [{ type: "text", textId: tid, label: "x" }] } });
     expect(res.status).toBe(413);
     expect((await json(res)).error.code).toBe("export_too_large");
+  });
+
+  it("a math-heavy text whose MathML is longer than the sanitizer accepts is refused before streaming, never cut off", async () => {
+    const pid = await createProject(ALICE, "Math", { project_type: "pdf_to_html" });
+    const tid = await createText(ALICE, pid, "Chapter");
+    // ~350k characters of formulas expand to ~2.2M characters of MathML (over EXPORT_LIMITS.documentChars).
+    const html = "<p>\\(\\frac{a_1}{b^2}+\\sqrt{x}\\)</p>".repeat(10_000);
+    expect(html.length).toBeLessThan(EXPORT_LIMITS.documentChars / 5);
+    expect((await call(api(`/texts/${tid}/html`), { method: "PUT", body: { html_content: html } })).status).toBe(200);
+    const res = await call(api(`/projects/${pid}/export`), { method: "POST", body: { toc: [{ type: "text", textId: tid, label: "Chapter" }] } });
+    expect(res.status).toBe(413);
+    const body = await json(res);
+    expect(body.error.code).toBe("export_text_too_large");
+    expect(body.result).toEqual({ text_id: tid });
+  });
+
+  it("exportHtmlBody refuses a converted body over the limit; one under it is converted and sanitized whole", () => {
+    expect(() => exportHtmlBody("<p>\\(\\frac{a_1}{b^2}+\\sqrt{x}\\)</p>".repeat(10_000), "t")).toThrow(/too large once its formulas/);
+    const body = exportHtmlBody(`<p>start</p>${"<p>\\(x^2\\)</p>".repeat(2_000)}<p>the end</p>`, "t");
+    expect(body.endsWith("<p>the end</p>")).toBe(true);
+    expect(body).toContain("<math");
   });
 
   it("streams many figures and texts into a valid ZIP", async () => {
