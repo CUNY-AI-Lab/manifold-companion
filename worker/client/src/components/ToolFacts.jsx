@@ -17,6 +17,7 @@ export function ToolRules({ session }) {
     <ul className="list-disc space-y-1 pl-5">
       <li><strong>Not for protected data.</strong> Do not upload material covered by FERPA, IRB protocols or HIPAA, or other personally identifiable information. This tool is not approved for it.</li>
       <li><strong>Storage:</strong> {quota} for the projects you own, including pages, PDFs, figures and saved versions. Files a collaborator adds to your project count against yours.</li>
+      <li><strong>Size:</strong> a project holds at most {session.limits?.max_project_pages ?? 300} pages, and a source PDF can be at most {formatBytes(session.limits?.max_pdf_bytes ?? 0)}. A PDF that would not fit is refused before any page is drawn or uploaded. Settings, under Usage, shows which of your projects use your storage.</li>
       <li><strong>How long work is kept:</strong> a project is deleted {days} days after its last edit. You are warned {warn} days before, here and in Notifications; any edit keeps it. Export anything you want to keep.</li>
       <li><strong>Model use:</strong> reading pages, converting PDFs, summaries and translations are paid from your own CAIL model allowance, the same one other CAIL tools use. The allowance line under each tool is an estimate that updates with a delay.</li>
       <li><strong>Versions:</strong> each time text is replaced (by a save, an OCR run, a conversion or a restore) the earlier text is kept as a version you can view and restore.</li>

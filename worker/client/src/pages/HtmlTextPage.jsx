@@ -21,6 +21,7 @@ import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
 import { blobToDataUri, prepareImage } from '../lib/image';
 import { checkList, convertPdf, keptPages, pdfFingerprint } from '../lib/tasks';
+import { pdfFileProblem } from '../lib/limits';
 import { relativeTime } from '../components/CommentsPanel';
 import { replaceWarning } from '../lib/versions';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -46,7 +47,7 @@ export function parsePages(spec) {
 const brokenFormulas = (html) => brokenTex(sanitizeHtml(html));
 
 export default function HtmlTextPage({ data, reload }) {
-  const { refresh } = useSession();
+  const { refresh, session } = useSession();
   const confirm = useConfirm();
   const { text, role } = data;
   const canEdit = role !== 'viewer';
@@ -170,6 +171,7 @@ export default function HtmlTextPage({ data, reload }) {
         pdfFile = new File([blob], data.text.source_pdf_name || 'source.pdf', { type: 'application/pdf' });
       }
       const fp = await pdfFingerprint(pdfFile);
+      let tooBig = null;
       const resuming = done.current.size === 0 && keptRun?.source === fp;
       if (resume && !resuming && done.current.size === 0) {
         setError({ message: 'The stored PDF is not the one the stopped conversion used, so nothing was converted. Choose that PDF to continue, or convert the stored PDF from the start.' });
@@ -181,6 +183,9 @@ export default function HtmlTextPage({ data, reload }) {
         pageWarnings.current = kept.warnings;
       } else if (stored || done.current.size) {
         // the stored PDF, or a run already under way from this file: nothing to upload
+      } else if ((tooBig = session?.limits ? pdfFileProblem({ name: file.name, bytes: file.size, maxPdfBytes: session.limits.max_pdf_bytes, usedBytes: data.text.has_source_pdf ? 0 : session.storage.used_bytes, quotaBytes: data.text.has_source_pdf ? Infinity : session.storage.quota_bytes }) : null)) {
+        setError({ message: tooBig });
+        return;
       } else if (!data.text.has_source_pdf || (await confirm({ title: 'Replace the stored PDF?', message: 'Replace the stored source PDF with this file? The old PDF is deleted.', confirmLabel: 'Replace the PDF' }))) {
         await api.upload(`/api/texts/${text.id}/source-pdf`, file, { method: 'PUT', filename: file.name, query: { replace: '1' } });
       }

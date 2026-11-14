@@ -11,6 +11,7 @@ import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
+import { checkPdfFits } from '../lib/limits';
 import { runOcr, translateText } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
@@ -58,7 +59,7 @@ function SplitPanel({ text, pages }) {
 }
 
 export default function ImageTextPage({ data, reload }) {
-  const { refresh } = useSession();
+  const { refresh, session } = useSession();
   const confirm = useConfirm();
   const { text, pages, role } = data;
   const canEdit = role !== 'viewer';
@@ -122,6 +123,7 @@ export default function ImageTextPage({ data, reload }) {
       try {
         if (isPdf(file)) {
           const pdf = await openPdf(file);
+          await checkPdfFits({ session, projectId: text.project_id, name: file.name, pdfPages: pdf.numPages });
           for (let n = 1; n <= pdf.numPages; n += 1) {
             setBusy(`Rasterising ${file.name}, page ${n} of ${pdf.numPages}`);
             const { blob } = await renderPage(pdf, n);

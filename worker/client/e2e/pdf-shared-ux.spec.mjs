@@ -181,3 +181,9 @@ test('a stopped conversion resumes after a reload: kept pages are not paid for a
   await expect(page.getByText(/A conversion stopped after/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Convert the stored PDF again' })).toBeVisible();
 });
+
+test('Help states the page cap and the PDF size limit', async ({ page, context }) => {
+  await as(context, 'alice');
+  await page.goto('/manifold-companion/help');
+  await expect(page.getByText(/a project holds at most 300 pages, and a source PDF can be at most/)).toBeVisible();
+});
