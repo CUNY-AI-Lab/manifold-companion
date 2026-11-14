@@ -247,6 +247,9 @@ test('PDF to HTML: pdf.js renders pages in the browser, math pages go to the mat
   await expect(page.getByLabel(/^HTML/)).toHaveValue(/Transcribed by the stub model/);
   expect(parsed.map((p) => [p.page_number, p.math, p.image.slice(0, 23)])).toEqual([[1, false, 'data:image/jpeg;base64,'], [2, true, 'data:image/jpeg;base64,']]);
   expect(parsed[0].text_hint).toContain('Theorem one');
+  // Beside the text: the stored source PDF first (drawn by pdf.js, nothing sent anywhere), the export preview one click away.
+  await expect(page.getByRole('region', { name: /^Page 1 of the source PDF/ })).toBeVisible();
+  await page.getByRole('button', { name: 'As exported' }).click();
   await expect(page.locator('iframe[title="Preview of the HTML"]')).toHaveAttribute('sandbox', '');
   await expect(page.frameLocator('iframe[title="Preview of the HTML"]').getByText('Transcribed by the stub model.').first()).toBeVisible();
   const htmlPreview = page.frameLocator('iframe[title="Preview of the HTML"]');

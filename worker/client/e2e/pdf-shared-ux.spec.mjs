@@ -1,0 +1,61 @@
+// PDF proofreading and shared UX: the source PDF beside the text, and related project/text screens.
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const ORIGIN = `http://127.0.0.1:${process.env.E2E_PORT ?? 8790}`;
+const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'];
+const as = (context, who) => context.addCookies([{ name: 'e2e_as', value: who, url: ORIGIN }]);
+const apiOf = (page) => async (path, method = 'GET', data) => {
+  const r = await page.request.fetch(`/manifold-companion/api${path}`, { method, headers: { Origin: ORIGIN, 'content-type': 'application/json' }, ...(data === undefined ? {} : { data }) });
+  expect(r.ok(), `${method} ${path}: ${r.status()}`).toBe(true);
+  return r.json();
+};
+const axe = async (page) => (await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+
+/** A PDF text with the two-page fixture stored as its source and two converted page sections. */
+export async function pdfText(page, name = 'Proofread') {
+  const api = apiOf(page);
+  await page.goto('/manifold-companion/');
+  const project = (await api('/projects', 'POST', { name, project_type: 'pdf_to_html' })).project;
+  const text = (await api(`/projects/${project.id}/texts`, 'POST', { name: 'Chapter' })).text;
+  const pdf = readFileSync('e2e/fixtures/two-pages.pdf');
+  const up = await page.request.fetch(`/manifold-companion/api/texts/${text.id}/source-pdf?filename=two-pages.pdf&size=${pdf.length}`, { method: 'PUT', headers: { Origin: ORIGIN, 'content-type': 'application/pdf' }, data: pdf });
+  expect(up.ok(), `source pdf: ${up.status()}`).toBe(true);
+  await api(`/texts/${text.id}/html`, 'PUT', { html_content: '<section data-page="1"><p>First page text.</p></section><section data-page="2"><p>Second page text.</p></section>' });
+  return { api, project, text };
+}
+
+test('the source PDF sits beside the text: pages, zoom, follow the cursor, the export preview a toggle away', async ({ page, context }) => {
+  await as(context, 'alice');
+  const { text } = await pdfText(page);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const pane = page.getByRole('toolbar', { name: 'Source PDF' });
+  await expect(pane.getByText('of 2')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('region', { name: 'Page 1 of the source PDF, two-pages.pdf' })).toBeVisible();
+  await expect(page.locator('canvas')).toHaveCount(1);
+  await pane.getByRole('button', { name: 'Next page' }).click();
+  await expect(page.getByRole('region', { name: /^Page 2 of the source PDF/ })).toBeVisible();
+  await pane.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(pane.getByText('Zoom 125%')).toBeVisible();
+  await pane.getByRole('button', { name: 'Fit width' }).click();
+  await expect(pane.getByText('Zoom fits the width')).toBeVisible();
+  expect(await axe(page)).toEqual([]);
+
+  // Follow the text: the cursor in page 1's section in the HTML source turns the PDF back to page 1.
+  await pane.getByLabel('Follow the text').check();
+  await page.getByRole('button', { name: 'HTML source', exact: true }).click();
+  const source = page.getByLabel(/^HTML/);
+  await source.click();
+  await source.evaluate((el) => { el.focus(); el.setSelectionRange(40, 40); el.dispatchEvent(new Event('select', { bubbles: true })); });
+  await source.press('ArrowRight');
+  await expect(page.getByRole('region', { name: /^Page 1 of the source PDF/ })).toBeVisible();
+
+  // The export preview is the other side; the choice is remembered.
+  await page.getByRole('button', { name: 'As exported' }).click();
+  await expect(page.frameLocator('iframe[title="Preview of the HTML"]').getByText('Second page text.')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('iframe[title="Preview of the HTML"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Source PDF', exact: true }).click();
+  await expect(page.getByRole('region', { name: /^Page 1 of the source PDF/ })).toBeVisible();
+});

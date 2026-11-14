@@ -13,7 +13,10 @@ import { browserStorage } from '../lib/storage';
 
 const VIEW_PREF = 'manifold-companion:prefs:html-view';
 const readView = () => { try { return browserStorage().getItem(VIEW_PREF) === 'source' ? 'source' : 'rich'; } catch { return 'rich'; } };
+const SIDE_PREF = 'manifold-companion:prefs:html-side';
+const readSide = () => { try { return browserStorage().getItem(SIDE_PREF) === 'export' ? 'export' : 'pdf'; } catch { return 'pdf'; } };
 import SandboxedPreview from '../components/SandboxedPreview';
+import SourcePdfPane, { pageAtOffset } from '../components/SourcePdfPane';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, QuotaLine } from '../components/ui';
 import { blobToDataUri, prepareImage } from '../lib/image';
@@ -74,6 +77,25 @@ export default function HtmlTextPage({ data, reload }) {
   const [versionKey, setVersionKey] = useState(0);
   const figureInput = useRef(null);
   const source = useRef(null);
+  // Beside the text: the source PDF (to proofread against) or the page as exported.
+  const [side, setSideState] = useState(readSide);
+  const setSide = (v) => { setSideState(v); try { browserStorage().setItem(SIDE_PREF, v); } catch { /* unavailable */ } };
+  const showPdf = data.text.has_source_pdf && side === 'pdf';
+  const editorBox = useRef(null);
+  const [cursorPage, setCursorPage] = useState(null);
+  // The page the cursor is on in the visual editor: its nearest <section data-page>.
+  useEffect(() => {
+    const onSel = () => {
+      const node = document.getSelection()?.anchorNode;
+      const el = node && (node.nodeType === 1 ? node : node.parentElement);
+      if (!el || !editorBox.current?.contains(el)) return;
+      const n = Number(el.closest('[data-page]')?.getAttribute('data-page'));
+      if (n) setCursorPage(n);
+    };
+    document.addEventListener('selectionchange', onSel);
+    return () => document.removeEventListener('selectionchange', onSel);
+  }, []);
+  const sourceCursor = (e) => { const n = pageAtOffset(e.target.value, e.target.selectionStart); if (n) setCursorPage(n); };
 
   const dirty = html !== null && html !== saved;
   useLeaveGuard(dirty);
@@ -221,14 +243,14 @@ export default function HtmlTextPage({ data, reload }) {
             html !== null && figuresLoaded ? (
               <>
                 <p id="rich-label" className="sr-only">Text of {text.name}, visual editor. Formulas are shown with KaTeX; select one and press Enter, or click it, to edit its TeX.</p>
-                <RichEditor value={html} onChange={setHtml} onFallback={(reasons) => setFallback(reasons)} figures={figures} textId={text.id} readOnly={!canEdit} labelledBy="rich-label" />
+                <div ref={editorBox}><RichEditor value={html} onChange={setHtml} onFallback={(reasons) => setFallback(reasons)} figures={figures} textId={text.id} readOnly={!canEdit} labelledBy="rich-label" /></div>
                 <p className="text-xs text-slate-600 dark:text-slate-300">Formulas are TeX: click one (or select it and press Enter) to edit it. Table rows and columns, and anything the toolbar does not offer, are edited in the HTML source.</p>
               </>
             ) : <p role="status" className="text-sm">Opening the text</p>
           ) : (
             <>
               <label className="label" htmlFor="html-source">HTML (sanitized when saved). Write formulas as TeX in \( \) or \[ \]: the preview renders them with KaTeX, and the export converts them to MathML.</label>
-              <textarea ref={source} id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} />
+              <textarea ref={source} id="html-source" className="field min-h-[28rem] font-mono text-xs" value={html ?? ''} readOnly={!canEdit} onChange={(e) => setHtml(e.target.value)} onSelect={sourceCursor} onClick={sourceCursor} onKeyUp={sourceCursor} />
             </>
           )}
           {canEdit ? (
@@ -247,8 +269,16 @@ export default function HtmlTextPage({ data, reload }) {
           {data.text.has_source_pdf ? <a className="text-sm" href={`${API}/texts/${text.id}/source-pdf`}>Download the source PDF</a> : null}
         </div>
         <div className="flex flex-col gap-2">
-          <h2 className="text-base">As exported</h2>
-          <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base">{showPdf ? 'Source PDF' : 'As exported'}</h2>
+            {data.text.has_source_pdf ? (
+              <div role="group" aria-label="Beside the text" className="inline-flex rounded-md border border-slate-300 dark:border-slate-600">
+                <button type="button" className={`px-3 py-1 text-sm ${showPdf ? 'bg-cail-navy text-white dark:bg-slate-200 dark:text-slate-900' : ''}`} aria-pressed={showPdf} onClick={() => setSide('pdf')}>Source PDF</button>
+                <button type="button" className={`px-3 py-1 text-sm ${!showPdf ? 'bg-cail-navy text-white dark:bg-slate-200 dark:text-slate-900' : ''}`} aria-pressed={!showPdf} onClick={() => setSide('export')}>As exported</button>
+              </div>
+            ) : null}
+          </div>
+          {showPdf ? <SourcePdfPane textId={text.id} fileName={data.text.source_pdf_name} page={cursorPage} /> : <SandboxedPreview html={html ?? ''} images={images} title="Preview of the HTML" className="min-h-[28rem]" />}
         </div>
       </div>
       <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={dirty} onRestored={() => { loadHtml(); refresh(); }} />
