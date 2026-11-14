@@ -68,7 +68,7 @@ test('move texts to another project: the dialog says what goes, what is deleted 
   // They are in bob's project, with their pages; the old address is gone.
   await bobPage.goto(`/manifold-companion/projects/${dest.id}`);
   await expect(bobPage.getByRole('link', { name: 'Letter one' })).toBeVisible();
-  await expect(bobPage.getByText('1 pages, pending').first()).toBeVisible();
+  await expect(bobPage.getByText('1 page, Not read yet').first()).toBeVisible();
   const moved = (await bobApi(`/projects/${dest.id}/texts`)).texts;
   expect(moved.map((t) => t.name)).toEqual(['Letter one', 'Letter two']);
   expect((await page.request.fetch(`/manifold-companion/api/texts/${texts[0].id}`)).status()).toBe(404);

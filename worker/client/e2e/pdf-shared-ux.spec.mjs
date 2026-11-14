@@ -187,3 +187,59 @@ test('Help states the page cap and the PDF size limit', async ({ page, context }
   await page.goto('/manifold-companion/help');
   await expect(page.getByText(/a project holds at most 300 pages, and a source PDF can be at most/)).toBeVisible();
 });
+
+test('readable statuses, counts on the dashboard, shared projects apart, a description at creation, select all', async ({ page, context, browser }) => {
+  await as(context, 'alice');
+  const api = apiOf(page);
+  await page.goto('/manifold-companion/');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Letters of 1912');
+  await page.getByLabel('Description (optional)').fill('Family letters, typewritten.');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await expect(page).toHaveURL(/\/projects\//);
+  await expect(page.getByText('Family letters, typewritten.')).toBeVisible();
+  const id = page.url().split('/projects/')[1].split(/[?#]/)[0];
+  for (const n of ['One', 'Two', 'Three']) await api(`/projects/${id}/texts`, 'POST', { name: n });
+  const { texts } = await api(`/projects/${id}/texts`);
+  await page.request.fetch(`/manifold-companion/api/texts/${texts[0].id}/pages?filename=a.jpg&size=${readFileSync('e2e/fixtures/page.png').length}`, { method: 'POST', headers: { Origin: ORIGIN, 'content-type': 'image/png' }, data: readFileSync('e2e/fixtures/page.png') });
+  await page.reload();
+  // No raw status word: "pending" reads as "Not read yet".
+  await expect(page.locator('ul.rowlist')).toContainText('1 page, Not read yet');
+  await expect(page.locator('ul.rowlist')).not.toContainText('pending');
+  const all = page.getByLabel('Select all 3 texts');
+  await page.getByLabel('Select One').check();
+  await expect(all).not.toBeChecked();
+  expect(await all.evaluate((el) => el.indeterminate)).toBe(true);
+  await all.check();
+  await expect(page.getByRole('region', { name: '3 texts selected' })).toBeVisible();
+  await page.getByRole('region', { name: '3 texts selected' }).getByLabel('Status').selectOption('ocrd');
+  await expect(page.getByRole('region', { name: '3 texts selected' }).getByLabel('Status')).toContainText('OCR complete');
+  await page.getByRole('region', { name: '3 texts selected' }).getByRole('button', { name: 'Set status' }).click();
+  await expect(page.getByText('3 texts set to “OCR complete”.')).toBeVisible();
+  await expect(page.locator('ul.rowlist')).toContainText('OCR complete');
+  expect(await axe(page)).toEqual([]);
+  await all.uncheck();
+  await expect(page.getByRole('region', { name: /texts selected/ })).toHaveCount(0);
+
+  // The dashboard: counts and the start of the description; projects shared with alice listed apart.
+  await page.goto('/manifold-companion/');
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Letters of 1912' }) });
+  await expect(row).toContainText('3 texts, 1 page');
+  await expect(row).toContainText('Family letters, typewritten.');
+  await expect(row).toContainText('you own it');
+  await expect(page.getByRole('heading', { name: 'Shared with you' })).toHaveCount(0);
+  const other = await browser.newContext();
+  await other.addCookies([{ name: 'e2e_as', value: 'bob', url: ORIGIN }]);
+  const bob = await other.newPage();
+  await bob.goto('/manifold-companion/');
+  const bobProject = (await apiOf(bob)('/projects', 'POST', { name: 'Bob shares this' })).project;
+  const inv = (await apiOf(bob)(`/projects/${bobProject.id}/invites`, 'POST', { role: 'viewer' })).invite;
+  await other.close();
+  await page.goto(`/manifold-companion/invite#t=${inv.token}`);
+  await expect(page).toHaveURL(/\/projects\//);
+  await page.goto('/manifold-companion/');
+  const shared = page.locator('section', { has: page.getByRole('heading', { name: 'Shared with you' }) });
+  await expect(shared.getByRole('link', { name: 'Bob shares this' })).toBeVisible();
+  await expect(shared).toContainText('you are a viewer');
+  await expect(page.locator('section', { has: page.getByRole('heading', { name: 'Projects you own' }) }).getByRole('link', { name: 'Letters of 1912' })).toBeVisible();
+  expect(await axe(page)).toEqual([]);
+});

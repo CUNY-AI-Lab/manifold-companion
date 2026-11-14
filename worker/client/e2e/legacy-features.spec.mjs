@@ -302,8 +302,8 @@ test('split a text, merge texts, set status and delete in bulk (with confirmatio
   const bar2 = page.getByRole('region', { name: '2 texts selected' });
   await bar2.getByLabel('Status').selectOption('reviewed');
   await bar2.getByRole('button', { name: 'Set status' }).click();
-  await expect(page.getByRole('listitem').filter({ hasText: 'Rejoined' })).toContainText('reviewed');
-  await expect(page.getByRole('listitem').filter({ hasText: /^Book3 pages/ }).or(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Book', exact: true }) }))).toContainText('reviewed');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Rejoined' })).toContainText('Reviewed');
+  await expect(page.getByRole('listitem').filter({ hasText: /^Book3 pages/ }).or(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Book', exact: true }) }))).toContainText('Reviewed');
 
   await page.getByLabel('Select Book, part 1').check();
   await page.getByLabel('Select Book, part 2').check();

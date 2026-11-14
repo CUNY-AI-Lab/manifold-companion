@@ -12,6 +12,7 @@ import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '..
 import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
 import { checkPdfFits } from '../lib/limits';
+import { plural, statusLabel } from '../lib/status';
 import { runOcr, translateText } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
@@ -215,7 +216,7 @@ export default function ImageTextPage({ data, reload }) {
       <DropOverlay show={dragging} label={`Drop to add pages to “${text.name}”`} />
       <p className="text-sm"><Link to={`/projects/${text.project_id}`}>Back to project</Link></p>
       <h1 className="doc-title mt-1 text-3xl">{text.name}</h1>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{pages.length} pages, {text.status}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{plural(pages.length, 'page')}, {statusLabel(text.status)}</p>
       {showDraft ? <DraftBanner what={stored.target.kind === 'fulltext' ? 'the full text' : `page ${storedPage.page_number} (${storedPage.filename})`} at={stored.at} savedChanged={stored.target.kind === 'page' && savedChangedSince(stored, storedPage.ocr_text)} onRestore={restoreStored} onDiscard={() => { discard(); setOffer(false); }} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       {busy ? <p role="status" className="text-sm text-cail-azure dark:text-cail-link-dark">{busy}</p> : null}

@@ -9,6 +9,7 @@ import { RetentionBanner } from './Dashboard';
 import * as toc from '../lib/toc';
 import { useConfirm } from '../components/ConfirmDialog';
 import { TEXTS_PER_PAGE, fetchAllTexts, pageCount, pageFromSearch, rangeLabel } from '../lib/paging';
+import { SETTABLE_STATUSES, statusLabel } from '../lib/status';
 
 /**
  * Actions on the selected texts: set their status, delete them (after a
@@ -26,9 +27,9 @@ function BulkBar({ project, texts, onDone, onError, onClear }) {
     <section aria-labelledby="bulk-title" className="sticky bottom-2 z-30 mt-3 flex flex-wrap items-end gap-3 rounded-md border border-slate-300 bg-white p-3 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800">
       <h2 id="bulk-title" className="w-full text-sm">{n} text{n === 1 ? '' : 's'} selected</h2>
       <label><span className="label">Status</span>
-        <select className="field w-auto" value={status} onChange={(e) => setStatus(e.target.value)}><option value="pending">pending</option><option value="ocrd">read (OCR done)</option><option value="reviewed">reviewed</option></select>
+        <select className="field w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>{SETTABLE_STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}</select>
       </label>
-      <button type="button" className="btn-quiet" onClick={() => run(async () => { const r = await api.post(`/api/projects/${project.id}/texts/bulk-status`, { textIds: ids, status }); return `${r.updated} text${r.updated === 1 ? '' : 's'} set to ${status}.`; })}>Set status</button>
+      <button type="button" className="btn-quiet" onClick={() => run(async () => { const r = await api.post(`/api/projects/${project.id}/texts/bulk-status`, { textIds: ids, status }); return `${r.updated} text${r.updated === 1 ? '' : 's'} set to “${statusLabel(status)}”.`; })}>Set status</button>
       {project.project_type === 'image_to_markdown' && n >= 2 ? (
         <>
           <label><span className="label">Name of the merged text</span><input className="field" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} /></label>
@@ -43,6 +44,12 @@ function BulkBar({ project, texts, onDone, onError, onClear }) {
       <button type="button" className="btn-quiet" onClick={onClear}>Clear selection</button>
     </section>
   );
+}
+
+/** A text's status as a word with a colour (the word carries the meaning, the colour only helps scanning). */
+export function StatusBadge({ status }) {
+  const tone = { reviewed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100', ocrd: 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100', processing: 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100' }[status] ?? 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100';
+  return <span className={`rounded px-1.5 py-0.5 ${tone}`}>{statusLabel(status)}</span>;
 }
 
 const formatMb = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
@@ -268,6 +275,20 @@ function ExportForm({ project, texts, onClose }) {
   );
 }
 
+/** Select or clear every text listed on this page (indeterminate when some are). */
+function SelectAll({ texts, chosen, setChosen, paged }) {
+  const box = useRef(null);
+  const ids = texts.map((t) => t.id);
+  const n = ids.filter((x) => chosen.includes(x)).length;
+  useEffect(() => { if (box.current) box.current.indeterminate = n > 0 && n < ids.length; }, [n, ids.length]);
+  return (
+    <label className="mt-6 inline-flex items-center gap-2 text-sm">
+      <input ref={box} type="checkbox" checked={n === ids.length} onChange={(e) => setChosen(e.target.checked ? ids : [])} />
+      Select all {paged ? `${ids.length} texts on this page` : `${ids.length} texts`}
+    </label>
+  );
+}
+
 function Pager({ page, total, onPage }) {
   const count = pageCount(total);
   if (count <= 1) return null;
@@ -341,6 +362,7 @@ export default function ProjectPage() {
       {isOwner ? <ProjectDetails project={project} onSaved={load} /> : null}
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       {total > TEXTS_PER_PAGE ? <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">{rangeLabel(page, total)}</p> : null}
+      {canEdit && texts.length > 1 ? <SelectAll texts={texts} chosen={chosen} setChosen={setChosen} paged={total > TEXTS_PER_PAGE} /> : null}
       <ul className="rowlist mt-2 rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         {texts.length === 0 ? <li className="p-4 text-sm text-slate-500 dark:text-slate-400">{canEdit ? 'No texts yet. Add one below, then upload its pages.' : 'No texts yet.'}</li> : null}
         {texts.map((t) => (
@@ -348,7 +370,9 @@ export default function ProjectPage() {
             {canEdit ? <input type="checkbox" aria-label={`Select ${t.name}`} checked={chosen.includes(t.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, t.id] : chosen.filter((x) => x !== t.id))} /> : null}
             {canEdit && total > 1 ? <MoveButtons label={t.name} index={offset + texts.indexOf(t)} total={total} idBase={`move-text-${t.id}`} onMove={moveText} /> : null}
             <Link to={`/texts/${t.id}`} className="doc-title text-lg">{t.name}</Link>
-            <span className="text-xs text-slate-500 dark:text-slate-400">{project.project_type === 'pdf_to_html' ? (t.has_html ? 'converted' : 'not converted yet') : `${t.page_count} pages, ${t.status}`}</span>
+            {project.project_type === 'pdf_to_html'
+              ? <span className="text-xs text-slate-600 dark:text-slate-300">{t.has_html ? 'Converted' : 'Not converted yet'}</span>
+              : <span className="text-xs text-slate-600 dark:text-slate-300">{plural(t.page_count, 'page')}, <StatusBadge status={t.status} /></span>}
             {canEdit ? <button className="btn-quiet ml-auto" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this text?', message: `Delete “${t.name}”, its pages, files and versions, for every member? This cannot be undone.`, confirmLabel: 'Delete text', danger: true }))) return; try { await api.del(`/api/texts/${t.id}`); load(); refresh(); } catch (e) { setError(e); } }}>Delete</button> : null}
           </li>
         ))}
