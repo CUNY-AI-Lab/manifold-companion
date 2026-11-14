@@ -151,7 +151,12 @@ export default function ImageTextPage({ data, reload }) {
   const startOcr = async (overwrite) => {
     const targets = overwrite ? pages : pages.filter((p) => !p.ocr_text);
     if (targets.length === 0) return;
-    if (overwrite && targets.some((p) => p.ocr_text) && !(await confirm({ title: 'Read every page again?', message: replaceWarning('Read every page again with the model? This replaces the text of every page.').replace('The current text', 'The current text of each page'), confirmLabel: 'Read every page again' }))) return;
+    // An edit in progress on a page the run replaces is lost: say so before anything is read.
+    const editLost = pageDirty && targets.some((p) => p.id === page.id);
+    const lostNote = editLost ? `\n\nPage ${page.page_number} has changes that are not saved; they are lost too. Save the page first to keep them.` : '';
+    if (overwrite && targets.some((p) => p.ocr_text)) {
+      if (!(await confirm({ title: 'Read every page again?', message: replaceWarning('Read every page again with the model? This replaces the text of every page.').replace('The current text', 'The current text of each page') + lostNote, confirmLabel: 'Read every page again', danger: editLost }))) return;
+    } else if (editLost && !(await confirm({ title: 'Discard the changes to this page?', message: `Reading the pages without text also reads page ${page.page_number}, which has changes that are not saved; the model's text replaces them. Save the page first to keep them.`, confirmLabel: 'Discard and read', cancelLabel: 'Keep editing', danger: true }))) return;
     const controller = new AbortController();
     setRun({ done: 0, total: targets.length, current: targets[0].filename, failures: [], controller });
     setError(null);
@@ -291,7 +296,7 @@ export default function ImageTextPage({ data, reload }) {
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
       <TextSettingsPanel textId={text.id} kind="image" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
-      <CommentsPanel textId={text.id} canWrite={canEdit} source={page ? { text: draft, pageId: page.id, textareaRef: pageText } : null} pages={pages} onGoToPage={setSelected} />
+      <CommentsPanel textId={text.id} canWrite={canEdit} source={page ? { text: draft, pageId: page.id, textareaRef: pageText } : null} pages={pages} onGoToPage={selectPage} />
     </div>
   );
 }

@@ -260,3 +260,44 @@ test('the page editor has a Markdown toolbar (and Ctrl/Cmd+B, I); the visual edi
   expect(saved).toMatch(/<u>/);
   expect(saved).toMatch(/<s>/);
 });
+
+test('an unsaved page edit is never replaced without asking: Go to page N from a comment, Read all pages again, Read pages without text', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { text, pages } = await imageText(page, api, ['first page', 'second page', null]);
+  // A comment anchored on page 2, so page 1 offers "Go to page 2".
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  await page.getByRole('button', { name: /^2\. p2\.png/ }).click();
+  const box = page.getByLabel(/^Text of page 2/);
+  await box.evaluate((el) => { el.focus(); el.setSelectionRange(0, 6); });
+  await page.getByRole('button', { name: 'Comment on the selected text' }).click();
+  await page.getByLabel('New comment').fill('Check this word.');
+  await page.getByRole('button', { name: 'Post comment' }).click();
+  await expect(page.getByText('Check this word.')).toBeVisible();
+  await page.getByRole('button', { name: /^1\. p1\.png/ }).click();
+  await page.getByLabel(/^Text of page 1/).fill('first page, being corrected');
+  await page.getByRole('button', { name: 'Go to page 2' }).click();
+  const dlg = page.getByRole('alertdialog');
+  await expect(dlg).toContainText('Discard the changes to this page?');
+  await dlg.getByRole('button', { name: 'Stay on this page' }).click();
+  await expect(page.getByLabel(/^Text of page 1/)).toHaveValue('first page, being corrected');
+
+  await page.getByRole('button', { name: 'Read all pages again' }).click();
+  await expect(dlg).toContainText('Page 1 has changes that are not saved; they are lost too.');
+  await dlg.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByLabel(/^Text of page 1/)).toHaveValue('first page, being corrected');
+
+  // Page 3 has no text: an edit there would be replaced by "Read pages without text".
+  await page.getByRole('button', { name: /^Save page/ }).click();
+  await expect(page.getByRole('button', { name: 'Save page' })).toBeDisabled();
+  await expect(page.getByText('Page 1 saved.')).toBeVisible();
+  await page.getByRole('button', { name: /^3\. p3\.png/ }).click();
+  await page.getByLabel(/^Text of page 3/).fill('typed by hand');
+  await page.getByRole('button', { name: 'Read pages without text' }).click();
+  await expect(dlg).toContainText('Discard the changes to this page?');
+  await dlg.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(page.getByLabel(/^Text of page 3/)).toHaveValue('typed by hand');
+  expect((await api(`/texts/${text.id}`)).pages[2].ocr_text).toBeNull();
+  void pages;
+});
