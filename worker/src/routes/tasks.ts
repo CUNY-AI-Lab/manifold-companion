@@ -16,6 +16,7 @@ import { isUuid, nowIso } from "../util";
 import type { AppEnv } from "../app";
 import { logger, terminalFor } from "../logging";
 import type { MiddlewareHandler } from "hono";
+import { LANGUAGE_CODES } from "../languages";
 
 /** One model_task.completed event per model task request, with the route TEMPLATE only. */
 const logged = (template: string): MiddlewareHandler<AppEnv> => async (c, next) => {
@@ -36,7 +37,7 @@ const idOf = (c: { req: { param: (n: string) => string | undefined } }): string 
 /** A page image sent to a model is capped (Media Tools uses the same 4 MiB); the browser resizes before upload. */
 export const MAX_MODEL_IMAGE_BYTES = 4 * 1024 * 1024;
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
-const LANGUAGES = new Set(("en es fr de it pt ru zh ja ko ar hi nl sv da no fi pl cs el tr he th vi uk ro hu id ms ca hr sk bg sr lt lv et sl ga sq mk bs mt is cy la auto-detect").split(" "));
+const LANGUAGES = LANGUAGE_CODES; // src/languages.ts (Ancient Greek and Yiddish restored)
 
 interface Settings { prompt: string | null; model: string | null; math_model: string | null; temperature: number | null; max_tokens: number | null }
 

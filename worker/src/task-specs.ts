@@ -7,6 +7,7 @@ import { AppError } from "./errors";
 import type { ChatTask } from "./gateway";
 import type { ModelOption } from "./models";
 import { cleanOcr, extractHtml, pageWarnings, postprocessPageHtml, stripReasoning, visibleLength, type PageWarning } from "./model-output";
+import { languageName } from "./languages";
 import { DEFAULT_OCR_PROMPT, FORMULA_REPAIR_SYSTEM, HTML_PAGE_SYSTEM, htmlPageUser, summarySystem, translationSystem } from "./prompts";
 import { sanitizeHtml } from "./sanitize/html";
 
@@ -75,7 +76,7 @@ export function summaryTask(model: ModelOption, source: string, language: string
   const input = truncatedInput ? `${source.slice(0, MAX_SUMMARY_INPUT_CHARS)}\n\n[text truncated]` : source;
   return {
     truncatedInput,
-    task: { model, deadline: "text", wantsThinking: false, maxTokens: TASK_DEFAULTS.summary.maxTokens, temperature: TASK_DEFAULTS.summary.temperature, messages: [{ role: "system", content: summarySystem(language) }, { role: "user", content: input }] },
+    task: { model, deadline: "text", wantsThinking: false, maxTokens: TASK_DEFAULTS.summary.maxTokens, temperature: TASK_DEFAULTS.summary.temperature, messages: [{ role: "system", content: summarySystem(languageName(language)) }, { role: "user", content: input }] },
   };
 }
 
@@ -88,7 +89,7 @@ export function parseSummary(raw: string): string {
 }
 
 export function translateTask(model: ModelOption, text: string, source: string, target: string): ChatTask {
-  return { model, deadline: "translate", wantsThinking: false, maxTokens: TASK_DEFAULTS.translate.maxTokens, temperature: TASK_DEFAULTS.translate.temperature, messages: [{ role: "system", content: translationSystem(source, target) }, { role: "user", content: text }] };
+  return { model, deadline: "translate", wantsThinking: false, maxTokens: TASK_DEFAULTS.translate.maxTokens, temperature: TASK_DEFAULTS.translate.temperature, messages: [{ role: "system", content: translationSystem(languageName(source), languageName(target)) }, { role: "user", content: text }] };
 }
 
 export const parseTranslation = (raw: string): string => stripReasoning(raw).trim();

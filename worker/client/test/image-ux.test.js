@@ -39,3 +39,24 @@ describe('scan zoom and pan', () => {
     expect(panAfterZoom({ x: 200, y: 0 }, 2, 1, 400, 600)).toEqual({ x: 0, y: 0 });
   });
 });
+
+import { LANGUAGE_CODES, languageName, languageOptions } from '../../src/languages.ts';
+
+describe('languages', () => {
+  it('menus show names, English first; Ancient Greek and Yiddish are back', () => {
+    const opts = languageOptions();
+    expect(opts[0]).toEqual({ code: 'en', name: 'English' });
+    expect(opts.find((o) => o.code === 'grc')?.name).toBe('Ancient Greek');
+    expect(opts.find((o) => o.code === 'yi')?.name).toBe('Yiddish');
+    const rest = opts.slice(1).map((o) => o.name);
+    expect(rest).toEqual([...rest].sort((a, b) => a.localeCompare(b)));
+  });
+  it('the routes accept every menu code plus auto-detect; prompts get names', () => {
+    for (const o of languageOptions()) expect(LANGUAGE_CODES.has(o.code)).toBe(true);
+    expect(LANGUAGE_CODES.has('auto-detect')).toBe(true);
+    expect(LANGUAGE_CODES.has('klingon')).toBe(false);
+    expect(languageName('grc')).toBe('Ancient Greek');
+    expect(languageName('auto-detect')).toMatch(/detect/);
+    expect(languageName('xx')).toBe('xx');
+  });
+});

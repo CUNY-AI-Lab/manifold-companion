@@ -3,8 +3,9 @@ import { api } from '../api/client';
 import { translateText } from '../lib/tasks';
 import { useConfirm } from './ConfirmDialog';
 import { ErrorNote } from './ui';
+import { languageOptions } from '../../../src/languages.ts';
 
-export const LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar', 'hi', 'nl', 'pl', 'el', 'tr', 'he', 'uk', 'la'];
+const LANGS = languageOptions();
 
 /**
  * An image text's translation: made by the model chunk by chunk from the text
@@ -68,8 +69,8 @@ export default function TranslationPanel({ text, canEdit, getSource, busy = fals
       <ErrorNote error={error} onDismiss={() => setError(null)} />
       {canEdit ? (
         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-          <label>From <select className="field inline-block w-auto" value={langs.source} onChange={(e) => setLangs({ ...langs, source: e.target.value })}><option value="auto-detect">detect</option>{LANGS.map((l) => <option key={l} value={l}>{l}</option>)}</select></label>
-          <label>to <select className="field inline-block w-auto" value={langs.target} onChange={(e) => setLangs({ ...langs, target: e.target.value })}>{LANGS.map((l) => <option key={l} value={l}>{l}</option>)}</select></label>
+          <label>From <select aria-label="Translate from" className="field inline-block w-auto" value={langs.source} onChange={(e) => setLangs({ ...langs, source: e.target.value })}><option value="auto-detect">Detect the language</option>{LANGS.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}</select></label>
+          <label>to <select aria-label="Translate to" className="field inline-block w-auto" value={langs.target} onChange={(e) => setLangs({ ...langs, target: e.target.value })}>{LANGS.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}</select></label>
           <button className="btn-quiet" type="button" disabled={!!working || busy} onClick={translate}>{saved ? 'Translate again' : 'Translate'}</button>
         </div>
       ) : null}

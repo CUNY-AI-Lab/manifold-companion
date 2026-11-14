@@ -10,12 +10,11 @@ import { deleteTextObjects, splitText } from "../text-ops";
 import { deleteRowAndRelease } from "../storage";
 import { isUuid, moveId, nowIso } from "../util";
 import type { AppEnv } from "../app";
+import { LANGUAGE_CODES } from "../languages";
 
 export const textRoutes = new Hono<AppEnv>();
 
-const LANGUAGES = new Set(
-  ("en es fr de it pt ru zh ja ko ar hi nl sv da no fi pl cs el tr he th vi uk ro hu id ms ca hr sk bg sr lt lv et sl ga sq mk bs mt is cy la auto-detect").split(" "),
-);
+const LANGUAGES = LANGUAGE_CODES; // src/languages.ts
 const STATUSES = new Set(["pending", "processing", "ocrd", "reviewed"]);
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 const DC_FIELDS = ["dc_title", "dc_creator", "dc_subject", "dc_description", "dc_date", "dc_type", "dc_format", "dc_language", "dc_source", "dc_rights", "dc_coverage", "dc_contributor", "dc_publisher", "dc_relation", "dc_identifier"] as const;

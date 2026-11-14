@@ -103,7 +103,15 @@ test('translation: translated, checked beside the original, corrected and saved;
   const api = apiOf(page);
   const { project, text } = await imageText(page, api, ['Cara mamma, siamo arrivati.']);
   await page.goto(`/manifold-companion/texts/${text.id}`);
+  // Languages by name; Ancient Greek and Yiddish are offered again.
+  await expect(page.getByLabel('Translate from').locator('option', { hasText: 'Ancient Greek' })).toHaveCount(1);
+  await page.getByLabel('Translate from').selectOption({ label: 'Italian' });
+  await page.getByLabel('Translate to').selectOption({ label: 'Yiddish' });
+  const sent = [];
+  page.on('request', (r) => { if (r.url().endsWith('/translate-chunk')) sent.push(r.postDataJSON()); });
   await page.getByRole('button', { name: 'Translate', exact: true }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  expect(sent[0]).toMatchObject({ source_language: 'it', target_language: 'yi' });
   const box = page.getByRole('textbox', { name: 'Translation' });
   await expect(box).toHaveValue('A stub summary.');
   await page.getByLabel('Show beside the original').check();
