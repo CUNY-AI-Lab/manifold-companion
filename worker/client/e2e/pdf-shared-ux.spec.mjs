@@ -313,3 +313,21 @@ test('move a page or a text straight to a position, from the keyboard', async ({
   await expect(page.getByText('Third moved to position 1 of 3.')).toBeVisible();
   await expect(page.locator('a.doc-title')).toHaveText(['Third', 'Letters', 'Second']);
 });
+
+test('Settings, Usage: which owned projects use the storage, largest first', async ({ page, context }) => {
+  await as(context, 'carol');
+  const api = apiOf(page);
+  await page.goto('/manifold-companion/');
+  const big = (await api('/projects', 'POST', { name: 'Carol big' })).project;
+  await api('/projects', 'POST', { name: 'Carol empty' });
+  const t = (await api(`/projects/${big.id}/texts`, 'POST', { name: 'T' })).text;
+  const png = readFileSync('e2e/fixtures/page.png');
+  await page.request.fetch(`/manifold-companion/api/texts/${t.id}/pages?filename=a.png&size=${png.length}`, { method: 'POST', headers: { Origin: ORIGIN, 'content-type': 'image/png' }, data: png });
+  await page.goto('/manifold-companion/settings');
+  const table = page.getByRole('table', { name: 'Storage by project, largest first' });
+  const rows = table.locator('tbody tr');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText('Carol big');
+  await expect(table).toContainText('Carol empty');
+  expect(await axe(page)).toEqual([]);
+});

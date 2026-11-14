@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { readJsonObject, optionalString } from "../body";
 import { BASE_PATH, canonicalOrigin, limits } from "../env";
 import { E } from "../errors";
-import { deleteProfileData } from "../storage";
+import { deleteProfileData, projectBytesSql } from "../storage";
 import { nowIso } from "../util";
 import type { AppEnv } from "../app";
 
@@ -46,6 +46,17 @@ sessionRoutes.get("/session", async (c) => {
     base_path: BASE_PATH,
     origin: canonicalOrigin(c.env),
   });
+});
+
+// Which of the caller's own projects use their storage (the counter is per owner; collaborators' uploads count for the owner).
+// Only projects the caller owns, by their opaque subject; the same per-project sum the counter is recounted from.
+sessionRoutes.get("/usage/storage", async (c) => {
+  const { subject } = c.get("principal");
+  const lim = limits(c.env);
+  const rows = await c.env.DB.prepare(`SELECT pr.id, pr.name, pr.project_type, ${projectBytesSql("pr.id")} AS bytes FROM projects pr WHERE pr.owner_subject = ?1 ORDER BY bytes DESC, pr.name LIMIT ?2`)
+    .bind(subject, lim.maxProjectsPerPerson).all<{ id: string; name: string; project_type: string; bytes: number }>();
+  const profile = await loadProfile(c.env.DB, subject);
+  return c.json({ projects: rows.results, used_bytes: profile.storage_bytes, quota_bytes: lim.storageQuotaBytes });
 });
 
 sessionRoutes.put("/profile", async (c) => {
