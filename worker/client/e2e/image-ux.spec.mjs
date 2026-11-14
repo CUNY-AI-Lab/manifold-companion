@@ -321,3 +321,56 @@ test('the page list shows a thumbnail of each page; the buttons still name the p
   await expect(nav.getByRole('button', { name: '2. p2.png (no text)', exact: true })).toBeVisible();
   expect(await axe(page, 'page thumbnails')).toEqual([]);
 });
+
+test('uncertain readings: tinted in the editor and the preview, counted per page, reviewed with next and previous flag across pages', async ({ page, context }) => {
+  await as(context, 'carol');
+  await page.goto('/manifold-companion/');
+  const api = apiOf(page);
+  const { text } = await imageText(page, api, [
+    'Cara [unclear: mamma], siamo [illegible] a Napoli.',
+    'Nothing doubtful here.',
+    'Firmato [deleted: Pino] [handwritten: Giuseppe].',
+  ]);
+  await page.goto(`/manifold-companion/texts/${text.id}`);
+  const nav = page.getByRole('navigation', { name: 'Pages' });
+  await expect(nav.getByRole('button', { name: /^1\. p1\.png \(2 flags: 1 unclear, 1 illegible\)$/ })).toBeVisible();
+  await expect(nav.getByRole('button', { name: '2. p2.png', exact: true })).toBeVisible();
+  await expect(nav.getByRole('button', { name: /^3\. p3\.png \(2 flags: 1 deleted, 1 handwritten\)$/ })).toBeVisible();
+
+  const box = page.getByLabel(/^Text of page 1/);
+  await expect(box).toHaveAccessibleDescription(/2 flags on this page \(1 unclear, 1 illegible\); 4 in this text/);
+  const layer = page.locator('[data-flag-layer] mark');
+  await expect(layer).toHaveCount(2);
+  await expect(layer.first()).toHaveText('[unclear: mamma]');
+  // The tint sits under the very characters it marks.
+  const [ta, mark] = await Promise.all([box.boundingBox(), layer.first().boundingBox()]);
+  expect(mark.y).toBeGreaterThanOrEqual(ta.y);
+  expect(mark.x).toBeGreaterThan(ta.x);
+  await expect(page.frameLocator('iframe[title="Preview of page 1"]').locator('mark')).toHaveCount(2);
+
+  const selected = () => box.evaluate((el) => el.value.slice(el.selectionStart, el.selectionEnd));
+  const flags = page.getByRole('group', { name: 'Flags to review' });
+  await flags.getByRole('button', { name: 'Next flag' }).click();
+  expect(await selected()).toBe('[unclear: mamma]');
+  await expect(flags.getByRole('status')).toHaveText('Page 1, flag 1 of 2: unclear “mamma”.');
+  await flags.getByRole('button', { name: 'Next flag' }).click();
+  expect(await selected()).toBe('[illegible]');
+  // Past the last flag of page 1, Next goes to page 3 (page 2 has none) and selects its first flag.
+  await flags.getByRole('button', { name: 'Next flag' }).click();
+  const box3 = page.getByLabel(/^Text of page 3/);
+  await expect(box3).toBeVisible();
+  await expect.poll(() => box3.evaluate((el) => el.value.slice(el.selectionStart, el.selectionEnd))).toBe('[deleted: Pino]');
+  await expect(flags.getByRole('status')).toHaveText('Page 3, flag 1 of 2: deleted “Pino”.');
+  await flags.getByRole('button', { name: 'Previous flag' }).click();
+  await expect(page.getByLabel(/^Text of page 1/)).toBeVisible();
+  await expect.poll(() => page.getByLabel(/^Text of page 1/).evaluate((el) => el.value.slice(el.selectionStart, el.selectionEnd))).toBe('[illegible]');
+
+  // Settling a reading: the tint and the count follow the text, and the stored text format is unchanged.
+  await page.getByLabel(/^Text of page 1/).fill('Cara mamma, siamo [illegible] a Napoli.');
+  await expect(layer).toHaveCount(1);
+  await expect(page.getByLabel(/^Text of page 1/)).toHaveAccessibleDescription(/1 flag on this page \(1 illegible\); 3 in this text/);
+  expect(await axe(page, 'flag review')).toEqual([]);
+  await page.getByRole('button', { name: 'Save page' }).click();
+  await expect(nav.getByRole('button', { name: /^1\. p1\.png \(1 flag: 1 illegible\)$/ })).toBeVisible();
+  expect((await api(`/texts/${text.id}`)).pages[0].ocr_text).toBe('Cara mamma, siamo [illegible] a Napoli.');
+});

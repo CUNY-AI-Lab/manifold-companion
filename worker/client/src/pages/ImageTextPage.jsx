@@ -12,6 +12,8 @@ import SandboxedPreview from '../components/SandboxedPreview';
 import { ScanLightbox, ScanViewer } from '../components/ScanViewer';
 import MarkdownToolbar, { markdownKeys } from '../components/MarkdownToolbar';
 import PageThumb from '../components/PageThumb';
+import FlagHighlight from '../components/FlagHighlight';
+import { describeCounts, findFlags, flagCounts, FLAG_KINDS, stepFlag } from '../lib/flags';
 import VersionHistory from '../components/VersionHistory';
 import { ErrorNote, ModelPicker, MoveButtons, QuotaLine, useMoveFocus } from '../components/ui';
 import { jpegName, prepareImage } from '../lib/image';
@@ -110,11 +112,55 @@ export default function ImageTextPage({ data, reload }) {
     if (selected === stored.target.pageId) setDraft(stored.content);
     else { pendingRestore.current = stored; setSelected(stored.target.pageId); }
   };
+  /** Open another page; true once it is selected (false if the person stayed to keep unsaved changes). */
   const selectPage = async (id) => {
-    if (id === selected) return;
-    if (pageDirty && !(await confirm({ title: 'Discard the changes to this page?', message: `Page ${page.page_number} has changes that are not saved. Open another page and discard them?`, confirmLabel: 'Discard and open', cancelLabel: 'Stay on this page', danger: true }))) return;
+    if (id === selected) return true;
+    if (pageDirty && !(await confirm({ title: 'Discard the changes to this page?', message: `Page ${page.page_number} has changes that are not saved. Open another page and discard them?`, confirmLabel: 'Discard and open', cancelLabel: 'Stay on this page', danger: true }))) return false;
     if (pageDirty) pageKeeper.forget();
     setSelected(id);
+    return true;
+  };
+
+  // Review of uncertain readings: step from flag to flag, across pages, selecting each in the page text.
+  const pendingFlag = useRef(null); // { pageId, start, end } to select once that page's text is loaded
+  // Where the person is in the page text: set by their own caret moves and by flag steps; null on a fresh page
+  // (React leaves an untouched textarea's caret at the end), so stepping then starts from the top.
+  const caret = useRef(null);
+  useEffect(() => { caret.current = null; }, [page?.id]);
+  const noteCaret = (e) => { caret.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd }; };
+  const [flagNote, setFlagNote] = useState('');
+  const showFlag = (f) => {
+    const el = pageText.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(f.start, f.end);
+    caret.current = { start: f.start, end: f.end };
+    // Scroll the selection into view: blur and focus again makes the browser scroll to the caret.
+    el.blur(); el.focus();
+  };
+  useEffect(() => {
+    const want = pendingFlag.current;
+    if (!want || want.pageId !== draftPage) return;
+    pendingFlag.current = null;
+    showFlag(want);
+  }, [draftPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  const flagPages = pages.map((p) => ({ id: p.id, text: p.id === page?.id ? draft : p.ocr_text ?? '' }));
+  const totalFlags = flagPages.reduce((n, p) => n + findFlags(p.text).length, 0);
+  const pageFlags = findFlags(draft);
+  const goFlag = async (dir) => {
+    // From the caret: a selected flag steps past itself; a caret steps to the flag at or after it (next)
+    // or ending at or before it (previous). No caret yet: from the top (next) or the end (previous).
+    const at = caret.current;
+    const offset = !at ? (dir > 0 ? -1 : Number.MAX_SAFE_INTEGER) : dir > 0 ? (at.start === at.end ? at.start - 1 : at.start) : at.start;
+    const hit = stepFlag(flagPages, { pageIndex: Math.max(0, pageIndex), offset }, dir);
+    if (!hit) { setFlagNote(dir > 0 ? 'No more flags after this one.' : 'No flags before this one.'); return; }
+    const target = pages[hit.pageIndex];
+    const onPage = findFlags(flagPages[hit.pageIndex].text);
+    const where = onPage.findIndex((f) => f.start === hit.flag.start) + 1;
+    const note = `Page ${target.page_number}, flag ${where} of ${onPage.length}: ${FLAG_KINDS[hit.flag.kind].label}${hit.flag.body ? ` “${hit.flag.body}”` : ''}.`;
+    if (target.id === page?.id) { showFlag(hit.flag); setFlagNote(note); return; }
+    pendingFlag.current = { pageId: target.id, start: hit.flag.start, end: hit.flag.end };
+    if (await selectPage(target.id)) setFlagNote(note); else pendingFlag.current = null;
   };
 
   const upload = async (files) => {
@@ -256,6 +302,7 @@ export default function ImageTextPage({ data, reload }) {
                 <button type="button" aria-current={p.id === selected ? 'true' : undefined} className={`flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1 text-left ${p.id === selected ? 'bg-cail-blue/10 font-medium ring-1 ring-cail-blue/40' : ''}`} onClick={() => selectPage(p.id)}>
                   <PageThumb textId={text.id} page={p} />
                   <span className="min-w-0 flex-1 truncate">{p.page_number}. {p.filename}{p.ocr_text ? '' : ' (no text)'}</span>
+                  {(() => { const c = flagCounts(p.ocr_text); return c.total ? <span className={`shrink-0 rounded px-1 text-xs ${c.doubts ? 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100' : 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100'}`} title={describeCounts(c)}><span aria-hidden="true">⚑ {c.total}</span><span className="sr-only">({c.total} {c.total === 1 ? 'flag' : 'flags'}: {describeCounts(c)})</span></span> : null; })()}
                 </button>
                 {canEdit && pages.length > 1 ? <MoveButtons label={`page ${p.page_number} (${p.filename})`} index={i} total={pages.length} idBase={`move-page-${p.id}`} disabled={!!run} onMove={movePage} /> : null}
               </li>
@@ -275,7 +322,16 @@ export default function ImageTextPage({ data, reload }) {
                 </p>
               ) : null}
               {canEdit ? <MarkdownToolbar textareaRef={pageText} controls="page-text" onChange={(v) => { setDraft(v); setPageStatus(''); }} /> : null}
-              <textarea ref={pageText} id="page-text" className="field min-h-[18rem] font-mono" value={draft} readOnly={!canEdit} aria-describedby={text.has_compiled ? 'page-export-note' : undefined} onKeyDown={canEdit ? (e) => markdownKeys(e, pageText, setDraft) : undefined} onChange={(e) => { setDraft(e.target.value); setPageStatus(''); }} />
+              <div className="relative rounded-md bg-white dark:bg-slate-800">
+                <FlagHighlight value={draft} textareaRef={pageText} />
+                <textarea ref={pageText} id="page-text" className="field relative min-h-[18rem] bg-transparent font-mono dark:bg-transparent" value={draft} readOnly={!canEdit} aria-describedby={[text.has_compiled ? 'page-export-note' : '', 'page-flags'].filter(Boolean).join(' ')} onKeyDown={canEdit ? (e) => markdownKeys(e, pageText, setDraft) : undefined} onKeyUp={noteCaret} onMouseUp={noteCaret} onChange={(e) => { setDraft(e.target.value); setPageStatus(''); noteCaret(e); }} />
+              </div>
+              <div role="group" aria-label="Flags to review" className="flex flex-wrap items-center gap-2 text-sm">
+                <span id="page-flags" className="text-slate-700 dark:text-slate-200">{pageFlags.length ? `${pageFlags.length} ${pageFlags.length === 1 ? 'flag' : 'flags'} on this page (${describeCounts(flagCounts(draft))})` : 'No flags on this page'}{totalFlags ? `; ${totalFlags} in this text.` : '.'}</span>
+                <button type="button" className="btn-quiet px-2 py-1" disabled={totalFlags === 0} onClick={() => goFlag(-1)}>Previous flag</button>
+                <button type="button" className="btn-quiet px-2 py-1" disabled={totalFlags === 0} onClick={() => goFlag(1)}>Next flag</button>
+                <span role="status" className="text-slate-600 dark:text-slate-300">{flagNote}</span>
+              </div>
               {conflict ? <details className="text-sm"><summary>Model text that was not saved (the page was edited meanwhile)</summary><pre className="whitespace-pre-wrap">{conflict}</pre><button type="button" className="btn-quiet mt-1" onClick={() => setDraft(conflict)}>Use the model text</button></details> : null}
               {canEdit ? (
                 <div className="flex flex-wrap gap-2">
@@ -285,7 +341,7 @@ export default function ImageTextPage({ data, reload }) {
                   <button className="btn-danger" type="button" onClick={async () => { if (!(await confirm({ title: 'Delete this page?', message: `Delete page ${page.page_number} (${page.filename}), its image and its saved versions? This cannot be undone.`, confirmLabel: 'Delete page', danger: true }))) return; await api.del(`/api/texts/${text.id}/pages/${page.id}`); reload(); refresh(); }}>Delete page</button>
                 </div>
               ) : null}
-              <SandboxedPreview markdown={draft} title={`Preview of page ${page.page_number}`} className="min-h-[14rem]" />
+              <SandboxedPreview markdown={draft} flags title={`Preview of page ${page.page_number}`} className="min-h-[14rem]" />
               <VersionHistory key={page.id} textId={text.id} type="page" pageId={page.id} canRestore={canEdit} refreshKey={page.ocr_text} dirty={draft !== (page.ocr_text ?? '')} onRestored={reload} />
             </div>
           </div>

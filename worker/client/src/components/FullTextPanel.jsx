@@ -93,7 +93,7 @@ export default function FullTextPanel({ textId, canEdit, pagesKey, onDraftChange
                   <label className="flex flex-col gap-1"><span className="label">Full text (Markdown)</span>
                     <textarea className="field min-h-[20rem] font-mono" value={draft} readOnly={!canEdit} onChange={(e) => { setDraft(e.target.value); setStatus(''); }} />
                   </label>
-                  <SandboxedPreview markdown={draft} title="Preview of the full text" className="min-h-[20rem]" />
+                  <SandboxedPreview markdown={draft} flags title="Preview of the full text" className="min-h-[20rem]" />
                 </div>
               ) : (
                 <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 p-3 font-doc dark:border-slate-700" aria-label="The page texts as the export joins them">{joined || 'No page has text yet.'}</pre>

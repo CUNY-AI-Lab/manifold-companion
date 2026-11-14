@@ -119,3 +119,22 @@ describe('XSS corpus and fuzz through the full preview path', () => {
     }
   });
 });
+
+import { previewBody as previewWithFlags } from '../src/lib/preview.js';
+
+describe('flag highlighting in the preview', () => {
+  it('marks flags in text and keeps everything else as sanitized as before', () => {
+    const { body } = previewWithFlags({ markdown: 'Cara [unclear: mamma] <img src=x onerror=alert(1)> [illegible]', flags: true });
+    expect(body).toContain('<mark>[unclear: mamma]</mark>');
+    expect(body).toContain('<mark>[illegible]</mark>');
+    expect(body).not.toMatch(/onerror/i);
+  });
+  it('a flag whose text looks like markup stays text', () => {
+    const { body } = previewWithFlags({ markdown: '[unclear: <script>alert(1)</script>] and [deleted: "><img src=x onerror=1>]', flags: true });
+    expect(body).not.toMatch(/<script|onerror=/i);
+    expect(body).toContain('<mark>');
+  });
+  it('without flags the preview is unchanged', () => {
+    expect(previewWithFlags({ markdown: 'a [unclear: b]' }).body).not.toContain('<mark>');
+  });
+});

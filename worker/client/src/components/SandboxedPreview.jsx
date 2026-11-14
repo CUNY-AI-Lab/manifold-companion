@@ -9,8 +9,8 @@ import { previewBody, wrapPreview } from '../lib/preview';
  * Mathematics is rendered with KaTeX here in the parent and arrives in the
  * frame as finished markup with its stylesheet and fonts inlined.
  */
-export default function SandboxedPreview({ html, markdown, images, title = 'Preview', className = '' }) {
-  const { body, mathCount } = useMemo(() => previewBody({ html, markdown, images }), [html, markdown, images]);
+export default function SandboxedPreview({ html, markdown, images, title = 'Preview', className = '', flags = false }) {
+  const { body, mathCount } = useMemo(() => previewBody({ html, markdown, images, flags }), [html, markdown, images, flags]);
   const [doc, setDoc] = useState(() => (mathCount === 0 ? wrapPreview(body) : null));
   useEffect(() => {
     let live = true;

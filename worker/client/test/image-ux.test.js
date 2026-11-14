@@ -119,3 +119,36 @@ describe('page thumbnails', () => {
     expect(await run(() => 7)).toBe(7);
   });
 });
+
+import { describeCounts, findFlags, flagCounts, markFlagsInHtml, stepFlag } from '../src/lib/flags.js';
+
+describe('uncertain readings', () => {
+  const page = 'Cara [unclear: mamma], siamo [illegible] a [damaged: Nap] e [deleted: ieri] [handwritten: oggi] [inserted: qui] [annotation: in pencil]. [note: not a flag]';
+  it('finds every kind the prompts write, with positions, and nothing else', () => {
+    const flags = findFlags(page);
+    expect(flags.map((f) => f.kind)).toEqual(['unclear', 'illegible', 'damaged', 'deleted', 'handwritten', 'inserted', 'annotation']);
+    expect(page.slice(flags[0].start, flags[0].end)).toBe('[unclear: mamma]');
+    expect(flags[0].body).toBe('mamma');
+    expect(flags[1].body).toBe('');
+    expect(findFlags('[unclear: a\nb]')).toEqual([]);
+  });
+  it('counts doubts apart from editorial marks', () => {
+    const c = flagCounts(page);
+    expect(c).toMatchObject({ total: 7, doubts: 3 });
+    expect(describeCounts(c)).toBe('1 unclear, 1 illegible, 1 damaged, 1 deleted, 1 handwritten, 1 inserted, 1 annotation');
+  });
+  it('steps to the next and previous flag, across pages, from the caret', () => {
+    const pages = [{ text: 'a [unclear: x] b [illegible]' }, { text: 'none here' }, { text: '[damaged: y] c' }];
+    expect(stepFlag(pages, { pageIndex: 0, offset: 0 }, 1)).toMatchObject({ pageIndex: 0, flag: { kind: 'unclear' } });
+    expect(stepFlag(pages, { pageIndex: 0, offset: 2 }, 1)).toMatchObject({ pageIndex: 0, flag: { kind: 'illegible' } });
+    expect(stepFlag(pages, { pageIndex: 0, offset: 20 }, 1)).toMatchObject({ pageIndex: 2, flag: { kind: 'damaged' } });
+    expect(stepFlag(pages, { pageIndex: 2, offset: 0 }, -1)).toMatchObject({ pageIndex: 0, flag: { kind: 'illegible' } });
+    expect(stepFlag(pages, { pageIndex: 0, offset: 17 }, -1)).toMatchObject({ pageIndex: 0, flag: { kind: 'unclear' } });
+    expect(stepFlag(pages, { pageIndex: 2, offset: 14 }, 1)).toBeNull();
+  });
+  it('marks flags in preview HTML text, never inside a tag or attribute', () => {
+    expect(markFlagsInHtml('<p>a [unclear: b] c</p>')).toBe('<p>a <mark>[unclear: b]</mark> c</p>');
+    expect(markFlagsInHtml('<img alt="[unclear: b]"><p>[illegible]</p>')).toBe('<img alt="[unclear: b]"><p><mark>[illegible]</mark></p>');
+    expect(markFlagsInHtml('<p>[unclear: &lt;b&gt;]</p>')).toBe('<p><mark>[unclear: &lt;b&gt;]</mark></p>');
+  });
+});
