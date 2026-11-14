@@ -74,7 +74,17 @@ test('per-text model settings: saved, shown as the run default, used by the next
   await expect(panel.getByRole('alert')).toContainText('Temperature must be a number from 0 to 1.');
   await panel.getByLabel('Temperature (0 to 1)').fill('0.4');
   await panel.getByLabel('Maximum length (tokens)').fill('1500');
+  // Presets fill the prompt, which stays editable; the built-in prompt is shown, not hidden.
+  await expect(panel.getByLabel('Preset')).toHaveValue('general');
+  await expect(panel.getByLabel('Transcription prompt')).toHaveValue(/expert OCR system/);
+  await panel.getByLabel('Preset').selectOption('handwritten');
+  await expect(panel.getByLabel('Transcription prompt')).toHaveValue(/specialized in handwriting recognition/);
+  await panel.getByRole('button', { name: 'Save settings' }).click();
+  await expect(panel.getByText('Settings saved for this text.')).toBeVisible();
+  expect((await api(`/texts/${text.id}/settings`)).settings.prompt).toMatch(/specialized in handwriting recognition/);
+  await expect(page.getByText(/“Handwritten document” transcription preset/)).toBeVisible();
   await panel.getByLabel('Transcription prompt').fill('Transcribe this letter exactly.');
+  await expect(panel.getByLabel('Preset')).toHaveValue('custom');
   await panel.getByRole('button', { name: 'Save settings' }).click();
   await expect(panel.getByText('Settings saved for this text.')).toBeVisible();
   expect((await api(`/texts/${text.id}/settings`)).settings).toMatchObject({ model: 'stub-vision-reasoning', temperature: 0.4, max_tokens: 1500, prompt: 'Transcribe this letter exactly.' });

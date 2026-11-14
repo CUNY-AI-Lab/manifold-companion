@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { ErrorNote, ModelPicker } from './ui';
+import { OCR_PRESETS, presetFor } from '../../../src/ocr-presets.ts';
+import { DEFAULT_OCR_PROMPT } from '../../../src/prompts.ts';
 
 // The Worker's task defaults (src/task-specs.ts TASK_DEFAULTS), shown as the value an empty field means.
 const DEFAULTS = { image: { temperature: 0.1, max_tokens: 4096 }, pdf: { temperature: 0.1, max_tokens: 6000 } };
@@ -13,7 +15,8 @@ export function settingsBody(form, kind) {
   const maxTokens = form.max_tokens === '' ? null : Number(form.max_tokens);
   if (maxTokens !== null && !(Number.isInteger(maxTokens) && maxTokens >= 1 && maxTokens <= 8192)) return [null, 'Maximum length must be a whole number from 1 to 8192.'];
   const body = { model: form.model || null, temperature, max_tokens: maxTokens };
-  if (kind === 'image') body.prompt = form.prompt.trim() === '' ? null : form.prompt;
+  // The built-in prompt, unedited, is saved as no prompt, so the text keeps following it.
+  if (kind === 'image') body.prompt = form.prompt.trim() === '' || form.prompt === DEFAULT_OCR_PROMPT ? null : form.prompt;
   else body.math_model = form.math_model || null;
   return [body, null];
 }
@@ -27,13 +30,17 @@ export function settingsBody(form, kind) {
 export function savedRunNote(settings, kind) {
   if (!settings) return '';
   const parts = [];
-  if (kind === 'image' && settings.prompt) parts.push('its own transcription prompt (it replaces the built-in one)');
+  if (kind === 'image' && settings.prompt) {
+    const preset = presetFor(settings.prompt);
+    parts.push(preset ? `the “${preset.label}” transcription preset` : 'its own transcription prompt (it replaces the built-in one)');
+  }
   if (settings.temperature != null) parts.push(`temperature ${settings.temperature}`);
   if (settings.max_tokens != null) parts.push(`at most ${settings.max_tokens} tokens per page`);
   return parts.length ? `This text has saved model settings: ${parts.join(', ')}. See “Model settings for this text” below.` : '';
 }
 
-const toForm = (s = {}) => ({ model: s.model ?? null, math_model: s.math_model ?? null, temperature: s.temperature ?? '', max_tokens: s.max_tokens ?? '', prompt: s.prompt ?? '' });
+// Image texts show the prompt a run will use, the built-in one when none is saved, so it can be read and edited.
+const toForm = (s = {}, kind) => ({ model: s.model ?? null, math_model: s.math_model ?? null, temperature: s.temperature ?? '', max_tokens: s.max_tokens ?? '', prompt: s.prompt ?? (kind === 'image' ? DEFAULT_OCR_PROMPT : '') });
 
 /** Saved settings of one text, loaded once; the run pickers show the saved model as their default. */
 export function useTextSettings(textId) {
@@ -49,10 +56,10 @@ export function useTextSettings(textId) {
  */
 export default function TextSettingsPanel({ textId, kind, canEdit, settings, onSaved }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(toForm(settings ?? {}));
+  const [form, setForm] = useState(toForm(settings ?? {}, kind));
   const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
-  useEffect(() => { setForm(toForm(settings ?? {})); }, [settings]);
+  useEffect(() => { setForm(toForm(settings ?? {}, kind)); }, [settings, kind]);
   const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setStatus(''); };
   const d = DEFAULTS[kind];
   const save = async (e) => {
@@ -93,10 +100,20 @@ export default function TextSettingsPanel({ textId, kind, canEdit, settings, onS
                 <label><span className="label">Maximum length (tokens)</span><input className="field w-40" type="number" inputMode="numeric" min="1" max="8192" step="1" placeholder={`default ${d.max_tokens}`} value={form.max_tokens} onChange={(e) => set('max_tokens', e.target.value)} /></label>
               </div>
               {kind === 'image' ? (
-                <label className="block"><span className="label">Transcription prompt</span>
-                  <textarea className="field min-h-[6rem]" maxLength={MAX_PROMPT} placeholder="Empty: the built-in prompt (TeX for formulas, Markdown structure, nothing added)" value={form.prompt} onChange={(e) => set('prompt', e.target.value)} />
-                  <span className="text-xs text-slate-600 dark:text-slate-300">{form.prompt.length} of {MAX_PROMPT} characters. Replaces the built-in prompt for every page of this text.</span>
-                </label>
+                <>
+                  <label className="block"><span className="label">Preset</span>
+                    <select className="field" value={presetFor(form.prompt)?.key ?? 'custom'} onChange={(e) => { const p = OCR_PRESETS.find((x) => x.key === e.target.value); if (p) set('prompt', p.prompt); }}>
+                      {OCR_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                      {presetFor(form.prompt) ? null : <option value="custom" disabled>Edited (your own prompt)</option>}
+                    </select>
+                  </label>
+                  <div>
+                    <label className="block"><span className="label">Transcription prompt</span>
+                      <textarea className="field min-h-[12rem] font-mono text-xs" maxLength={MAX_PROMPT} aria-describedby={`prompt-hint-${textId}`} placeholder="Empty: the built-in prompt (TeX for formulas, Markdown structure, nothing added)" value={form.prompt} onChange={(e) => set('prompt', e.target.value)} />
+                    </label>
+                    <p id={`prompt-hint-${textId}`} className="mt-1 text-xs text-slate-600 dark:text-slate-300">{form.prompt.length} of {MAX_PROMPT} characters. Choosing a preset replaces this text; edit it as you like. Used for every page of this text.</p>
+                  </div>
+                </>
               ) : null}
             </fieldset>
           )}
