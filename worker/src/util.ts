@@ -35,3 +35,10 @@ export function moveId(ids: string[], id: string, to: unknown): string[] | null 
   const at = Math.min(Math.max(to, 1), ids.length) - 1;
   return [...rest.slice(0, at), id, ...rest.slice(at)];
 }
+
+/**
+ * Page texts joined into one text, the way export, the full-text view and the
+ * summary see them: a blank line between pages, no rule. A `---` here became a
+ * horizontal rule on every page boundary in Manifold.
+ */
+export const joinPageTexts = (texts: Iterable<string>): string => [...texts].join("\n\n");

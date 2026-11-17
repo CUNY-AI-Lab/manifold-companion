@@ -12,7 +12,7 @@ import { loadCatalog, policyFrom, resolveModel, resolveRunModel, thinksOnMath, t
 import { cleanupDocumentHtml, toDataUri } from "../model-output";
 import { formulaRepairTask, MAX_TRANSLATE_CHUNK_CHARS, ocrTask, pageHtmlTask, parseFormulaRepair, parseOcr, parsePageHtml, parseSummary, parseTranslation, summaryTask, translateTask } from "../task-specs";
 import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
-import { isUuid, nowIso } from "../util";
+import { isUuid, joinPageTexts, nowIso } from "../util";
 import { clearConversion, conversionRun, convertedPages, keepConvertedPage, validSource } from "../conversion";
 import type { AppEnv } from "../app";
 import { baseRev, contentRev, requireBase, textRev } from "../revisions";
@@ -198,7 +198,7 @@ async function sourceText(env: AppEnv["Bindings"], ctx: { text: TextRow; project
   const compiled = await getContent(env, ctx.text.compiled_key);
   if (compiled) return compiled;
   const pages = await env.DB.prepare("SELECT ocr_text FROM pages WHERE text_id = ?1 AND ocr_text IS NOT NULL AND ocr_text != '' ORDER BY page_number, rowid").bind(ctx.text.id).all<{ ocr_text: string }>();
-  return pages.results.map((p) => p.ocr_text).join("\n\n---\n\n");
+  return joinPageTexts(pages.results.map((p) => p.ocr_text));
 }
 
 taskRoutes.get("/:id/summary", async (c) => {

@@ -15,6 +15,8 @@
 //     one attribute this removes; `display="block"` remains);
 //   - an image text exports its edited full text (compiled) when one exists;
 //     legacy ignored it and always joined the raw page texts;
+//   - page texts are joined with a blank line, not legacy's `---`, which
+//     Manifold drew as a horizontal rule between every two pages;
 //   - YAML values escape newlines, tabs and control characters (legacy broke the
 //     manifest with a newline in a label);
 //   - figures are matched by the text's own figure file names, not by the
@@ -44,7 +46,7 @@ import { AppError, E } from "./errors";
 import type { Env } from "./env";
 import type { ProjectRow } from "./authz";
 import { MAX_SANITIZE_INPUT_CHARS, sanitizeHtml } from "./sanitize/html";
-import { isUuid } from "./util";
+import { isUuid, joinPageTexts } from "./util";
 
 export const EXPORT_LIMITS = { nodes: 1000, depth: 10, entries: 2000, textBytes: 64 * 1024 * 1024, binaryBytes: 256 * 1024 * 1024, documentChars: MAX_SANITIZE_INPUT_CHARS, labelChars: 300, metaChars: 2000 } as const;
 
@@ -409,7 +411,7 @@ export function streamExport(env: Env, plan: ExportPlan, mtime = new Date()): Re
         let content = await read(text.compiled_key);
         if (content === null) {
           const pages = await env.DB.prepare("SELECT ocr_text FROM pages WHERE text_id = ?1 AND ocr_text IS NOT NULL AND ocr_text != '' ORDER BY page_number, rowid").bind(text.id).all<{ ocr_text: string }>();
-          content = pages.results.map((p) => p.ocr_text).join("\n\n---\n\n");
+          content = joinPageTexts(pages.results.map((p) => p.ocr_text));
         }
         const name = `text-${num}-${slugify(node.label || text.name)}.md`;
         await addText(name, ["---", `title: "${escapeYaml(title)}"`, `language: "${escapeYaml(lang)}"`, `creator: "${escapeYaml(creator)}"`, "---", "", content].join("\n"));

@@ -31,7 +31,7 @@ export async function runOcr({ textId, pages, overwrite = false, model, signal, 
 }
 
 /** The page texts joined as the export joins them (src/routes/texts.ts GET /:id/result). */
-export const joinPageTexts = (pages) => pages.filter((p) => p.ocr_text).map((p) => p.ocr_text).join('\n\n---\n\n');
+export const joinPageTexts = (pages) => pages.filter((p) => p.ocr_text).map((p) => p.ocr_text).join('\n\n');
 
 /**
  * The text an image text's export uses: its edited full text once one is

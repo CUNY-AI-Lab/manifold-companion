@@ -8,7 +8,7 @@
       },
       {
         "name": "text-02-chapter-one.md",
-        "text": "---\ntitle: \"Capítulo Uno\"\nlanguage: \"es\"\ncreator: \"Ana Pérez\"\n---\n\nPrimera página.\n\nSegundo párrafo.\n\n---\n\nTercera *página*."
+        "text": "---\ntitle: \"Capítulo Uno\"\nlanguage: \"es\"\ncreator: \"Ana Pérez\"\n---\n\nPrimera página.\n\nSegundo párrafo.\n\nTercera *página*."
       },
       {
         "name": "text-03-chapter-two-quotes-stuff.md",

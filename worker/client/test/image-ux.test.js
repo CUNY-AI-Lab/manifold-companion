@@ -4,7 +4,7 @@ import { exportSource, joinPageTexts } from '../src/lib/tasks.js';
 describe('the source an image text exports and translates', () => {
   const pages = [{ ocr_text: 'one' }, { ocr_text: null }, { ocr_text: 'two' }];
   it('joins the page texts as the export does, skipping empty pages', () => {
-    expect(joinPageTexts(pages)).toBe('one\n\n---\n\ntwo');
+    expect(joinPageTexts(pages)).toBe('one\n\ntwo');
   });
   it('uses the edited full text once one is saved', async () => {
     const asked = [];
@@ -14,7 +14,7 @@ describe('the source an image text exports and translates', () => {
   });
   it('uses the pages when no full text is saved, without asking the server', async () => {
     const get = async () => { throw new Error('not called'); };
-    expect(await exportSource({ textId: 't1', hasCompiled: false, pages, get })).toEqual({ text: 'one\n\n---\n\ntwo', from: 'pages' });
+    expect(await exportSource({ textId: 't1', hasCompiled: false, pages, get })).toEqual({ text: 'one\n\ntwo', from: 'pages' });
   });
 });
 

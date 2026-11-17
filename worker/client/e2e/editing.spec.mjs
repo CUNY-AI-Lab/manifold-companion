@@ -143,7 +143,6 @@ test('full text of an image text: edit as one text, the export uses it, use the 
   await page.getByRole('button', { name: 'Full text', exact: true }).click();
   const joined = page.getByLabel('The page texts as the export joins them');
   await expect(joined).toContainText('sen-');
-  await expect(joined).toContainText('---');
   await page.getByRole('button', { name: 'Edit as one text' }).click();
   const editor = page.getByLabel('Full text (Markdown)');
   await editor.fill('The first page ends in the middle of a sentence that the second page finishes.');

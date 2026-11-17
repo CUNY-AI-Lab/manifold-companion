@@ -8,7 +8,7 @@ import { limits } from "../env";
 import { E } from "../errors";
 import { deleteTextObjects, splitText } from "../text-ops";
 import { deleteRowAndRelease } from "../storage";
-import { isUuid, moveId, nowIso } from "../util";
+import { isUuid, joinPageTexts, moveId, nowIso } from "../util";
 import { baseRev, contentRev, lastSave, requireBase, textRev } from "../revisions";
 import { clearConversion } from "../conversion";
 import type { AppEnv } from "../app";
@@ -172,7 +172,7 @@ textRoutes.delete("/:id/pages/:pageId", async (c) => {
 textRoutes.get("/:id/result", async (c) => {
   const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
   const pages = await loadPages(c.env.DB, ctx.text.id);
-  const compiled = pages.filter((p) => p.ocr_text).map((p) => p.ocr_text).join("\n\n---\n\n");
+  const compiled = joinPageTexts(pages.filter((p) => p.ocr_text).map((p) => p.ocr_text as string));
   return c.json({ text: compiled, pageCount: pages.length });
 });
 
