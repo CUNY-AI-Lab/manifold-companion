@@ -90,6 +90,8 @@ const rank = (a: ModelOption, b: ModelOption): number => Number(b.recommended) -
 export interface ModelPolicy {
   /** Preference order for the default, per task. */
   order: Record<Task, string[]>;
+  /** The OCR (image to Markdown) menu offers ONLY these (in this order) when the catalog has any of them. */
+  ocrOffered: string[];
   /** The math/tables menu offers ONLY these (in this order) when the catalog has any of them. */
   mathOffered: string[];
   /** Never offered in a menu or chosen as a default for any task (still typeable). */
@@ -102,11 +104,12 @@ export interface ModelPolicy {
 
 export const BUILTIN_POLICY: ModelPolicy = Object.freeze({
   order: {
-    ocr: ["deepseek-v4.1-flash-1017", "mistral-large-3-675b-instruct", "qwen3.8-27b", "gemma-4-26b-a4b-it"],
+    ocr: ["qwen3-vl-235b-a22b-instruct", "magistral-small-2509"],
     html_page: ["deepseek-v4.1-flash-1017", "mistral-large-3-675b-instruct", "qwen3.8-27b", "gemma-4-26b-a4b-it"],
     html_math: ["magistral-small-2509", "deepseek-v4.1-flash-1017", "qwen3.8-27b"],
     text: ["deepseek-v4.1-flash-1017", "gpt-oss-120b", "mistral-large-3-675b-instruct"],
   },
+  ocrOffered: ["qwen3-vl-235b-a22b-instruct", "magistral-small-2509"],
   mathOffered: ["magistral-small-2509", "deepseek-v4.1-flash-1017", "qwen3.8-27b"],
   hidden: ["kimi-*"],
   mathHidden: ["gemma-*", "kimi-*"],
@@ -128,11 +131,12 @@ export function policyFrom(env: Env): ModelPolicy {
   };
   return {
     order: {
-      ocr: order("ocr", env.MODEL_ORDER_VISION, env.DEFAULT_VISION_MODEL),
+      ocr: order("ocr", env.OCR_MODELS_OFFERED, env.DEFAULT_OCR_MODEL),
       html_page: order("html_page", env.MODEL_ORDER_VISION, env.DEFAULT_VISION_MODEL),
       html_math: order("html_math", env.MODEL_ORDER_MATH, env.DEFAULT_MATH_MODEL),
       text: order("text", env.MODEL_ORDER_TEXT, env.DEFAULT_TEXT_MODEL),
     },
+    ocrOffered: listVar(env.OCR_MODELS_OFFERED, BUILTIN_POLICY.ocrOffered),
     mathOffered: listVar(env.MATH_MODELS_OFFERED, BUILTIN_POLICY.mathOffered),
     hidden: listVar(env.MODELS_HIDDEN, BUILTIN_POLICY.hidden),
     mathHidden: listVar(env.MATH_MODELS_HIDDEN, BUILTIN_POLICY.mathHidden),
@@ -153,9 +157,10 @@ function preferred(menu: ModelOption[], order: string[]): ModelOption[] {
  */
 export function offeredMenu(task: Task, list: ModelOption[], policy: ModelPolicy): ModelOption[] {
   const menu = menuFor(task, list).filter((m) => !matches(policy.hidden, m.id) && !(task === "html_math" && matches(policy.mathHidden, m.id)));
-  if (task === "html_math") {
-    const offered = policy.mathOffered.map((id) => menu.find((m) => m.id === id)).filter((m): m is ModelOption => m !== undefined);
-    if (offered.length > 0) return preferred(offered, policy.order.html_math);
+  const only = task === "html_math" ? policy.mathOffered : task === "ocr" ? policy.ocrOffered : null;
+  if (only) {
+    const offered = only.map((id) => menu.find((m) => m.id === id)).filter((m): m is ModelOption => m !== undefined);
+    if (offered.length > 0) return preferred(offered, policy.order[task]);
   }
   return preferred(menu, policy.order[task]);
 }

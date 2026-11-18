@@ -4,10 +4,8 @@ import { API, api } from '../api/client';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel, { CommentsJumpLink } from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
-import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
+import TextSettingsPanel, { savedRunNote, useSavedModel, useTextSettings } from '../components/TextSettingsPanel';
 import FullTextPanel from '../components/FullTextPanel';
-import SummaryPanel from '../components/SummaryPanel';
-import TranslationPanel from '../components/TranslationPanel';
 import SandboxedPreview from '../components/SandboxedPreview';
 import { ScanLightbox, ScanViewer } from '../components/ScanViewer';
 import MarkdownToolbar, { markdownKeys } from '../components/MarkdownToolbar';
@@ -21,7 +19,7 @@ import { jpegName, prepareImage } from '../lib/image';
 import { openPdf, renderPage } from '../lib/pdf';
 import { checkPdfFits } from '../lib/limits';
 import { plural, statusLabel } from '../lib/status';
-import { exportSource, runOcr } from '../lib/tasks';
+import { runOcr } from '../lib/tasks';
 import { replaceWarning } from '../lib/versions';
 import { splitGroups } from '../lib/split';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -74,8 +72,9 @@ export default function ImageTextPage({ data, reload }) {
   const [selected, setSelected] = useState(pages[0]?.id ?? null);
   const [draft, setDraft] = useState('');
   const [rotate, setRotate] = useState(0);
-  const [model, setModel] = useState(null);
   const [settings, setSettings] = useTextSettings(text.id);
+  // The OCR model is the text's saved setting: choosing one here saves it (and the settings panel shows it).
+  const [model, setModel] = useSavedModel(text.id, settings, setSettings, 'model', (e) => setError(e));
   const [run, setRun] = useState(null); // { done, total, current, failures, controller }
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -88,6 +87,13 @@ export default function ImageTextPage({ data, reload }) {
   // Keep a valid selection as pages arrive or are deleted.
   useEffect(() => { if (!pages.some((p) => p.id === selected)) setSelected(pages[0]?.id ?? null); }, [pages, selected]);
   const page = pages.find((p) => p.id === selected) ?? null;
+  // What to do next, said under the two steps so a fresh upload is never a dead end.
+  const unread = pages.filter((p) => !p.ocr_text).length;
+  const nextStep = pages.length === 0
+    ? 'Next: upload the scans of this text.'
+    : unread > 0
+      ? `Next: check the scans. ${unread === pages.length ? (pages.length === 1 ? 'The page has no' : `None of the ${pages.length} pages has`) : `${unread} of ${pages.length} pages ${unread === 1 ? 'has' : 'have'} no`} text yet. A page that is sideways or upside down cannot be turned after upload: delete it, set “Turn new pages” and upload it again. When the scans look right, choose “Read pages without text”.`
+      : 'Every page has text. Next: compare each page with its scan and correct it, then export the project.';
   // The page text keeps its own undo (Safari loses the browser's with every preview reload); a page switch starts it again.
   const pageUndo = useTextUndo(draft, setDraft, pageText, page?.id ?? null);
   const pendingRestore = useRef(null);
@@ -287,22 +293,33 @@ export default function ImageTextPage({ data, reload }) {
       {busy ? <p role="status" className="text-sm text-cail-azure dark:text-cail-link-dark">{busy}</p> : null}
 
       {canEdit ? (
-        <section className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-          <input ref={fileInput} type="file" multiple accept="image/*,.heic,.heif,application/pdf" className="hidden" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} />
-          <button className="btn-quiet" type="button" onClick={() => fileInput.current?.click()} disabled={!!busy || !!run}>Upload pages</button>
-          <span className="text-xs text-slate-600 dark:text-slate-300">or drop images or a PDF anywhere on this page</span>
-          <label className="text-sm">Rotate uploads <select className="field inline-block w-auto" value={rotate} onChange={(e) => setRotate(Number(e.target.value))}>{[0, 90, 180, 270].map((d) => <option key={d} value={d}>{d}°</option>)}</select></label>
-          <ModelPicker task="ocr" value={model} onChange={setModel} label="OCR model" savedDefault={settings?.model ?? null} />
-          {savedRunNote(settings, 'image') ? <p className="w-full text-xs text-slate-700 dark:text-slate-200">{savedRunNote(settings, 'image')}</p> : null}
-          {run ? (
-            <span className="flex items-center gap-3 text-sm"><span role="status">Reading {run.current} ({run.done} of {run.total})</span><button className="btn-danger" type="button" onClick={() => run.controller.abort()}>Cancel</button></span>
-          ) : (
-            <>
-              <button className="btn-primary" type="button" disabled={!pages.some((p) => !p.ocr_text) || !!busy} onClick={() => startOcr(false)}>Read pages without text</button>
-              <button className="btn-quiet" type="button" disabled={pages.length === 0 || !!busy} onClick={() => startOcr(true)}>Read all pages again</button>
-            </>
-          )}
-          <div className="w-full"><QuotaLine /></div>
+        <section aria-label="Add and read pages" className="mt-4 rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold">1. Add pages</h2>
+              <input ref={fileInput} type="file" multiple accept="image/*,.heic,.heif,application/pdf" className="hidden" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} />
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="text-sm">Turn new pages <select className="field inline-block w-auto" aria-describedby="turn-hint" value={rotate} onChange={(e) => setRotate(Number(e.target.value))}>{[0, 90, 180, 270].map((d) => <option key={d} value={d}>{d === 0 ? 'not at all' : `${d}° clockwise`}</option>)}</select></label>
+                <button className={pages.length === 0 ? 'btn-primary' : 'btn-quiet'} type="button" onClick={() => fileInput.current?.click()} disabled={!!busy || !!run}>Upload pages</button>
+              </div>
+              <p id="turn-hint" className="text-xs text-slate-600 dark:text-slate-300">Photos, scans or a PDF; you can also drop them anywhere on this page. The turn applies to the pages you upload next, so set it first.</p>
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold">2. Read the pages</h2>
+              <ModelPicker task="ocr" value={model} onChange={setModel} label="OCR model" />
+              {run ? (
+                <p className="flex items-center gap-3 text-sm"><span role="status">Reading {run.current} ({run.done} of {run.total})</span><button className="btn-danger" type="button" onClick={() => run.controller.abort()}>Cancel</button></p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <button className={unread > 0 ? 'btn-primary' : 'btn-quiet'} type="button" disabled={unread === 0 || !!busy} onClick={() => startOcr(false)}>Read pages without text{unread > 0 ? ` (${unread})` : ''}</button>
+                  <button className="btn-quiet" type="button" disabled={pages.length === 0 || !!busy} onClick={() => startOcr(true)}>Read all pages again</button>
+                </div>
+              )}
+            </div>
+          </div>
+          {!busy && !run ? <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-800 dark:border-slate-700 dark:text-slate-100">{nextStep}</p> : null}
+          {savedRunNote(settings, 'image') ? <p className="mt-2 text-xs text-slate-700 dark:text-slate-200">{savedRunNote(settings, 'image')}</p> : null}
+          <div className="mt-2"><QuotaLine /></div>
         </section>
       ) : null}
 
@@ -361,10 +378,6 @@ export default function ImageTextPage({ data, reload }) {
         ) : <p className="text-sm text-slate-500 dark:text-slate-400">No pages yet.{canEdit ? ' Upload photos, scans or a PDF; PDFs are turned into page images in your browser.' : ''}</p>}
       </div>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-2" aria-label="Summary and translation">
-        <SummaryPanel text={text} canEdit={canEdit} onSaved={reload} busy={!!run} />
-        <TranslationPanel text={text} canEdit={canEdit} busy={!!run} getSource={async () => (await exportSource({ textId: text.id, hasCompiled: text.has_compiled, pages })).text} />
-      </section>
       <FullTextPanel textId={text.id} canEdit={canEdit} onCompiledChange={reload} pagesKey={pages.map((p) => `${p.id}:${p.ocr_text?.length ?? 0}`).join(',')} onDraftChange={setFullDraft} restoreDraft={fullRestore} onRestoreTaken={() => setFullRestore(null)} />
       {canEdit && pages.length > 1 ? <SplitPanel text={text} pages={pages} /> : null}
       <TextSettingsPanel textId={text.id} kind="image" canEdit={canEdit} settings={settings} onSaved={setSettings} />

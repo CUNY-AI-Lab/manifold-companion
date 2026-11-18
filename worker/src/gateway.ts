@@ -9,7 +9,7 @@ import { AppError, E } from "./errors";
 import { APP_SLUG, type Principal } from "./identity";
 import { reasoningPolicy, type ModelOption } from "./models";
 
-export const DEADLINES_MS = { ocr: 90_000, html_page: 120_000, html_math: 150_000, text: 90_000, translate: 120_000 } as const;
+export const DEADLINES_MS = { ocr: 90_000, html_page: 120_000, html_math: 150_000, text: 90_000 } as const;
 export type DeadlineKey = keyof typeof DEADLINES_MS;
 
 /** Fresh correlation for one outbound call; only the inbound trace context (not the request id) is carried over. */

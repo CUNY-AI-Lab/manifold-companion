@@ -346,74 +346,11 @@ describe("page image to structured HTML (PDF-to-HTML), with the separate math mo
   });
 });
 
-describe("summary, translation chunk, formula repair", () => {
-  it("summary is generated from the page text, stored in D1 (bounded) and indexed", async () => {
-    const e = await gatewayEnv({ chat: () => ({ text: "<think>hmm</think>A short summary." }) });
-    const { tid, pageId } = await imagePage(ALICE, e);
-    await call(api(`/texts/${tid}/pages/${pageId}`), { method: "POST", body: { text: "Once upon a time." }, env: e });
-    const res = await json(await call(api(`/texts/${tid}/summary`), { method: "POST", body: {}, env: e }));
-    expect(res.summary).toBe("A short summary.");
-    expect((await json(await call(api(`/texts/${tid}/summary`), { env: e }))).summary).toBe("A short summary.");
-    const [sent] = await chatBodies(e);
-    expect(sent.messages[1].content).toContain("Once upon a time.");
-  });
+describe("formula repair", () => {
 
-  it("a summary edited while the model was writing is kept; the paid summary comes back with the 409", async () => {
-    let tidRef = "";
-    const e = await gatewayEnv({
-      chat: async () => {
-        await call(api(`/texts/${tidRef}/summary`), { method: "PUT", body: { summary: "Written by hand" }, env: e });
-        return { text: "Model summary." };
-      },
-    });
-    const pid = await createProject(ALICE);
-    const tid = await createText(ALICE, pid);
-    tidRef = tid;
-    await env.DB.prepare("INSERT INTO pages (id, text_id, filename, page_number, ocr_text) VALUES (?1, ?2, 'p.jpg', 1, 'Some page text')").bind(crypto.randomUUID(), tid).run();
-    const res = await call(api(`/texts/${tid}/summary`), { method: "POST", body: {}, env: e });
-    expect(res.status).toBe(409);
-    const body = await json(res);
-    expect(body.error.code).toBe("edit_conflict");
-    expect(body.result).toMatchObject({ summary: "Model summary.", truncated_input: false });
-    expect((await json(await call(api(`/texts/${tid}/summary`), { env: e }))).summary).toBe("Written by hand");
-  });
 
-  it("a text deleted while its summary was being written is not reported as summarised", async () => {
-    let tidRef = "";
-    const e = await gatewayEnv({
-      chat: async () => {
-        await call(api(`/texts/${tidRef}`), { method: "DELETE", env: e });
-        return { text: "Model summary." };
-      },
-    });
-    const pid = await createProject(ALICE);
-    const tid = await createText(ALICE, pid);
-    tidRef = tid;
-    await env.DB.prepare("INSERT INTO pages (id, text_id, filename, page_number, ocr_text) VALUES (?1, ?2, 'p.jpg', 1, 'Some page text')").bind(crypto.randomUUID(), tid).run();
-    const res = await call(api(`/texts/${tid}/summary`), { method: "POST", body: {}, env: e });
-    expect(res.status).toBe(410);
-    expect((await json(res)).error.code).toBe("text_gone");
-  });
 
-  it("summary with no text yet is refused before any call", async () => {
-    const e = await gatewayEnv();
-    const { tid } = await imagePage(ALICE, e);
-    expect((await json(await call(api(`/texts/${tid}/summary`), { method: "POST", body: {}, env: e }))).error.code).toBe("no_text");
-    expect(chatCalls(e)).toHaveLength(0);
-  });
 
-  it("translation is one bounded chunk per request; the client stores the assembled result", async () => {
-    const e = await gatewayEnv({ chat: () => ({ text: "Hello." }) });
-    const { tid } = await imagePage(ALICE, e);
-    const ok = await json(await call(api(`/texts/${tid}/translate-chunk`), { method: "POST", body: { text: "Hola.", source_language: "es", target_language: "en" }, env: e }));
-    expect(ok.text).toBe("Hello.");
-    const big = await call(api(`/texts/${tid}/translate-chunk`), { method: "POST", body: { text: "x".repeat(12_001), source_language: "es", target_language: "en" }, env: e });
-    expect((await json(big)).error.code).toBe("chunk_too_large");
-    expect((await call(api(`/texts/${tid}/translate-chunk`), { method: "POST", body: { text: "x", source_language: "es", target_language: "auto-detect" }, env: e })).status).toBe(400);
-    expect(chatCalls(e)).toHaveLength(1);
-    expect((await call(api(`/texts/${tid}/translation`), { method: "PUT", body: { translation: "Hello." }, env: e })).status).toBe(200);
-    expect((await json(await call(api(`/texts/${tid}/translation`), { env: e }))).translation).toBe("Hello.");
-  });
 
   it("formula repair returns one repair per formula, or a clear error for unusable output", async () => {
     const good = await gatewayEnv({ chat: () => ({ text: '```json\n["x^{2}", "\\\\frac{a}{b}"]\n```' }) });

@@ -18,6 +18,7 @@ const LIVE = [
   row("deepseek-v4.1-flash-1017", 1, true, VR), row("glm-5.3", 2, true, R), row("qwen3.8-27b", 3, true, VR), row("gpt-oss-120b", 4, true, R),
   row("gemma-4-26b-a4b-it", 5, true, VR), row("mistral-large-3-675b-instruct", 6, true, V), row("glm-5.3-flash", 23, false, VR),
   row("kimi-k2.6", 29, false, VR), row("kimi-k3", 31, false, VR), row("magistral-small-2509", 40, false, VR), row("llama-4-scout-17b-16e-instruct", 38, false, V),
+  row("qwen3-vl-235b-a22b-instruct", 41, false, V),
 ];
 const catalog = optionsFrom(LIVE as never);
 const ids = (ms: { id: string }[]) => ms.map((m) => m.id);
@@ -25,8 +26,8 @@ const env = (over: Partial<Env> = {}) => over as Env;
 
 describe("model policy from the 2026-11-10 live evaluation", () => {
   const policy = policyFrom(env());
-  it("defaults: DeepSeek Flash for OCR and page HTML, Magistral Small for math/tables", () => {
-    expect(defaultFor("ocr", offeredMenu("ocr", catalog, policy), policy)?.id).toBe("deepseek-v4.1-flash-1017");
+  it("defaults: Qwen3-VL for OCR, DeepSeek Flash for page HTML, Magistral Small for math/tables", () => {
+    expect(defaultFor("ocr", offeredMenu("ocr", catalog, policy), policy)?.id).toBe("qwen3-vl-235b-a22b-instruct");
     expect(defaultFor("html_page", offeredMenu("html_page", catalog, policy), policy)?.id).toBe("deepseek-v4.1-flash-1017");
     expect(defaultFor("html_math", offeredMenu("html_math", catalog, policy), policy)?.id).toBe("magistral-small-2509");
     expect(defaultFor("text", offeredMenu("text", catalog, policy), policy)?.id).toBe("deepseek-v4.1-flash-1017");
@@ -34,9 +35,12 @@ describe("model policy from the 2026-11-10 live evaluation", () => {
   it("the math menu offers only the models that passed, in evidence order; no Gemma, no Kimi", () => {
     expect(ids(offeredMenu("html_math", catalog, policy))).toEqual(["magistral-small-2509", "deepseek-v4.1-flash-1017", "qwen3.8-27b"]);
   });
-  it("Kimi is offered nowhere by default; the standard vision menu puts the measured models first", () => {
+  it("the OCR menu offers only Qwen3-VL and Magistral Small (owner, 2026-11-17)", () => {
+    expect(ids(offeredMenu("ocr", catalog, policy))).toEqual(["qwen3-vl-235b-a22b-instruct", "magistral-small-2509"]);
+  });
+  it("Kimi is offered nowhere by default; the page HTML menu puts the measured models first", () => {
     for (const task of ["ocr", "html_page", "html_math", "text"] as const) expect(ids(offeredMenu(task, catalog, policy)).some((id) => id.startsWith("kimi-"))).toBe(false);
-    expect(ids(offeredMenu("ocr", catalog, policy)).slice(0, 4)).toEqual(["deepseek-v4.1-flash-1017", "mistral-large-3-675b-instruct", "qwen3.8-27b", "gemma-4-26b-a4b-it"]);
+    expect(ids(offeredMenu("html_page", catalog, policy)).slice(0, 4)).toEqual(["deepseek-v4.1-flash-1017", "mistral-large-3-675b-instruct", "qwen3.8-27b", "gemma-4-26b-a4b-it"]);
   });
   it("hidden models stay reachable by typing their id; uncapable ones do not", () => {
     expect(resolveModel("html_math", catalog, env(), "kimi-k3").id).toBe("kimi-k3");
@@ -49,13 +53,19 @@ describe("model policy from the 2026-11-10 live evaluation", () => {
     const noneMeasured = catalog.filter((m) => !BUILTIN_POLICY.mathOffered.includes(m.id));
     expect(ids(offeredMenu("html_math", noneMeasured, policy))).toEqual(["glm-5.3-flash"]); // vision+reasoning, minus Gemma and Kimi
     const noDeepseek = catalog.filter((m) => m.id !== "deepseek-v4.1-flash-1017");
-    expect(resolveModel("ocr", noDeepseek, env()).id).toBe("mistral-large-3-675b-instruct");
+    expect(resolveModel("html_page", noDeepseek, env()).id).toBe("mistral-large-3-675b-instruct");
+    const noQwen = catalog.filter((m) => m.id !== "qwen3-vl-235b-a22b-instruct");
+    expect(resolveModel("ocr", noQwen, env()).id).toBe("magistral-small-2509");
+    const neitherOcr = noQwen.filter((m) => m.id !== "magistral-small-2509");
+    expect(ids(offeredMenu("ocr", neitherOcr, policy))[0]).toBe("deepseek-v4.1-flash-1017"); // the vision rule, never an empty menu
   });
   it("vars override every list; DEFAULT_*_MODEL pins first place", () => {
     const p = policyFrom(env({ MATH_MODELS_OFFERED: "qwen3.8-27b, magistral-small-2509", MODELS_HIDDEN: "", MATH_MODELS_HIDDEN: "", DEFAULT_MATH_MODEL: "qwen3.8-27b" }));
     expect(ids(offeredMenu("html_math", catalog, p))).toEqual(["qwen3.8-27b", "magistral-small-2509"]);
     expect(defaultFor("html_math", offeredMenu("html_math", catalog, p), p)?.id).toBe("qwen3.8-27b");
-    expect(ids(offeredMenu("ocr", catalog, p))).toContain("kimi-k3");
+    expect(ids(offeredMenu("html_page", catalog, p))).toContain("kimi-k3");
+    const o = policyFrom(env({ OCR_MODELS_OFFERED: "mistral-large-3-675b-instruct", DEFAULT_OCR_MODEL: "mistral-large-3-675b-instruct" }));
+    expect(ids(offeredMenu("ocr", catalog, o))).toEqual(["mistral-large-3-675b-instruct"]);
     expect(policyFrom(env({ MODELS_HIDDEN: "bad id;drop table, kimi-*" })).hidden).toEqual(["kimi-*"]);
   });
   it("DeepSeek thinks with the switches off on the math path (it reasoned past 14,000 tokens on a tables page); Magistral thinks as measured", () => {
@@ -77,7 +87,8 @@ describe("through the routes", () => {
     const { tasks } = await json(await call(api("/models"), { env: e }));
     expect(tasks.html_math).toMatchObject({ default: "magistral-small-2509", typeable: 4 });
     expect(ids(tasks.html_math.models)).toEqual(["magistral-small-2509", "deepseek-v4.1-flash-1017", "qwen3.8-27b"]);
-    expect(tasks.ocr.default).toBe("deepseek-v4.1-flash-1017");
+    expect(tasks.ocr.default).toBe("qwen3-vl-235b-a22b-instruct");
+    expect(ids(tasks.ocr.models)).toEqual(["qwen3-vl-235b-a22b-instruct", "magistral-small-2509"]);
   });
   it("a math page with no model chosen goes to Magistral; DeepSeek chosen for math gets the thinking-off switches", async () => {
     const e = await gatewayEnv({ catalog: () => Response.json({ object: "list", data: LIVE }), chat: () => ({ text: '<section data-page="1"><p>\\(x\\)</p></section>' }) });

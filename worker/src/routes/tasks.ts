@@ -4,21 +4,19 @@
 import { Hono } from "hono";
 import { requireTextRole } from "../authz";
 import { readJsonObject } from "../body";
-import { byteLength, CAPS, getContent, reindexText, touchProject, writeContent, writePageText, type TextRow } from "../content";
+import { CAPS, writePageText } from "../content";
 import { limits } from "../env";
 import { AppError, E } from "../errors";
 import { freshCorrelation, gatewayClient, runChat } from "../gateway";
 import { loadCatalog, policyFrom, resolveModel, resolveRunModel, thinksOnMath, type ModelOption } from "../models";
 import { cleanupDocumentHtml, toDataUri } from "../model-output";
-import { formulaRepairTask, MAX_TRANSLATE_CHUNK_CHARS, ocrTask, pageHtmlTask, parseFormulaRepair, parseOcr, parsePageHtml, parseSummary, parseTranslation, summaryTask, translateTask } from "../task-specs";
-import { htmlToPlainText, sanitizeHtml } from "../sanitize/html";
-import { isUuid, joinPageTexts, nowIso } from "../util";
+import { formulaRepairTask, ocrTask, pageHtmlTask, parseFormulaRepair, parseOcr, parsePageHtml } from "../task-specs";
+import { sanitizeHtml } from "../sanitize/html";
+import { isUuid, nowIso } from "../util";
 import { clearConversion, conversionRun, convertedPages, keepConvertedPage, validSource } from "../conversion";
 import type { AppEnv } from "../app";
-import { baseRev, contentRev, requireBase, textRev } from "../revisions";
 import { logger, terminalFor } from "../logging";
 import type { MiddlewareHandler } from "hono";
-import { LANGUAGE_CODES } from "../languages";
 
 /** One model_task.completed event per model task request, with the route TEMPLATE only. */
 const logged = (template: string): MiddlewareHandler<AppEnv> => async (c, next) => {
@@ -39,7 +37,6 @@ const idOf = (c: { req: { param: (n: string) => string | undefined } }): string 
 /** A page image sent to a model is capped (Media Tools uses the same 4 MiB); the browser resizes before upload. */
 export const MAX_MODEL_IMAGE_BYTES = 4 * 1024 * 1024;
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
-const LANGUAGES = LANGUAGE_CODES; // src/languages.ts (Ancient Greek and Yiddish restored)
 
 interface Settings { prompt: string | null; model: string | null; math_model: string | null; temperature: number | null; max_tokens: number | null }
 
@@ -186,98 +183,6 @@ taskRoutes.post("/:id/html/cleanup", async (c) => {
   if (typeof body.html !== "string" || !body.html.trim()) throw E.badRequest("HTML is required.");
   if (body.html.length > CAPS.htmlInputChars) throw E.tooLarge("HTML is too long.");
   return c.json({ html: sanitizeHtml(cleanupDocumentHtml(body.html)) });
-});
-
-// ---- summary ---------------------------------------------------------------
-
-async function sourceText(env: AppEnv["Bindings"], ctx: { text: TextRow; project: { project_type: string } }): Promise<string> {
-  if (ctx.project.project_type === "pdf_to_html") {
-    const html = await getContent(env, ctx.text.html_key);
-    return html ? htmlToPlainText(html) : "";
-  }
-  const compiled = await getContent(env, ctx.text.compiled_key);
-  if (compiled) return compiled;
-  const pages = await env.DB.prepare("SELECT ocr_text FROM pages WHERE text_id = ?1 AND ocr_text IS NOT NULL AND ocr_text != '' ORDER BY page_number, rowid").bind(ctx.text.id).all<{ ocr_text: string }>();
-  return joinPageTexts(pages.results.map((p) => p.ocr_text));
-}
-
-taskRoutes.get("/:id/summary", async (c) => {
-  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
-  return c.json({ summary: ctx.text.summary, rev: await textRev(ctx.text.summary) });
-});
-
-taskRoutes.put("/:id/summary", async (c) => {
-  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
-  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
-  if (typeof body.summary !== "string") throw E.badRequest("summary must be a string.");
-  if (byteLength(body.summary) > CAPS.summaryBytes) throw E.tooLarge(`summary is larger than ${CAPS.summaryBytes} bytes.`);
-  // The summary is not versioned: an edit from a stale copy is refused (base_rev), and the write is a compare-and-set.
-  await requireBase(baseRev(body), await textRev(ctx.text.summary), async () => ({ saved_at: ctx.text.updated_at, saved_by: null }));
-  const written = await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3 AND summary IS ?4").bind(body.summary, nowIso(), ctx.text.id, ctx.text.summary).run();
-  if (written.meta.changes !== 1) throw E.conflict("This text was changed by someone else. Reload and try again.", "edit_conflict");
-  await touchProject(c.env.DB, ctx.project.id);
-  await reindexText(c.env, ctx.text.id);
-  return c.json({ summary: body.summary, rev: await textRev(body.summary) });
-});
-
-taskRoutes.post("/:id/summary", logged("/{id}/summary"), async (c) => {
-  const principal = c.get("principal");
-  const ctx = await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
-  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
-  const source = await sourceText(c.env, ctx);
-  if (source.trim() === "") throw E.badRequest("There is no text to summarise yet.", "no_text");
-  const language = typeof body.language === "string" && LANGUAGES.has(body.language) ? body.language : ctx.text.source_language ?? ctx.project.default_language;
-  const model = resolveModel("text", await catalogFor(c), c.env, modelChoice(body));
-  const { task, truncatedInput: truncated } = summaryTask(model, source, language);
-  const result = await runChat(c.env, principal, c.req.raw, task);
-  const summary = parseSummary(result.text);
-  const paid = { summary, model: model.id, truncated_input: truncated, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId };
-  // Compare-and-set against the summary read BEFORE the model call (up to 90 s), and only while
-  // the text is still in this project: a hand edit made meanwhile wins, and a text deleted or
-  // moved meanwhile is not reported as summarised.
-  const now = nowIso();
-  const written = await c.env.DB.prepare("UPDATE texts SET summary = ?1, updated_at = ?2 WHERE id = ?3 AND project_id = ?4 AND summary IS ?5").bind(summary, now, ctx.text.id, ctx.project.id, ctx.text.summary).run();
-  if (written.meta.changes !== 1) {
-    const still = await c.env.DB.prepare("SELECT 1 AS x FROM texts WHERE id = ?1 AND project_id = ?2").bind(ctx.text.id, ctx.project.id).first();
-    if (!still) throw new AppError({ code: "text_gone", status: 410, message: "This text was deleted or moved to another project while the summary was being written, so the summary was not saved." });
-    // The (already paid for) summary is handed back so the person can compare and choose.
-    throw new AppError({ code: "edit_conflict", status: 409, message: "The summary was edited while the model was writing it. The edit was kept; the model's summary is included so you can compare.", result: paid });
-  }
-  await touchProject(c.env.DB, ctx.project.id, now);
-  await reindexText(c.env, ctx.text.id);
-  // rev: what the next hand save of this summary sends back as base_rev.
-  return c.json({ ...paid, rev: await textRev(summary) });
-});
-
-// ---- translation (the client drives chunking) -------------------------------
-
-taskRoutes.post("/:id/translate-chunk", logged("/{id}/translate-chunk"), async (c) => {
-  const principal = c.get("principal");
-  await requireTextRole(c.env.DB, principal.subject, idOf(c), "editor");
-  const body = await readJsonObject(c.req.raw, limits(c.env).maxJsonBytes);
-  if (typeof body.text !== "string" || body.text.trim() === "") throw E.badRequest("text is required.");
-  if (body.text.length > MAX_TRANSLATE_CHUNK_CHARS) throw E.tooLarge(`A chunk can be at most ${MAX_TRANSLATE_CHUNK_CHARS} characters; split it and send the pieces one at a time.`, "chunk_too_large");
-  const { source_language: src, target_language: tgt } = body;
-  if (typeof src !== "string" || !LANGUAGES.has(src) || typeof tgt !== "string" || !LANGUAGES.has(tgt) || tgt === "auto-detect") throw E.badRequest("Invalid source or target language.");
-  const model = resolveModel("text", await catalogFor(c), c.env, modelChoice(body));
-  const result = await runChat(c.env, principal, c.req.raw, translateTask(model, body.text, src, tgt));
-  return c.json({ text: parseTranslation(result.text), model: model.id, usage: usageOf(result.usage), gateway_request_id: result.gatewayRequestId });
-});
-
-taskRoutes.get("/:id/translation", async (c) => {
-  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "viewer");
-  return c.json({ translation: await getContent(c.env, ctx.text.translation_key), source_language: ctx.text.source_language, target_language: ctx.text.target_language, rev: contentRev(ctx.text.translation_key) });
-});
-
-taskRoutes.put("/:id/translation", async (c) => {
-  const ctx = await requireTextRole(c.env.DB, c.get("principal").subject, idOf(c), "editor");
-  const body = await readJsonObject(c.req.raw, CAPS.documentBodyBytes);
-  if (typeof body.translation !== "string") throw E.badRequest("translation must be a string.");
-  if (byteLength(body.translation) > CAPS.translationBytes) throw E.tooLarge(`The translation is larger than ${CAPS.translationBytes} bytes.`);
-  // The translation is not versioned, so a save from a stale copy would lose the other edit outright: refused when base_rev is sent.
-  await requireBase(baseRev(body), contentRev(ctx.text.translation_key), async () => ({ saved_at: ctx.text.updated_at, saved_by: null }));
-  const { rev } = await writeContent(c.env, ctx.project, ctx.text, "translation", body.translation, c.get("principal").subject);
-  return c.json({ ok: true, rev });
 });
 
 // ---- formula repair --------------------------------------------------------

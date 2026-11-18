@@ -19,7 +19,7 @@ export function ToolRules({ session }) {
       <li><strong>Storage:</strong> {quota} for the projects you own, including pages, PDFs, figures and saved versions. Files a collaborator adds to your project count against yours.</li>
       <li><strong>Size:</strong> a project holds at most {session.limits?.max_project_pages ?? 300} pages, and a source PDF can be at most {formatBytes(session.limits?.max_pdf_bytes ?? 0)}. A PDF that would not fit is refused before any page is drawn or uploaded. Settings, under Usage, shows which of your projects use your storage.</li>
       <li><strong>How long work is kept:</strong> a project is deleted {days} days after its last edit. You are warned {warn} days before, here and in Notifications; any edit keeps it. Export anything you want to keep.</li>
-      <li><strong>Model use:</strong> reading pages, converting PDFs, summaries and translations are paid from your own CAIL model allowance, the same one other CAIL tools use. The allowance line under each tool is an estimate that updates with a delay.</li>
+      <li><strong>Model use:</strong> reading pages and converting PDFs are paid from your own CAIL model allowance, the same one other CAIL tools use. The allowance line under each tool is an estimate that updates with a delay.</li>
       <li><strong>Versions:</strong> each time text is replaced (by a save, an OCR run, a conversion or a restore) the earlier text is kept as a version you can view and restore.</li>
     </ul>
   );
@@ -34,7 +34,7 @@ export function LegacyDifferences() {
       <li>HEIC photos (the iPhone default) upload only in a browser that can open them, such as Safari; in other browsers convert them to JPEG first. The earlier converter needed a kind of script this site does not allow.</li>
       <li>Sign-in is CUNY Login through the CAIL portal; there are no separate accounts or passwords.</li>
       <li>Notifications are in the app only; there are no emails.</li>
-      <li>Models come from the CAIL catalog. Choose one for a run, or save a model, temperature, maximum length and (for image texts) a transcription prompt for a text under “Model settings for this text”.</li>
+      <li>Models come from the CAIL catalog. The model chosen next to the Read or Convert button is saved for the text; temperature, maximum length and (for image texts) the transcription prompt are under “Model settings for this text”.</li>
     </ul>
   );
 }

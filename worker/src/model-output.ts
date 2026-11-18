@@ -39,8 +39,16 @@ export function deduplicateOcr(text: string): string {
   return out.map((p) => collapseRepeatingPhrases(p)).join("\n\n");
 }
 
+// A line that is only ---, *** or ___ (spaces allowed): a Markdown horizontal rule.
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/gm;
+
+/**
+ * OCR output as stored. Horizontal rules are removed: models draw them for
+ * printed lines and ornaments, and Manifold shows each one as a rule across
+ * the page. The prompt asks for none; this holds when a model writes one anyway.
+ */
 export function cleanOcr(raw: string): string {
-  return deduplicateOcr(stripReasoning(raw)).trim();
+  return deduplicateOcr(stripReasoning(raw)).replace(THEMATIC_BREAK, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Take the <section>...</section> block out of a possibly fenced reply. */

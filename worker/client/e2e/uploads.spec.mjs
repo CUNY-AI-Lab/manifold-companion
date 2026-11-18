@@ -74,7 +74,7 @@ test('drag and drop: images and a PDF dropped on an image text become pages; oth
   await page.goto('/manifold-companion/');
   const { text } = await seedTexts(page);
   await page.goto(`/manifold-companion/texts/${text.id}`);
-  await expect(page.getByText('or drop images or a PDF anywhere on this page')).toBeVisible();
+  await expect(page.getByText(/you can also drop them anywhere on this page/)).toBeVisible();
   const dt = await dropFiles(page, [
     { name: 'page.png', type: 'image/png', path: 'e2e/fixtures/page.png' },
     { name: 'two-pages.pdf', type: 'application/pdf', path: 'e2e/fixtures/two-pages.pdf' },

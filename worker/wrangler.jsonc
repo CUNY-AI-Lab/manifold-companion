@@ -58,7 +58,9 @@
     // Evidence: docs/model-policy.md, live evaluation through the real Gateway on
     // 2026-11-10 (82 calls, precalculus textbook). Comma-separated ids; `*` = prefix.
     // A listed model the catalog no longer has is skipped (next one, then catalog order).
-    // Standard OCR and page->HTML: DeepSeek Flash 100% at ~5-6 s/page.
+    // OCR (image to Markdown): only Qwen3-VL (default) and Magistral Small for pages with math (owner, 2026-11-17).
+    "OCR_MODELS_OFFERED": "qwen3-vl-235b-a22b-instruct,magistral-small-2509",
+    // Page->HTML: DeepSeek Flash 100% at ~5-6 s/page.
     "MODEL_ORDER_VISION": "deepseek-v4.1-flash-1017,mistral-large-3-675b-instruct,qwen3.8-27b,gemma-4-26b-a4b-it",
     // Math/tables: Magistral Small 6/6 pages, ~11 s median, cheapest that passed; DeepSeek 5/6; Qwen 3.8 5/6 (~63 s).
     "MODEL_ORDER_MATH": "magistral-small-2509,deepseek-v4.1-flash-1017,qwen3.8-27b",

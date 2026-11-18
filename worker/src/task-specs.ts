@@ -7,8 +7,7 @@ import { AppError } from "./errors";
 import type { ChatTask } from "./gateway";
 import type { ModelOption } from "./models";
 import { cleanOcr, extractHtml, pageWarnings, postprocessPageHtml, stripReasoning, visibleLength, type PageWarning } from "./model-output";
-import { languageName } from "./languages";
-import { DEFAULT_OCR_PROMPT, FORMULA_REPAIR_SYSTEM, HTML_PAGE_SYSTEM, htmlPageUser, summarySystem, translationSystem } from "./prompts";
+import { DEFAULT_OCR_PROMPT, FORMULA_REPAIR_SYSTEM, HTML_PAGE_SYSTEM, htmlPageUser } from "./prompts";
 import { sanitizeHtml } from "./sanitize/html";
 
 /** Per-text overrides from text_settings; null means the task default. */
@@ -17,14 +16,9 @@ export interface TaskSettings { prompt?: string | null; max_tokens?: number | nu
 export const TASK_DEFAULTS = {
   ocr: { maxTokens: 4096, temperature: 0.1 },
   html_page: { maxTokens: 6000, temperature: 0.1 },
-  summary: { maxTokens: 1024, temperature: 0.3 },
-  translate: { maxTokens: 6000, temperature: 0.3 },
   formula_repair: { maxTokens: 4000, temperature: 0 },
 } as const;
 
-export const MAX_SUMMARY_INPUT_CHARS = 100_000;
-export const MAX_TRANSLATE_CHUNK_CHARS = 12_000;
-export const SUMMARY_MAX_BYTES = 20 * 1024;
 
 export function ocrTask(model: ModelOption, imageDataUri: string, settings: TaskSettings = {}, promptOverride?: string): ChatTask {
   const prompt = promptOverride || settings.prompt || DEFAULT_OCR_PROMPT;
@@ -70,29 +64,6 @@ export function parsePageHtml(raw: string, pageNumber: number, hint = ""): { uns
   const html = sanitizeHtml(unsanitized);
   return { unsanitized, html, shortOutput: visibleLength(html) < 40, warnings: pageWarnings(html, hint) };
 }
-
-export function summaryTask(model: ModelOption, source: string, language: string): { task: ChatTask; truncatedInput: boolean } {
-  const truncatedInput = source.length > MAX_SUMMARY_INPUT_CHARS;
-  const input = truncatedInput ? `${source.slice(0, MAX_SUMMARY_INPUT_CHARS)}\n\n[text truncated]` : source;
-  return {
-    truncatedInput,
-    task: { model, deadline: "text", wantsThinking: false, maxTokens: TASK_DEFAULTS.summary.maxTokens, temperature: TASK_DEFAULTS.summary.temperature, messages: [{ role: "system", content: summarySystem(languageName(language)) }, { role: "user", content: input }] },
-  };
-}
-
-const byteLength = (s: string): number => new TextEncoder().encode(s).byteLength;
-
-/** Summary as stored (bounded for the D1 row). */
-export function parseSummary(raw: string): string {
-  const summary = stripReasoning(raw).trim();
-  return byteLength(summary) > SUMMARY_MAX_BYTES ? summary.slice(0, Math.floor(SUMMARY_MAX_BYTES / 4)) : summary;
-}
-
-export function translateTask(model: ModelOption, text: string, source: string, target: string): ChatTask {
-  return { model, deadline: "translate", wantsThinking: false, maxTokens: TASK_DEFAULTS.translate.maxTokens, temperature: TASK_DEFAULTS.translate.temperature, messages: [{ role: "system", content: translationSystem(languageName(source), languageName(target)) }, { role: "user", content: text }] };
-}
-
-export const parseTranslation = (raw: string): string => stripReasoning(raw).trim();
 
 export function formulaRepairTask(model: ModelOption, formulas: string[]): ChatTask {
   return { model, deadline: "text", wantsThinking: false, maxTokens: TASK_DEFAULTS.formula_repair.maxTokens, temperature: TASK_DEFAULTS.formula_repair.temperature, messages: [{ role: "system", content: FORMULA_REPAIR_SYSTEM }, { role: "user", content: JSON.stringify(formulas) }] };

@@ -63,27 +63,7 @@ describe("stale saves: a save from a copy loaded before someone else's save is r
     expect(current).toBe((await json(await call(api(`/texts/${tid}/html`)))).rev);
   });
 
-  it("translation (unversioned): the stale save is refused, so the other edit is not lost", async () => {
-    const { tid } = await shared();
-    const put = (translation: string, base_rev: string, as = ALICE) => send(`/texts/${tid}/translation`, "PUT", { translation, base_rev }, as);
-    const r1 = await json(await put("uno", (await json(await call(api(`/texts/${tid}/translation`)))).rev));
-    await put("Bob's", r1.rev, BOB);
-    await expectStale(await put("Alice's", r1.rev), null);
-    expect((await json(await call(api(`/texts/${tid}/translation`)))).translation).toBe("Bob's");
-  });
 
-  it("summary, by both routes", async () => {
-    const { tid } = await shared();
-    const loaded = (await json(await call(api(`/texts/${tid}/summary`)))).rev;
-    expect((await json(await call(api(`/texts/${tid}`)))).text.summary_rev).toBe(loaded);
-    const bob = await json(await send(`/texts/${tid}/summary`, "PUT", { summary: "Bob's", base_rev: loaded }, BOB));
-    await expectStale(await send(`/texts/${tid}/summary`, "PUT", { summary: "Alice's", base_rev: loaded }), null);
-    await expectStale(await send(`/texts/${tid}`, "PUT", { summary: "Alice's", base_rev: loaded }), null);
-    expect((await json(await call(api(`/texts/${tid}/summary`)))).summary).toBe("Bob's");
-    const upd = await json(await send(`/texts/${tid}`, "PUT", { summary: "Alice's", base_rev: bob.rev }));
-    expect(upd.text.summary).toBe("Alice's");
-    expect(upd.text.summary_rev).toBe((await json(await call(api(`/texts/${tid}/summary`)))).rev);
-  });
 
   it("a save without base_rev keeps the old behaviour; a malformed one is refused", async () => {
     const { tid } = await shared();

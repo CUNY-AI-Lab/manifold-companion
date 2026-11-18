@@ -65,10 +65,16 @@ test('per-text model settings: saved, shown as the run default, used by the next
   await page.goto(`/manifold-companion/texts/${text.id}`);
   await page.locator('input[type=file]').setInputFiles('e2e/fixtures/page.png');
   await expect(page.getByRole('button', { name: /^1\. page\.jpg/ })).toBeVisible({ timeout: 30_000 });
+  // After an upload the page says what to do next.
+  await expect(page.getByText(/^Next: check the scans\. The page has no text yet\./)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Read pages without text (1)' })).toBeEnabled();
 
+  // One model control: the run picker saves the model for the text, and the settings panel shows the same one.
+  await page.getByLabel('OCR model').selectOption('stub-vision-reasoning');
+  await expect.poll(async () => (await api(`/texts/${text.id}/settings`)).settings.model).toBe('stub-vision-reasoning');
   await page.getByRole('button', { name: 'Model settings for this text' }).click();
   const panel = page.locator('section', { has: page.getByRole('button', { name: 'Model settings for this text' }) });
-  await panel.getByLabel('Model for reading pages').selectOption('stub-vision-reasoning');
+  await expect(panel.getByText('OCR model: stub-vision-reasoning.')).toBeVisible();
   await panel.getByLabel('Temperature (0 to 1)').fill('1.7');
   await panel.getByRole('button', { name: 'Save settings' }).click();
   await expect(panel.getByRole('alert')).toContainText('Temperature must be a number from 0 to 1.');
@@ -90,12 +96,13 @@ test('per-text model settings: saved, shown as the run default, used by the next
   expect((await api(`/texts/${text.id}/settings`)).settings).toMatchObject({ model: 'stub-vision-reasoning', temperature: 0.4, max_tokens: 1500, prompt: 'Transcribe this letter exactly.' });
   expect(await axe(page, 'text settings open')).toEqual([]);
 
-  // The run picker says what an unchosen run uses; the run uses it (the stub echoes the model).
-  await expect(page.getByLabel('OCR model').locator('option').first()).toHaveText('Saved for this text (stub-vision-reasoning)');
+  // Saving the other settings keeps the model; the run uses it (the stub echoes the model).
+  await expect(page.getByLabel('OCR model')).toHaveValue('stub-vision-reasoning');
   await page.getByRole('button', { name: 'Read pages without text' }).click();
   await expect(page.getByText('read by stub-vision-reasoning')).toBeVisible({ timeout: 30_000 });
 
   await page.reload();
+  await expect(page.getByLabel('OCR model')).toHaveValue('stub-vision-reasoning');
   await page.getByRole('button', { name: 'Model settings for this text' }).click();
   await expect(panel.getByLabel('Maximum length (tokens)')).toHaveValue('1500');
 
@@ -115,6 +122,7 @@ test('per-text model settings: saved, shown as the run default, used by the next
   await panel.getByRole('button', { name: 'Use the defaults' }).click();
   await expect(panel.getByText('Back to the defaults.')).toBeVisible();
   await expect(panel.getByLabel('Maximum length (tokens)')).toHaveValue('');
+  await expect(page.getByLabel('OCR model')).toHaveValue('');
   await expect(page.getByLabel('OCR model').locator('option').first()).toHaveText('Default (stub-vision)');
 });
 

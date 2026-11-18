@@ -19,6 +19,7 @@ export interface Env {
   MAX_FILE_BYTES?: string;
   /** Default catalog models per task; each is used only if the live catalog offers it with the needed capabilities. */
   DEFAULT_VISION_MODEL?: string;
+  DEFAULT_OCR_MODEL?: string;
   DEFAULT_MATH_MODEL?: string;
   DEFAULT_TEXT_MODEL?: string;
   /**
@@ -28,6 +29,7 @@ export interface Env {
   MODEL_ORDER_VISION?: string;
   MODEL_ORDER_MATH?: string;
   MODEL_ORDER_TEXT?: string;
+  OCR_MODELS_OFFERED?: string;
   MATH_MODELS_OFFERED?: string;
   MODELS_HIDDEN?: string;
   MATH_MODELS_HIDDEN?: string;

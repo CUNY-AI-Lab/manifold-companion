@@ -15,7 +15,7 @@ const prices = new Map<string, Pricing>([["vision-plain", { input: 0.1, output: 
 
 describe("arguments and the key", () => {
   it("parses flags with defaults: all tasks, $1.50 worst-case budget", () => {
-    expect(parseArgs([])).toMatchObject({ dryRun: false, budgetMicrodollars: 1_500_000, budgetMode: "worst", tasks: ["ocr", "html", "math", "summary", "translate", "repair"], models: null, pages: null });
+    expect(parseArgs([])).toMatchObject({ dryRun: false, budgetMicrodollars: 1_500_000, budgetMode: "worst", tasks: ["ocr", "html", "math", "repair"], models: null, pages: null });
     expect(parseArgs(["--dry-run", "--tasks", "ocr,math", "--models=a,b", "--pages", "ch7-p2", "--budget-microdollars", "250000"])).toMatchObject({ dryRun: true, tasks: ["ocr", "math"], models: ["a", "b"], pages: ["ch7-p2"], budgetMicrodollars: 250000 });
   });
   it("refuses a key on the command line and rejects nonsense", () => {

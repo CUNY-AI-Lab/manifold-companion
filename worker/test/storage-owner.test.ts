@@ -109,18 +109,6 @@ describe("a delete authorized before ownership moved releases from the new owner
     expect(await storageDrift()).toEqual([]);
   });
 
-  it("an edit that shrinks a translation", async () => {
-    const { pid } = await sharedProject();
-    const tid = await createText(ALICE, pid, "Translated");
-    expect((await call(api(`/texts/${tid}/translation`), { method: "PUT", body: { translation: "x".repeat(3000) } })).status).toBe(200);
-    expect(await storageDrift()).toEqual([]);
-    const { writeContent } = await import("../src/content");
-    const staleProject = await projectRow(pid);
-    const staleText = (await env.DB.prepare("SELECT * FROM texts WHERE id = ?1").bind(tid).first())!;
-    expect((await accept(await offerTo(pid, BOB), BOB)).status).toBe(200);
-    await writeContent(await makeEnv(), staleProject, staleText as never, "translation", "short", ALICE);
-    expect(await storageDrift()).toEqual([]);
-  });
 });
 
 describe("a request that outlives its reservation", () => {

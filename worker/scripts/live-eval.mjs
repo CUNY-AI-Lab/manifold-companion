@@ -112,7 +112,7 @@ const HELP = `Live evaluation of the Manifold Companion model tasks through the 
   node worker/scripts/live-eval.mjs --dry-run [flags]     plan only; fetches the public catalog, no key
 
 Flags:
-  --tasks ocr,html,math,summary,translate,repair   which tasks (default all)
+  --tasks ocr,html,math,repair   which tasks (default all)
   --models a,b                                     only these models (each must be on the task's menu)
   --pages ch7-p2,ch1-p35                           only these pages (ids in the plan)
   --budget-microdollars N                          stop before spending more (default 1500000 = $1.50)
@@ -175,13 +175,13 @@ async function main() {
   let n = 0;
   const promptChars = { ocr: 1800, html: 3600, math: 3600 };
   // Order: cheap tasks first, the costly math comparison last, so a budget stop
-  // never starves summary, translation or repair (repair takes a real formula from the HTML outputs).
-  const ORDER = ["ocr", "html", "summary", "translate", "repair", "math"].filter((t) => args.tasks.includes(t));
+  // never starves repair (repair takes a real formula from the HTML outputs).
+  const ORDER = ["ocr", "html", "repair", "math"].filter((t) => args.tasks.includes(t));
   for (const task of ORDER) {
     const sets = lib.candidates(task, catalog, prices, args.models);
     menus[task] = { default: sets.default?.id ?? null, menu: sets.menu.map((m) => m.id), run: sets.run.map((m) => m.id) };
     const pages = task === "ocr" || task === "html" || task === "math" ? pagesFor(task) : [null];
-    const units = task === "translate" ? ["it", "es"] : [null];
+    const units = [null];
     for (const model of sets.run) {
       for (const page of pages) {
         for (const unit of units) {
@@ -190,7 +190,7 @@ async function main() {
             const img = images[`${page}:${task === "math" ? "math" : "std"}`];
             est = lib.estimateTextTokens(promptChars[task] + (task === "ocr" ? 0 : Math.min(8000, hints[page].length))) + lib.estimateImageTokens(img.width, img.height);
           } else {
-            est = lib.estimateTextTokens(task === "summary" ? sourceGuess.length + 400 : task === "translate" ? 3000 + 300 : 600);
+            est = lib.estimateTextTokens(600);
           }
           const call = lib.planCall(++n, task, page, model, model.id === sets.default?.id, est, prices.get(model.id) ?? null);
           call.unit = unit;
@@ -255,15 +255,6 @@ async function main() {
         const stripped = { pipeline: lib.strippedBySanitizer(lib.extractHtml(rawText), html), sanitizer: lib.strippedBySanitizer(unsanitized, html) };
         return { output: html, ext: "html", preview: appPreview(lib, { html }), math: lib.scoreMath(html), structure: lib.htmlStructure(html), stripped, extra: { warnings } };
       };
-    } else if (c.task === "summary") {
-      const source = [...outputs.ocr.values()].join("\n\n---\n\n") || sourceGuess;
-      task = lib.summaryTask(c.model, source, "en").task;
-      parse = (rawText) => { const s = lib.parseSummary(rawText); return { output: s, ext: "txt", preview: null, math: lib.scoreMath(s, true), structure: null, stripped: null, extra: { words: (s.match(/\S+/g) ?? []).length, english: lib.languageScore(s, "en") } }; };
-    } else if (c.task === "translate") {
-      const source = ([...outputs.ocr.values()].join("\n\n") || sourceGuess).split(/\n{2,}/).reduce((acc2, p) => (acc2.length + p.length + 2 <= 3000 ? (acc2 ? `${acc2}\n\n${p}` : p) : acc2), "");
-      task = lib.translateTask(c.model, source, "en", c.unit);
-      const sourceMath = lib.texFragments(source, true).length;
-      parse = (rawText) => { const t = lib.parseTranslation(rawText); return { output: t, ext: "txt", preview: null, math: lib.scoreMath(t, true), structure: null, stripped: null, extra: { target: c.unit, targetLanguageScore: lib.languageScore(t, c.unit), englishScore: lib.languageScore(t, "en"), sourceMathFragments: sourceMath, ratio: t.length / Math.max(1, source.length) } }; };
     } else {
       const picked = lib.pickRepairSource(outputs.htmlish);
       const original = picked ?? "\\cos(\\theta)=\\frac{-3+\\sqrt{41}}{8}";
@@ -389,7 +380,7 @@ function indexHtml(lib, out, records, images) {
     }
     parts.push("</table>");
   }
-  for (const task of ["summary", "translate", "repair"]) {
+  for (const task of ["repair"]) {
     const rs = records.filter((r) => r.task === task);
     if (!rs.length) continue;
     parts.push(`<h2>${task}</h2><table><tr><th>model</th><th>unit</th><th>result</th><th>output</th></tr>`);

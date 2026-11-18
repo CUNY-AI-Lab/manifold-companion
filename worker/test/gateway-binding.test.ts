@@ -19,7 +19,7 @@ afterEach(() => globalFetch.mockRestore());
 const paths = (e: Awaited<ReturnType<typeof gatewayEnv>>) => gatewayOf(e).calls.map((r) => new URL(r.url).pathname);
 
 describe("the GATEWAY binding carries every Gateway call", () => {
-  it("catalog, quota, OCR, page HTML, summary, translation, formula repair: all through the binding, none through global fetch", async () => {
+  it("catalog, quota, OCR, page HTML, formula repair: all through the binding, none through global fetch", async () => {
     const e = await gatewayEnv({ chat: (body) => ({ text: JSON.stringify(body.messages?.[1]?.content ?? "").includes("[") ? '["x"]' : '<section data-page="1"><p>ok text here, long enough to count</p></section>' }) });
     expect((await call(api("/models"), { env: e })).status).toBe(200);
     expect((await call(api("/quota"), { env: e })).status).toBe(200);
@@ -27,15 +27,13 @@ describe("the GATEWAY binding carries every Gateway call", () => {
     const tid = await createText(ALICE, pid);
     const page = (await json(await upload(api(`/texts/${tid}/pages`), JPEG(256), ALICE, { query: { filename: "p.jpg" }, env: e }))).page;
     expect((await call(api(`/texts/${tid}/pages/${page.id}/ocr`), { method: "POST", body: {}, env: e })).status).toBe(200);
-    expect((await call(api(`/texts/${tid}/summary`), { method: "POST", body: {}, env: e })).status).toBe(200);
-    expect((await call(api(`/texts/${tid}/translate-chunk`), { method: "POST", body: { text: "Bonjour", source_language: "fr", target_language: "en" }, env: e })).status).toBe(200);
     const hp = await createProject(ALICE, "PDF", { project_type: "pdf_to_html" });
     const ht = await createText(ALICE, hp);
     expect((await call(api(`/texts/${ht}/parse-page`), { method: "POST", body: { image: "data:image/png;base64,iVBORw0KGgo=", page_number: 1 }, env: e })).status).toBe(200);
     expect((await call(api(`/texts/${ht}/formula-repair`), { method: "POST", body: { formulas: ["\\frac{1}{"] }, env: e })).status).toBe(200);
     expect(globalFetch).not.toHaveBeenCalled();
     expect(new Set(paths(e))).toEqual(new Set(["/v1/catalog", "/v1/quota", "/v1/chat/completions"]));
-    expect(paths(e).filter((p) => p === "/v1/chat/completions")).toHaveLength(5);
+    expect(paths(e).filter((p) => p === "/v1/chat/completions")).toHaveLength(3);
   });
 
   it("readiness reads the public catalog through the binding, with no credential", async () => {

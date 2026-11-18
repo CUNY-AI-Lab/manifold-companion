@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { ErrorNote, ModelPicker } from './ui';
+import { ErrorNote } from './ui';
 import { OCR_PRESETS, presetFor } from '../../../src/ocr-presets.ts';
 import { DEFAULT_OCR_PROMPT } from '../../../src/prompts.ts';
 
@@ -14,10 +14,10 @@ export function settingsBody(form, kind) {
   if (temperature !== null && !(Number.isFinite(temperature) && temperature >= 0 && temperature <= 1)) return [null, 'Temperature must be a number from 0 to 1.'];
   const maxTokens = form.max_tokens === '' ? null : Number(form.max_tokens);
   if (maxTokens !== null && !(Number.isInteger(maxTokens) && maxTokens >= 1 && maxTokens <= 8192)) return [null, 'Maximum length must be a whole number from 1 to 8192.'];
-  const body = { model: form.model || null, temperature, max_tokens: maxTokens };
+  // The models are not here: the pickers next to the run buttons save them (useSavedModel).
+  const body = { temperature, max_tokens: maxTokens };
   // The built-in prompt, unedited, is saved as no prompt, so the text keeps following it.
   if (kind === 'image') body.prompt = form.prompt.trim() === '' || form.prompt === DEFAULT_OCR_PROMPT ? null : form.prompt;
-  else body.math_model = form.math_model || null;
   return [body, null];
 }
 
@@ -40,13 +40,31 @@ export function savedRunNote(settings, kind) {
 }
 
 // Image texts show the prompt a run will use, the built-in one when none is saved, so it can be read and edited.
-const toForm = (s = {}, kind) => ({ model: s.model ?? null, math_model: s.math_model ?? null, temperature: s.temperature ?? '', max_tokens: s.max_tokens ?? '', prompt: s.prompt ?? (kind === 'image' ? DEFAULT_OCR_PROMPT : '') });
+const toForm = (s = {}, kind) => ({ temperature: s.temperature ?? '', max_tokens: s.max_tokens ?? '', prompt: s.prompt ?? (kind === 'image' ? DEFAULT_OCR_PROMPT : '') });
 
 /** Saved settings of one text, loaded once; the run pickers show the saved model as their default. */
 export function useTextSettings(textId) {
   const [settings, setSettings] = useState(null);
   useEffect(() => { api.get(`/api/texts/${textId}/settings`).then((r) => setSettings(r.settings ?? {}), () => setSettings({})); }, [textId]);
   return [settings, setSettings];
+}
+
+/**
+ * A model that is the text's saved setting. The picker next to the run buttons
+ * is the only place a model is chosen: choosing saves it for the text at once,
+ * so the run and "Model settings for this text" can never disagree.
+ * Returns [model or null for the default, choose(model or null)].
+ */
+export function useSavedModel(textId, settings, setSettings, key, onError) {
+  const choose = async (value) => {
+    const before = settings;
+    setSettings((s) => ({ ...(s ?? {}), [key]: value }));
+    try {
+      const r = await api.post(`/api/texts/${textId}/settings`, { [key]: value });
+      setSettings(r.settings ?? {});
+    } catch (err) { setSettings(before); onError?.(err); }
+  };
+  return [settings?.[key] ?? null, choose];
 }
 
 /**
@@ -91,10 +109,7 @@ export default function TextSettingsPanel({ textId, kind, canEdit, settings, onS
           {settings === null ? <p role="status">Loading settings</p> : (
             <fieldset disabled={!canEdit} className="space-y-3">
               <legend className="sr-only">Settings</legend>
-              <div className="flex flex-wrap gap-4">
-                <ModelPicker task={kind === 'image' ? 'ocr' : 'html_page'} value={form.model} onChange={(v) => set('model', v)} label={kind === 'image' ? 'Model for reading pages' : 'Model for converting pages'} idSuffix="settings" />
-                {kind === 'pdf' ? <ModelPicker task="html_math" value={form.math_model} onChange={(v) => set('math_model', v)} label="Model for math and table pages" idSuffix="settings" /> : null}
-              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300">{kind === 'image' ? 'OCR model' : 'Models'}: {kind === 'image' ? settings.model || 'the default' : `${settings.model || 'the default'} for pages, ${settings.math_model || 'the default'} for math and tables`}. Choose {kind === 'image' ? 'it' : 'them'} next to the {kind === 'image' ? 'Read' : 'Convert'} button above; the choice is saved for this text.</p>
               <div className="flex flex-wrap gap-4">
                 <label><span className="label">Temperature (0 to 1)</span><input className="field w-32" type="number" inputMode="decimal" min="0" max="1" step="0.05" placeholder={`default ${d.temperature}`} value={form.temperature} onChange={(e) => set('temperature', e.target.value)} /></label>
                 <label><span className="label">Maximum length (tokens)</span><input className="field w-40" type="number" inputMode="numeric" min="1" max="8192" step="1" placeholder={`default ${d.max_tokens}`} value={form.max_tokens} onChange={(e) => set('max_tokens', e.target.value)} /></label>

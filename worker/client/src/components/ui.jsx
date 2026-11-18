@@ -39,7 +39,7 @@ const OTHER = '__other__';
  * Gateway catalog), plus "Another model…" for typing any catalog model id the
  * task can use; the Worker checks it before any spend.
  */
-export function ModelPicker({ task, value, onChange, label, idSuffix = 'run', savedDefault = null }) {
+export function ModelPicker({ task, value, onChange, label, idSuffix = 'run' }) {
   const [menu, setMenu] = useState(null);
   const [error, setError] = useState(null);
   const [typing, setTyping] = useState(false);
@@ -64,7 +64,7 @@ export function ModelPicker({ task, value, onChange, label, idSuffix = 'run', sa
             onChange(e.target.value || null);
           }}
         >
-          <option value="">{savedDefault ? `Saved for this text (${savedDefault})` : `Default (${menu.default ?? 'none available'})`}</option>
+          <option value="">{`Default (${menu.default ?? 'none available'})`}</option>
           {menu.models.map((m) => <option key={m.id} value={m.id}>{m.name}{m.reasoning ? ' (reasons)' : ''}</option>)}
           {menu.typeable > 0 ? <option value={OTHER}>Another model (type its id)</option> : null}
         </select>

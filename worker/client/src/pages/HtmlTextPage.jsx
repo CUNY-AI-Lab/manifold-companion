@@ -6,9 +6,8 @@ import { brokenFormulas as brokenTex } from '../lib/math';
 import { useSession } from '../api/session.jsx';
 import CommentsPanel, { CommentsJumpLink } from '../components/CommentsPanel';
 import MetadataPanel from '../components/MetadataPanel';
-import TextSettingsPanel, { savedRunNote, useTextSettings } from '../components/TextSettingsPanel';
+import TextSettingsPanel, { savedRunNote, useSavedModel, useTextSettings } from '../components/TextSettingsPanel';
 import FigurePanel from '../components/FigurePanel';
-import SummaryPanel from '../components/SummaryPanel';
 import RichEditor from '../components/RichEditor';
 import { browserStorage } from '../lib/storage';
 
@@ -61,9 +60,10 @@ export default function HtmlTextPage({ data, reload }) {
   const [file, setFile] = useState(null);
   const [mathSpec, setMathSpec] = useState('');
   const [allMath, setAllMath] = useState(false);
-  const [model, setModel] = useState(null);
-  const [mathModel, setMathModel] = useState(null);
   const [settings, setSettings] = useTextSettings(text.id);
+  // The models are the text's saved settings: choosing one here saves it (and the settings panel shows it).
+  const [model, setModel] = useSavedModel(text.id, settings, setSettings, 'model', (e) => setError(e));
+  const [mathModel, setMathModel] = useSavedModel(text.id, settings, setSettings, 'math_model', (e) => setError(e));
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
   const controller = useRef(null);
@@ -265,8 +265,8 @@ export default function HtmlTextPage({ data, reload }) {
             {!allMath ? <label>Math or table pages <input className="field inline-block w-40" placeholder="e.g. 2, 5-9" value={mathSpec} onChange={(e) => setMathSpec(e.target.value)} /></label> : null}
           </div>
           <div className="flex flex-wrap gap-4">
-            <ModelPicker task="html_page" value={model} onChange={setModel} label="Page model" savedDefault={settings?.model ?? null} />
-            <ModelPicker task="html_math" value={mathModel} onChange={setMathModel} label="Math and tables model" savedDefault={settings?.math_model ?? null} />
+            <ModelPicker task="html_page" value={model} onChange={setModel} label="Page model" />
+            <ModelPicker task="html_math" value={mathModel} onChange={setMathModel} label="Math and tables model" />
           </div>
           {savedRunNote(settings, 'pdf') ? <p className="text-xs text-slate-700 dark:text-slate-200">{savedRunNote(settings, 'pdf')}</p> : null}
           {keptRun && !progress ? (
@@ -349,7 +349,6 @@ export default function HtmlTextPage({ data, reload }) {
         </div>
       </div>
       <VersionHistory textId={text.id} type="html" canRestore={canEdit} refreshKey={versionKey} images={images} dirty={dirty} onRestored={() => { loadHtml(); refresh(); }} />
-      <div className="mt-8"><SummaryPanel text={text} canEdit={canEdit} onSaved={reload} busy={!!progress} /></div>
       <TextSettingsPanel textId={text.id} kind="pdf" canEdit={canEdit} settings={settings} onSaved={setSettings} />
       <MetadataPanel textId={text.id} canEdit={canEdit} />
       <CommentsPanel textId={text.id} canWrite={canEdit} source={html === null ? null : { text: html, pageId: null, textareaRef: source, selectable: !richShown }} onNeedSource={() => setView('source')} />

@@ -6,7 +6,7 @@ import { BUILTIN_POLICY, defaultFor, menuFor, offeredMenu, reasoningPolicy, thin
 
 // ---- arguments ---------------------------------------------------------------
 
-export const TASKS = ["ocr", "html", "math", "summary", "translate", "repair"] as const;
+export const TASKS = ["ocr", "html", "math", "repair"] as const;
 export type EvalTask = (typeof TASKS)[number];
 
 export interface EvalArgs {
@@ -135,10 +135,10 @@ export interface PlannedCall {
   worstMicro: number | null;
 }
 
-export const WORKER_TASK: Record<EvalTask, Task> = { ocr: "ocr", html: "html_page", math: "html_math", summary: "text", translate: "text", repair: "text" };
-export const MAX_TOKENS: Record<EvalTask, number> = { ocr: 4096, html: 6000, math: 6000, summary: 1024, translate: 6000, repair: 4000 };
+export const WORKER_TASK: Record<EvalTask, Task> = { ocr: "ocr", html: "html_page", math: "html_math", repair: "text" };
+export const MAX_TOKENS: Record<EvalTask, number> = { ocr: 4096, html: 6000, math: 6000, repair: 4000 };
 /** Rough visible-output expectations for the "expected" budget mode and the dry-run estimate. */
-const TYPICAL_OUTPUT: Record<EvalTask, number> = { ocr: 1200, html: 2500, math: 2800, summary: 350, translate: 1100, repair: 120 };
+const TYPICAL_OUTPUT: Record<EvalTask, number> = { ocr: 1200, html: 2500, math: 2800, repair: 120 };
 const TYPICAL_REASONING_MATH = 3000;
 
 /** Very rough image token estimate (a 28-32 px patch grid); the real figure is the provider's. */

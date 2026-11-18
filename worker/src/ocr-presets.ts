@@ -37,12 +37,13 @@ HANDLING SPECIAL ELEMENTS:
 - Damaged or obscured text: [unclear: your best guess] or [illegible]
 
 MARKDOWN FORMATTING:
+- Plays and dialogues: every speaker's name in bold on its own line (for example **THE BLIND MAN**), the speech on the next line. Use the same form on every page. A speaker's name is never a heading and never plain text
 - # for chapter titles
 - ## for section headings
 - **bold** for bold text
 - *italic* for italic text
 - > for block quotes or epigraphs
-- --- for section breaks or ornamental dividers
+- Never write a horizontal rule (---, *** or ___), even where the page prints a line or an ornament: leave a blank line instead
 - Regular body text: no formatting
 
 Output ONLY the transcribed text. No thinking or reasoning.`,
@@ -76,12 +77,13 @@ HANDLING SPECIAL ELEMENTS:
 - Damaged or obscured text: [unclear: your best guess] or [illegible]
 
 MARKDOWN FORMATTING:
+- Plays and dialogues: every speaker's name in bold on its own line (for example **THE BLIND MAN**), the speech on the next line. Use the same form on every page. A speaker's name is never a heading and never plain text
 - # for chapter titles
 - ## for section headings
 - **bold** for bold text
 - *italic* for italic text
 - > for block quotes or epigraphs
-- --- for section breaks or ornamental dividers
+- Never write a horizontal rule (---, *** or ___), even where the page prints a line or an ornament: leave a blank line instead
 - Regular body text: no formatting
 
 MATHEMATICS:
@@ -114,10 +116,11 @@ HANDLING UNCLEAR OR MODIFIED TEXT:
 - If something is completely impossible to decipher, use: [illegible]
 
 MARKDOWN FORMATTING:
-- ## Heading for titles, centered headings, section headers
-- **bold** for emphasized words or character names
+- Plays and dialogues: every speaker's name in bold on its own line (for example **THE BLIND MAN**), the speech on the next line. Use the same form on every page. A speaker's name is never a heading and never plain text
+- ## Heading only for titles and section, act or scene headings; centering alone does not make a line a heading
+- **bold** for emphasized words
 - *italic* for stage directions, handwritten annotations, italic typeface
-- --- for section separators
+- Never write a horizontal rule (---, *** or ___), even where the page prints a line or an ornament: leave a blank line instead
 - Do NOT over-format: regular body paragraphs should remain plain text with no formatting
 - When in doubt, leave text unformatted — false negatives are better than false positives
 
@@ -150,10 +153,11 @@ HANDLING UNCLEAR TEXT:
 - Completely illegible: [illegible]
 
 MARKDOWN FORMATTING:
+- Plays and dialogues: every speaker's name in bold on its own line (for example **THE BLIND MAN**), the speech on the next line. Use the same form on every page. A speaker's name is never a heading and never plain text
 - ## Heading for titles or section headers
 - **bold** for underlined or heavily emphasized words
 - *italic* for words written in a noticeably different hand or style
-- --- for section separators or horizontal rules drawn by the writer
+- Never write a horizontal rule (---, *** or ___), even where the page prints a line or an ornament: leave a blank line instead
 - Regular body text: no formatting
 
 Output ONLY the transcribed text. No thinking or reasoning.`,
@@ -186,10 +190,11 @@ HANDLING UNCLEAR OR DAMAGED TEXT:
 - Later annotations in a different hand: [annotation: text]
 
 MARKDOWN FORMATTING:
+- Plays and dialogues: every speaker's name in bold on its own line (for example **THE BLIND MAN**), the speech on the next line. Use the same form on every page. A speaker's name is never a heading and never plain text
 - ## Heading for titles, section headers
 - **bold** for emphasized or decorated text
 - *italic* for text in a different script or hand
-- --- for section separators
+- Never write a horizontal rule (---, *** or ___), even where the page prints a line or an ornament: leave a blank line instead
 - Regular body text: no formatting
 
 Output ONLY the transcribed text. No thinking or reasoning.`,
@@ -221,10 +226,11 @@ HANDLING UNCLEAR TEXT:
 - Completely illegible: [illegible]
 
 MARKDOWN FORMATTING:
+- Plays and dialogues: every speaker's name in bold on its own line (for example **THE BLIND MAN**), the speech on the next line. Use the same form on every page. A speaker's name is never a heading and never plain text
 - ## Heading for titles, section headers
 - **bold** for emphasized words
 - *italic* for foreign-language glosses, transliterations, or italic text
-- --- for section separators
+- Never write a horizontal rule (---, *** or ___), even where the page prints a line or an ornament: leave a blank line instead
 - Regular body text: no formatting
 
 Output ONLY the transcribed text. No thinking or reasoning.`,
