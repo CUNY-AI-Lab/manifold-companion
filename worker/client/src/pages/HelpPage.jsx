@@ -3,6 +3,7 @@ import { useSession } from '../api/session.jsx';
 import { LegacyDifferences, ToolRules, WhatItDoes } from '../components/ToolFacts';
 import { ShortcutList } from '../hooks/useShortcuts';
 import { FIGURE_HELP } from '../components/FigurePanel';
+import { REPORT_PROBLEM_URL } from '../components/Header';
 
 export default function HelpPage() {
   const { session } = useSession();
@@ -55,6 +56,10 @@ export default function HelpPage() {
         <h2 id="help-keys" className="text-lg">Keyboard</h2>
         <p className="mt-1">Everything works from the keyboard: Tab moves between controls, Enter or Space activates them. Use the arrow buttons next to a page or a text to move it up or down; the export follows that order. These shortcuts save steps (single-key ones work only outside text fields, and can be turned off in Settings):</p>
         <div className="mt-2"><ShortcutList /></div>
+      </section>
+      <section aria-labelledby="help-report">
+        <h2 id="help-report" className="text-lg">Report a problem</h2>
+        <p className="mt-1">If something does not work, or you have a question this page does not answer, <a className="underline" href={REPORT_PROBLEM_URL} target="_blank" rel="noopener noreferrer">report it to the CUNY AI Lab<span className="sr-only"> (opens in a new tab)</span></a>. Say that it is about Manifold Companion and what you were doing when it happened. If an error message shows a Reference, include it.</p>
       </section>
       <p><Link to="/">Back to your projects</Link></p>
     </article>

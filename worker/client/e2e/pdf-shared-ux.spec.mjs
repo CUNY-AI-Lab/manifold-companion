@@ -188,6 +188,17 @@ test('Help states the page cap and the PDF size limit', async ({ page, context }
   await expect(page.getByText(/a project holds at most 300 pages, and a source PDF can be at most/)).toBeVisible();
 });
 
+test('the header and Help link to the CAIL support form in a new tab', async ({ page, context }) => {
+  await as(context, 'alice');
+  await page.goto('/manifold-companion/help');
+  const form = 'https://tools.ailab.gc.cuny.edu/help/projects/support/issues/new?topic=other';
+  for (const link of [page.getByRole('banner').getByRole('link', { name: 'Report a problem (opens in a new tab)' }), page.getByRole('main').getByRole('link', { name: /^report it to the CUNY AI Lab/ })]) {
+    await expect(link).toHaveAttribute('href', form);
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  }
+});
+
 test('readable statuses, counts on the dashboard, shared projects apart, a description at creation, select all', async ({ page, context, browser }) => {
   await as(context, 'alice');
   const api = apiOf(page);
